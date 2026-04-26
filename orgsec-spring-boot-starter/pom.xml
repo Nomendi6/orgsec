@@ -74,5 +74,19 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Storage modules pulled in only for PropertiesDocumentationCoverageTest -->
+        <dependency>
+            <groupId>com.nomendi6.orgsec</groupId>
+            <artifactId>orgsec-storage-redis</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.nomendi6.orgsec</groupId>
+            <artifactId>orgsec-storage-jwt</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>

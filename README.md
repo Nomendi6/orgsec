@@ -1,69 +1,32 @@
-# OrgSec Security Library
+# OrgSec
 
 [![Java](https://img.shields.io/badge/Java-17%2B-blue)](https://openjdk.org/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4.5-green)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.14-green)](https://spring.io/projects/spring-boot)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-Spring Boot library for organizational role-based access control.
+OrgSec is a Spring Boot library that adds organizational role-based access control (RBAC) to Java applications. It models access as **privileges** scoped to a **business role** (`owner`, `customer`, `contractor`, ...) within an **organizational hierarchy**, evaluates them at runtime, and serves authorization data through a pluggable storage backend (in-memory, Redis, or JWT).
 
-OrgSec provides organizational security functionality including privilege management, business role configuration, hierarchical access control, and pluggable storage backends.
+The full documentation lives in [`docs/`](./docs/index.md).
 
-## Features
+## Highlights
 
-- **Privilege management** - fine-grained privilege model with operations (READ/WRITE/EXECUTE), organizational scopes (company/org/person), and hierarchy support (EXACT, UP, DOWN)
-- **Business roles** - configurable business roles with YAML-based or provider-based definitions
-- **Pluggable storage** - multiple storage backends: in-memory, Redis (with 2-level cache), and JWT
-- **Spring Boot integration** - auto-configuration, configuration properties, health indicators
-- **Audit logging** - extensible audit logging interface for security events
-- **Cache invalidation** - Redis Pub/Sub for distributed cache invalidation across instances
-- **RSQL filtering** - security-aware query filtering
+- **Hierarchical, multi-tenant authorization model.** Privileges scope to *exactly* one organization, *down* through descendants, or *up* through ancestors. Cascade evaluation runs across company -> org -> person and is fail-closed.
+- **String-based privilege identifiers, registered at runtime.** Your application defines its own vocabulary - `DOCUMENT_READ`, `INVOICE_APPROVE`, `CONTRACT_SIGN_HD` - through `PrivilegeDefinitionProvider` beans. OrgSec ships no closed enum.
+- **Three pluggable storage backends.** Choose in-memory (default), Redis (L1+L2 with Pub/Sub invalidation), or JWT (stateless Person from a token claim) per data type. Backend changes are configuration-only.
+- **Spring Boot auto-configuration.** Add the starter, declare your business roles, register your privileges, and the privilege evaluator, security data store, audit logger, and Spring Security adapter are wired automatically.
 
-## Project Structure
+## Modules
 
-The project is organized as a Maven multi-module project:
+| Module                          | Purpose                                                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `orgsec-core`                   | Public API: SPIs, domain models, exceptions.                                                           |
+| `orgsec-common`                 | Privilege evaluator, business-role configuration, RSQL filter builder.                                 |
+| `orgsec-storage-inmemory`       | Default backend; thread-safe, process-local. Bundled with the starter.                                 |
+| `orgsec-storage-redis`          | L1 + L2 + Pub/Sub invalidation, circuit breaker, preload strategies. Opt-in.                           |
+| `orgsec-storage-jwt`            | Reads `PersonDef` from a JWT claim; delegates other types to another backend. Opt-in.                  |
+| `orgsec-spring-boot-starter`    | Auto-configuration, configuration properties, Spring Security adapter, Person API.                     |
 
-```
-orgsec
-├── orgsec-core                  # Core API, interfaces, models, and DTOs
-├── orgsec-common                # Shared business logic, services, and loaders
-├── orgsec-storage-inmemory      # In-memory storage implementation
-├── orgsec-storage-redis         # Redis storage with 2-level caching (L1 in-memory + L2 Redis)
-├── orgsec-storage-jwt           # JWT token-based storage (person data from token claims)
-└── orgsec-spring-boot-starter   # Spring Boot auto-configuration and REST API
-```
-
-### Module details
-
-| Module | Description |
-|--------|-------------|
-| **orgsec-core** | Core interfaces (`SecurityDataStorage`, `SecurityEnabledEntity`, `PrivilegeRegistry`), domain models (`PersonDef`, `RoleDef`, `PrivilegeDef`, `OrganizationDef`), DTOs, constants, and exception hierarchy |
-| **orgsec-common** | Business logic layer - `PrivilegeChecker` for privilege validation, `BusinessRoleConfiguration`, `SecurityDataStore`, `RsqlFilterBuilder`, and event publishing |
-| **orgsec-storage-inmemory** | Thread-safe in-memory `SecurityDataStorage` implementation with data loaders, snapshot support for testing, and auto-initialization |
-| **orgsec-storage-redis** | Redis-based storage with L1 (in-memory LRU) and L2 (Redis) caching, Pub/Sub cache invalidation, circuit breaker (Resilience4j), configurable cache warming strategies, and health indicators |
-| **orgsec-storage-jwt** | Hybrid storage that reads person data from JWT token claims (stateless) and delegates organization/role/privilege queries to another storage backend |
-| **orgsec-spring-boot-starter** | Spring Boot auto-configuration, `SpringSecurityContextProvider`, configuration properties (`orgsec.*`), and a REST API for person data (useful for Keycloak mappers) |
-
-## Requirements
-
-- Java 17+
-- Maven 3.6+
-- Spring Boot 3.4.5+
-
-## Getting Started
-
-### 1. Clone and install
-
-```bash
-git clone https://github.com/Nomendi6/orgsec.git
-cd orgsec
-mvn clean install -DskipTests
-```
-
-After installation, the library will be available in your local Maven repository (`~/.m2/repository`).
-
-### 2. Add dependency
-
-**Maven:**
+## Getting started
 
 ```xml
 <dependency>
@@ -73,67 +36,7 @@ After installation, the library will be available in your local Maven repository
 </dependency>
 ```
 
-**Gradle:**
-
-```gradle
-implementation 'com.nomendi6.orgsec:orgsec-spring-boot-starter:1.0.1'
-```
-
-The starter includes `orgsec-core`, `orgsec-common`, and `orgsec-storage-inmemory` by default.
-
-### 3. Choose a storage backend
-
-The starter uses **in-memory storage** by default. For other backends, add the corresponding dependency:
-
-**Redis storage:**
-
-```xml
-<dependency>
-    <groupId>com.nomendi6.orgsec</groupId>
-    <artifactId>orgsec-storage-redis</artifactId>
-    <version>1.0.1</version>
-</dependency>
-```
-
-**JWT storage:**
-
-```xml
-<dependency>
-    <groupId>com.nomendi6.orgsec</groupId>
-    <artifactId>orgsec-storage-jwt</artifactId>
-    <version>1.0.1</version>
-</dependency>
-```
-
-## Configuration
-
-All configuration uses the `orgsec` prefix in `application.yml`. Only business roles need to be configured explicitly - everything else has sensible defaults.
-
-### Minimal configuration
-
-The only required configuration is defining your business roles. Storage defaults to in-memory, and all security features are enabled by default.
-
-```yaml
-orgsec:
-  business-roles:
-    owner:
-      supported-fields:
-        - COMPANY
-        - COMPANY_PATH
-        - ORG
-        - ORG_PATH
-        - PERSON
-    customer:
-      supported-fields:
-        - COMPANY
-        - COMPANY_PATH
-        - PERSON
-    contractor:
-      supported-fields:
-        - PERSON
-```
-
-### Full configuration with in-memory storage
+Declare your business roles:
 
 ```yaml
 orgsec:
@@ -141,225 +44,59 @@ orgsec:
     owner:
       supported-fields: [COMPANY, COMPANY_PATH, ORG, ORG_PATH, PERSON]
     customer:
-      supported-fields: [COMPANY, COMPANY_PATH, PERSON]
-    contractor:
-      supported-fields: [PERSON]
-
-  storage:
-    primary: memory                        # memory | jwt | redis
-    fallback: memory                       # Fallback if primary fails
-    features:
-      memory-enabled: true
-      jwt-enabled: false
-      redis-enabled: false
-      hybrid-mode-enabled: false
-    # Per-data-type storage routing (hybrid mode)
-    data-sources:
-      person: primary                      # primary | jwt | redis | memory
-      organization: primary
-      role: primary
-      privilege: memory                    # Privileges always from memory for performance
+      supported-fields: [COMPANY, COMPANY_PATH]
 ```
 
-### Redis storage configuration
+Then implement `SecurityEnabledEntity` on your domain class, register your privileges through a `PrivilegeDefinitionProvider`, and inject `PrivilegeChecker` where you need to make a decision. The full path is in the [Quick Start](./docs/guide/02-quick-start.md) (under thirty minutes) and the in-memory [example app](./docs/examples/in-memory-app.md).
 
-Requires `orgsec-storage-redis` dependency.
+## Documentation
 
-```yaml
-orgsec:
-  storage:
-    primary: redis
-    features:
-      redis-enabled: true
-      memory-enabled: true                 # Keep memory as delegate/fallback
-    redis:
-      enabled: true
-      host: localhost
-      port: 6379
-      password: ""
-      timeout: 2000
-      fallback-storage: memory
-      cache-ttl-seconds: 3600
-      key-prefix: "security:"
-      ttl:
-        person: 3600                       # TTL per entity type (seconds)
-        organization: 7200
-        role: 7200
-        privilege: 7200
-      cache:
-        l1-enabled: true                   # In-memory L1 cache
-        l1-max-size: 1000
-      invalidation:
-        enabled: true                      # Redis Pub/Sub cache invalidation
-        channel: "orgsec:invalidation"
-      preload:
-        enabled: true
-        on-startup: true
-        strategy: all                      # all | persons | organizations | roles
-        mode: eager                        # eager | progressive
-      circuit-breaker:
-        enabled: true
-        failure-threshold: 50
-        wait-duration: 30000
-        sliding-window-size: 10
-      pool:
-        min-idle: 5
-        max-idle: 10
-        max-active: 20
-```
+- [Documentation home](./docs/index.md)
+- [Introduction](./docs/guide/01-introduction.md) - what OrgSec solves and when to use it
+- [Quick Start](./docs/guide/02-quick-start.md) - first privilege check in 30 minutes
+- [Core Concepts](./docs/guide/03-core-concepts.md) - the privilege model in depth
+- [Configuration](./docs/guide/04-configuration.md) - every `orgsec.*` property in context
+- [Storage Overview](./docs/storage/01-overview.md) - pick a backend
+- [Properties Reference](./docs/reference/properties.md) - every property name, type, default
 
-### JWT storage configuration
+## Compatibility
 
-Requires `orgsec-storage-jwt` dependency. Person data is read from JWT claims; organization, role, and privilege data is delegated to another storage backend (in-memory by default).
-
-```yaml
-orgsec:
-  storage:
-    primary: jwt
-    features:
-      jwt-enabled: true
-      memory-enabled: true                 # In-memory as delegate for org/role/privilege
-    data-sources:
-      person: jwt                          # Person data from JWT token
-      organization: memory
-      role: memory
-      privilege: memory
-  jwt:
-    security-claims: auth_data             # JWT claim containing security data
-    token-header: X-Security-Data          # HTTP header for security data token
-```
-
-## Usage
-
-### Registering privileges
-
-```java
-@Component
-public class AppPrivilegeSetup {
-
-    private final PrivilegeRegistry privilegeRegistry;
-
-    public AppPrivilegeSetup(PrivilegeRegistry privilegeRegistry) {
-        this.privilegeRegistry = privilegeRegistry;
-    }
-
-    @PostConstruct
-    public void registerPrivileges() {
-        privilegeRegistry.registerPrivilege("DOCUMENT_READ",
-            PrivilegeDef.builder()
-                .name("DOCUMENT_READ")
-                .resourceName("Document")
-                .operation(PrivilegeOperation.READ)
-                .companyDirection(PrivilegeDirection.HIERARCHY_DOWN)
-                .orgDirection(PrivilegeDirection.EXACT)
-                .personDirection(PrivilegeDirection.NONE)
-                .build());
-
-        privilegeRegistry.registerPrivilege("DOCUMENT_WRITE",
-            PrivilegeDef.builder()
-                .name("DOCUMENT_WRITE")
-                .resourceName("Document")
-                .operation(PrivilegeOperation.WRITE)
-                .companyDirection(PrivilegeDirection.EXACT)
-                .orgDirection(PrivilegeDirection.EXACT)
-                .personDirection(PrivilegeDirection.EXACT)
-                .build());
-    }
-}
-```
-
-### Implementing SecurityEnabledEntity
-
-```java
-@Entity
-public class Document implements SecurityEnabledEntity {
-
-    @Id
-    private Long id;
-    private String title;
-    private Long companyId;
-    private Long orgunitId;
-    private Long personId;
-
-    @Override
-    public Object getSecurityField(String businessRole, SecurityFieldType fieldType) {
-        return switch (fieldType) {
-            case COMPANY -> companyId;
-            case ORG -> orgunitId;
-            case PERSON -> personId;
-            default -> null;
-        };
-    }
-
-    @Override
-    public void setSecurityField(String businessRole, SecurityFieldType fieldType, Object value) {
-        switch (fieldType) {
-            case COMPANY -> this.companyId = (Long) value;
-            case ORG -> this.orgunitId = (Long) value;
-            case PERSON -> this.personId = (Long) value;
-        }
-    }
-}
-```
-
-### Checking privileges
-
-```java
-@Service
-public class DocumentService {
-
-    private final PrivilegeChecker privilegeChecker;
-    private final SecurityDataStore securityDataStore;
-
-    public DocumentService(PrivilegeChecker privilegeChecker, SecurityDataStore securityDataStore) {
-        this.privilegeChecker = privilegeChecker;
-        this.securityDataStore = securityDataStore;
-    }
-
-    public boolean canReadDocument(Long personId, DocumentDTO document) {
-        PersonData person = securityDataStore.getPerson(personId);
-        ResourceDef resource = ResourceDef.builder().name("Document").build();
-        PrivilegeDef privilege = privilegeChecker.getResourcePrivileges(resource, PrivilegeOperation.READ);
-        // ... perform privilege check based on business role context
-        return privilege != null;
-    }
-}
-```
+| OrgSec version | Spring Boot   | Spring Security | Java | Status                                       |
+| -------------- | ------------- | --------------- | ---- | -------------------------------------------- |
+| **1.0.x**      | 3.5.x         | 6.x             | 17   | Current GA; receives security and bug fixes  |
+| 2.0.x          | 4.x (planned) | 7.x (planned)   | 21   | In development; not yet released             |
 
 ## Building
 
 ```bash
+# Full build with tests
+mvn clean install
+
 # Build without tests
 mvn clean install -DskipTests
 
-# Build with tests
-mvn clean install
-
-# Run tests only
-mvn test
-
-# Run tests with integration tests (requires Docker for Redis tests)
-mvn verify
-
-# Build a specific module
-mvn clean install -pl orgsec-core
-
-# Build a module and its dependencies
+# Build a single module with its dependencies
 mvn clean install -pl orgsec-storage-redis -am
 ```
 
-## Changelog
+Redis integration tests under `orgsec-storage-redis` use Testcontainers and require Docker.
 
-See [CHANGELOG.md](CHANGELOG.md) for release history.
+## Releases
 
-## Contributing
+OrgSec is published to Maven Central via the Sonatype Central Portal. See [`CHANGELOG.md`](./CHANGELOG.md) for release history.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+## Reporting security issues
+
+Do not file public issues for security problems. See [`SECURITY.md`](./SECURITY.md) for the disclosure process.
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+Apache License 2.0. See [`LICENSE`](./LICENSE).
 
-## Contact
+## Links
 
-- GitHub Issues: https://github.com/Nomendi6/orgsec/issues
+- [GitHub repository](https://github.com/Nomendi6/orgsec)
+- [Issues](https://github.com/Nomendi6/orgsec/issues)
+- [Contributing](./CONTRIBUTING.md)
+- [Changelog](./CHANGELOG.md)
+- [Security policy](./SECURITY.md)
