@@ -8,7 +8,7 @@
     <parent>
         <groupId>com.nomendi6.orgsec</groupId>
         <artifactId>orgsec-parent</artifactId>
-        <version>1.0.0</version>
+        <version>1.0.1</version>
     </parent>
 
     <artifactId>orgsec-spring-boot-starter</artifactId>
@@ -45,18 +45,16 @@
             <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>
 
-        <!-- Spring Security (optional) -->
+        <!-- Spring Security -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
-            <optional>true</optional>
         </dependency>
 
         <!-- Spring Web (for Person API) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-            <optional>true</optional>
         </dependency>
 
         <!-- Default InMemory storage

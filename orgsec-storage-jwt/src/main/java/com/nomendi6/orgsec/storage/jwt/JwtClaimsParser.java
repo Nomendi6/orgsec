@@ -1,6 +1,7 @@
 package com.nomendi6.orgsec.storage.jwt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nomendi6.orgsec.helper.PathSanitizer;
 import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.storage.jwt.dto.MembershipClaimDTO;
@@ -8,9 +9,11 @@ import com.nomendi6.orgsec.storage.jwt.dto.OrgSecClaimsDTO;
 import com.nomendi6.orgsec.storage.jwt.dto.PersonClaimDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Component;
 
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -23,18 +26,26 @@ public class JwtClaimsParser {
     private static final Logger log = LoggerFactory.getLogger(JwtClaimsParser.class);
 
     private static final String DEFAULT_CLAIM_NAME = "orgsec";
-    private static final String SUPPORTED_VERSION = "1.0";
+    private static final String DEFAULT_CLAIM_VERSION = "1.0";
 
     private final ObjectMapper objectMapper;
+    private final JwtDecoder jwtDecoder;
     private final String claimName;
+    private final String claimVersion;
 
-    public JwtClaimsParser(ObjectMapper objectMapper) {
-        this(objectMapper, DEFAULT_CLAIM_NAME);
+    public JwtClaimsParser(ObjectMapper objectMapper, JwtDecoder jwtDecoder) {
+        this(objectMapper, jwtDecoder, DEFAULT_CLAIM_NAME, DEFAULT_CLAIM_VERSION);
     }
 
-    public JwtClaimsParser(ObjectMapper objectMapper, String claimName) {
+    public JwtClaimsParser(ObjectMapper objectMapper, JwtDecoder jwtDecoder, String claimName) {
+        this(objectMapper, jwtDecoder, claimName, DEFAULT_CLAIM_VERSION);
+    }
+
+    public JwtClaimsParser(ObjectMapper objectMapper, JwtDecoder jwtDecoder, String claimName, String claimVersion) {
         this.objectMapper = objectMapper;
+        this.jwtDecoder = jwtDecoder;
         this.claimName = claimName;
+        this.claimVersion = claimVersion;
     }
 
     /**
@@ -89,17 +100,13 @@ public class JwtClaimsParser {
     @SuppressWarnings("unchecked")
     private Map<String, Object> extractPayload(String jwtToken) {
         try {
-            String[] parts = jwtToken.split("\\.");
-            if (parts.length != 3) {
-                log.error("Invalid JWT token format - expected 3 parts, got {}", parts.length);
-                return null;
-            }
-
-            String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]));
-            return objectMapper.readValue(payloadJson, Map.class);
-
+            Jwt jwt = jwtDecoder.decode(jwtToken);
+            return jwt.getClaims();
+        } catch (JwtException e) {
+            log.warn("JWT validation failed: {}", e.getMessage());
+            return null;
         } catch (Exception e) {
-            log.error("Failed to extract JWT payload", e);
+            log.error("Failed to validate or extract JWT payload", e);
             return null;
         }
     }
@@ -108,7 +115,7 @@ public class JwtClaimsParser {
      * Check if claims version is supported.
      */
     private boolean isVersionSupported(String version) {
-        return SUPPORTED_VERSION.equals(version);
+        return claimVersion.equals(version);
     }
 
     /**
@@ -149,11 +156,11 @@ public class JwtClaimsParser {
         OrganizationDef orgDef = new OrganizationDef();
         orgDef.organizationId = membership.getOrganizationId();
         orgDef.companyId = membership.getCompanyId();
-        orgDef.pathId = membership.getPathId();
+        orgDef.pathId = PathSanitizer.sanitizePath(membership.getPathId());
 
         // Calculate parentPath from pathId
-        if (membership.getPathId() != null) {
-            orgDef.parentPath = calculateParentPath(membership.getPathId());
+        if (orgDef.pathId != null) {
+            orgDef.parentPath = calculateParentPath(orgDef.pathId);
         }
 
         // Note: positionRoleIds are stored for later resolution with delegate storage
@@ -165,23 +172,21 @@ public class JwtClaimsParser {
 
     /**
      * Calculate parent path from full path.
-     * Example: /1/10/15/ -> /1/10/
+     * Example: |1|10|15| -> |1|10|
      */
     private String calculateParentPath(String pathId) {
         if (pathId == null || pathId.length() <= 1) {
-            return "/";
+            return "|";
         }
 
-        // Remove trailing slash if present
-        String path = pathId.endsWith("/") ? pathId.substring(0, pathId.length() - 1) : pathId;
+        String path = pathId.endsWith("|") ? pathId.substring(0, pathId.length() - 1) : pathId;
 
-        // Find last slash
-        int lastSlash = path.lastIndexOf('/');
-        if (lastSlash <= 0) {
-            return "/";
+        int lastSeparator = path.lastIndexOf('|');
+        if (lastSeparator <= 0) {
+            return "|";
         }
 
-        return path.substring(0, lastSlash + 1);
+        return path.substring(0, lastSeparator + 1);
     }
 
     /**

@@ -2,6 +2,7 @@ package com.nomendi6.orgsec.storage.redis.config;
 
 import io.lettuce.core.ClientOptions;
 import io.lettuce.core.TimeoutOptions;
+import io.lettuce.core.api.StatefulConnection;
 import io.lettuce.core.resource.ClientResources;
 import io.lettuce.core.resource.DefaultClientResources;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
@@ -59,10 +60,10 @@ public class LettucePoolConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
-    public GenericObjectPoolConfig<Object> lettucePoolConfig(RedisStorageProperties properties) {
+    public GenericObjectPoolConfig<StatefulConnection<?, ?>> lettucePoolConfig(RedisStorageProperties properties) {
         RedisStorageProperties.PoolConfig poolConfig = properties.getPool();
 
-        GenericObjectPoolConfig<Object> config = new GenericObjectPoolConfig<>();
+        GenericObjectPoolConfig<StatefulConnection<?, ?>> config = new GenericObjectPoolConfig<>();
         config.setMinIdle(poolConfig.getMinIdle());
         config.setMaxIdle(poolConfig.getMaxIdle());
         config.setMaxTotal(poolConfig.getMaxActive());
@@ -98,7 +99,7 @@ public class LettucePoolConfiguration {
     public LettuceConnectionFactory redisConnectionFactory(
             RedisStorageProperties properties,
             ClientResources clientResources,
-            GenericObjectPoolConfig<Object> poolConfig) {
+            GenericObjectPoolConfig<StatefulConnection<?, ?>> poolConfig) {
 
         // Configure Redis server connection
         RedisStandaloneConfiguration serverConfig = new RedisStandaloneConfiguration();
@@ -113,21 +114,27 @@ public class LettucePoolConfiguration {
 
         if (properties.getPool().isEnabled()) {
             // Pooling configuration
-            clientConfig = LettucePoolingClientConfiguration.builder()
+            LettucePoolingClientConfiguration.LettucePoolingClientConfigurationBuilder builder = LettucePoolingClientConfiguration.builder()
                     .poolConfig(poolConfig)
                     .clientResources(clientResources)
                     .commandTimeout(Duration.ofMillis(properties.getTimeout()))
-                    .clientOptions(createClientOptions(properties))
-                    .build();
+                    .clientOptions(createClientOptions(properties));
+            if (properties.isSsl()) {
+                builder.useSsl();
+            }
+            clientConfig = builder.build();
 
             log.info("Creating LettuceConnectionFactory with connection pooling enabled");
         } else {
             // Non-pooling configuration
-            clientConfig = LettuceClientConfiguration.builder()
+            LettuceClientConfiguration.LettuceClientConfigurationBuilder builder = LettuceClientConfiguration.builder()
                     .clientResources(clientResources)
                     .commandTimeout(Duration.ofMillis(properties.getTimeout()))
-                    .clientOptions(createClientOptions(properties))
-                    .build();
+                    .clientOptions(createClientOptions(properties));
+            if (properties.isSsl()) {
+                builder.useSsl();
+            }
+            clientConfig = builder.build();
 
             log.info("Creating LettuceConnectionFactory without connection pooling");
         }
@@ -135,8 +142,8 @@ public class LettucePoolConfiguration {
         LettuceConnectionFactory factory = new LettuceConnectionFactory(serverConfig, clientConfig);
         factory.setValidateConnection(true);
 
-        log.info("Configured Redis connection: host={}, port={}, timeout={}ms",
-                properties.getHost(), properties.getPort(), properties.getTimeout());
+        log.info("Configured Redis connection: host={}, port={}, timeout={}ms, ssl={}",
+                properties.getHost(), properties.getPort(), properties.getTimeout(), properties.isSsl());
 
         return factory;
     }

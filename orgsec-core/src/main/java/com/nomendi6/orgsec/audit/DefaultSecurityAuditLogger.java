@@ -48,17 +48,18 @@ public class DefaultSecurityAuditLogger implements SecurityAuditLogger {
         try {
             MDC.put("audit.type", "PRIVILEGE_CHECK");
             MDC.put("audit.personId", String.valueOf(event.personId()));
-            MDC.put("audit.privilege", event.privilegeName());
-            MDC.put("audit.resource", event.resourceName());
+            MDC.put("audit.privilege", sanitizeLogValue(event.privilegeName()));
+            MDC.put("audit.resource", sanitizeLogValue(event.resourceName()));
             MDC.put("audit.granted", String.valueOf(event.granted()));
             MDC.put("audit.durationMs", String.valueOf(event.durationMs()));
 
             if (event.granted()) {
                 AUDIT_LOG.info("PRIVILEGE_CHECK: personId={}, privilege={}, resource={}, granted=true, duration={}ms",
-                        event.personId(), event.privilegeName(), event.resourceName(), event.durationMs());
+                        event.personId(), sanitizeLogValue(event.privilegeName()), sanitizeLogValue(event.resourceName()), event.durationMs());
             } else {
                 AUDIT_LOG.warn("PRIVILEGE_CHECK: personId={}, privilege={}, resource={}, granted=false, reason={}, duration={}ms",
-                        event.personId(), event.privilegeName(), event.resourceName(), event.reason(), event.durationMs());
+                        event.personId(), sanitizeLogValue(event.privilegeName()), sanitizeLogValue(event.resourceName()),
+                        sanitizeLogValue(event.reason()), event.durationMs());
             }
         } finally {
             clearMDC();
@@ -71,15 +72,15 @@ public class DefaultSecurityAuditLogger implements SecurityAuditLogger {
 
         try {
             MDC.put("audit.type", "CACHE_ACCESS");
-            MDC.put("audit.cacheType", event.cacheType());
-            MDC.put("audit.operation", event.operation());
-            MDC.put("audit.cacheLevel", event.cacheLevel());
+            MDC.put("audit.cacheType", sanitizeLogValue(event.cacheType()));
+            MDC.put("audit.operation", sanitizeLogValue(event.operation()));
+            MDC.put("audit.cacheLevel", sanitizeLogValue(event.cacheLevel()));
             MDC.put("audit.hit", String.valueOf(event.hit()));
             MDC.put("audit.durationMs", String.valueOf(event.durationMs()));
 
             AUDIT_LOG.debug("CACHE_ACCESS: type={}, operation={}, key={}, level={}, hit={}, duration={}ms",
-                    event.cacheType(), event.operation(), maskKey(event.key()),
-                    event.cacheLevel(), event.hit(), event.durationMs());
+                    sanitizeLogValue(event.cacheType()), sanitizeLogValue(event.operation()), maskKey(event.key()),
+                    sanitizeLogValue(event.cacheLevel()), event.hit(), event.durationMs());
         } finally {
             clearMDC();
         }
@@ -91,12 +92,12 @@ public class DefaultSecurityAuditLogger implements SecurityAuditLogger {
 
         try {
             MDC.put("audit.type", "CONFIG_CHANGE");
-            MDC.put("audit.configKey", event.configKey());
-            MDC.put("audit.changedBy", event.changedBy());
+            MDC.put("audit.configKey", sanitizeLogValue(event.configKey()));
+            MDC.put("audit.changedBy", sanitizeLogValue(event.changedBy()));
 
             AUDIT_LOG.info("CONFIG_CHANGE: key={}, oldValue={}, newValue={}, changedBy={}",
-                    event.configKey(), maskSensitive(event.oldValue()),
-                    maskSensitive(event.newValue()), event.changedBy());
+                    sanitizeLogValue(event.configKey()), maskSensitive(event.configKey(), event.oldValue()),
+                    maskSensitive(event.configKey(), event.newValue()), sanitizeLogValue(event.changedBy()));
         } finally {
             clearMDC();
         }
@@ -109,10 +110,11 @@ public class DefaultSecurityAuditLogger implements SecurityAuditLogger {
         try {
             MDC.put("audit.type", "SECURITY_EVENT");
             MDC.put("audit.level", event.level().name());
-            MDC.put("audit.category", event.category());
+            MDC.put("audit.category", sanitizeLogValue(event.category()));
 
             String message = String.format("SECURITY_EVENT: [%s] %s - %s. Details: %s",
-                    event.level(), event.category(), event.message(), event.details());
+                    event.level(), sanitizeLogValue(event.category()), sanitizeLogValue(event.message()),
+                    sanitizeLogValue(event.details()));
 
             switch (event.level()) {
                 case INFO -> AUDIT_LOG.info(message);
@@ -147,17 +149,26 @@ public class DefaultSecurityAuditLogger implements SecurityAuditLogger {
     /**
      * Mask potentially sensitive configuration values.
      */
-    private String maskSensitive(String value) {
+    private String maskSensitive(String key, String value) {
         if (value == null) {
             return "null";
         }
-        // Mask values that might be passwords or secrets
-        String lowerValue = value.toLowerCase();
-        if (lowerValue.contains("password") || lowerValue.contains("secret") ||
-            lowerValue.contains("key") || lowerValue.contains("token")) {
+        if (key == null) {
             return "***MASKED***";
         }
-        return value;
+        String lowerKey = key != null ? key.toLowerCase() : "";
+        if (lowerKey.contains("password") || lowerKey.contains("secret") ||
+            lowerKey.contains("key") || lowerKey.contains("token")) {
+            return "***MASKED***";
+        }
+        return sanitizeLogValue(value);
+    }
+
+    private String sanitizeLogValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.replace('\r', '_').replace('\n', '_');
     }
 
     private void clearMDC() {

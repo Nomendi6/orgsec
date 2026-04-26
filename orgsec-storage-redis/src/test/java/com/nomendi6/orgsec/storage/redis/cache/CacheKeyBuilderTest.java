@@ -98,10 +98,10 @@ class CacheKeyBuilderTest {
         CacheKeyBuilder builder = new CacheKeyBuilder(false);
 
         // When
-        String key = builder.buildPrivilegeKey(999L);
+        String key = builder.buildPrivilegeKey("document_READ");
 
         // Then
-        assertThat(key).isEqualTo("orgsec:priv:999");
+        assertThat(key).isEqualTo("orgsec:priv:document_READ");
     }
 
     @Test
@@ -110,9 +110,9 @@ class CacheKeyBuilderTest {
         CacheKeyBuilder builder = new CacheKeyBuilder(false);
 
         // When/Then
-        assertThatThrownBy(() -> builder.buildPrivilegeKey(null))
+        assertThatThrownBy(() -> builder.buildPrivilegeKey((String) null))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Privilege ID cannot be null");
+            .hasMessageContaining("Privilege identifier cannot be null or empty");
     }
 
     @Test

@@ -46,7 +46,7 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
     private final L1Cache<Long, PersonDef> personL1Cache;
     private final L1Cache<Long, OrganizationDef> organizationL1Cache;
     private final L1Cache<Long, RoleDef> roleL1Cache;
-    private final L1Cache<Long, PrivilegeDef> privilegeL1Cache;
+    private final L1Cache<String, PrivilegeDef> privilegeL1Cache;
 
     // L2 Caches (Redis)
     private final L2RedisCache<PersonDef> personL2Cache;
@@ -74,7 +74,7 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
             L1Cache<Long, PersonDef> personL1Cache,
             L1Cache<Long, OrganizationDef> organizationL1Cache,
             L1Cache<Long, RoleDef> roleL1Cache,
-            L1Cache<Long, PrivilegeDef> privilegeL1Cache,
+            L1Cache<String, PrivilegeDef> privilegeL1Cache,
             L2RedisCache<PersonDef> personL2Cache,
             L2RedisCache<OrganizationDef> organizationL2Cache,
             L2RedisCache<RoleDef> roleL2Cache,
@@ -202,24 +202,20 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
             return null;
         }
 
-        // For privileges, we use privilege name hash as key since it's string-based
-        // Convert to a numeric hash for L1 cache
-        Long privilegeHash = (long) privilegeIdentifier.hashCode();
-
         // L1 cache hit
-        PrivilegeDef privilege = privilegeL1Cache.get(privilegeHash);
+        PrivilegeDef privilege = privilegeL1Cache.get(privilegeIdentifier);
         if (privilege != null) {
             log.debug("L1 cache hit for privilege: {}", privilegeIdentifier);
             return privilege;
         }
 
         // L2 cache hit
-        String key = cacheKeyBuilder.buildPrivilegeKey(privilegeHash);
+        String key = cacheKeyBuilder.buildPrivilegeKey(privilegeIdentifier);
         privilege = privilegeL2Cache.get(key);
         if (privilege != null) {
             log.debug("L2 cache hit for privilege: {}", privilegeIdentifier);
             // Populate L1 cache
-            privilegeL1Cache.put(privilegeHash, privilege);
+            privilegeL1Cache.put(privilegeIdentifier, privilege);
             return privilege;
         }
 

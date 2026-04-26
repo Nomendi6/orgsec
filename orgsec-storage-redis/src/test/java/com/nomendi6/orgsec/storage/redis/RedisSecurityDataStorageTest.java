@@ -48,7 +48,7 @@ class RedisSecurityDataStorageTest {
     private L1Cache<Long, RoleDef> roleL1Cache;
 
     @Mock
-    private L1Cache<Long, com.nomendi6.orgsec.model.PrivilegeDef> privilegeL1Cache;
+    private L1Cache<String, com.nomendi6.orgsec.model.PrivilegeDef> privilegeL1Cache;
 
     @Mock
     private L2RedisCache<PersonDef> personL2Cache;
@@ -88,7 +88,7 @@ class RedisSecurityDataStorageTest {
         when(cacheKeyBuilder.buildPersonKey(anyLong())).thenAnswer(inv -> "orgsec:p:" + inv.getArgument(0));
         when(cacheKeyBuilder.buildOrganizationKey(anyLong())).thenAnswer(inv -> "orgsec:o:" + inv.getArgument(0));
         when(cacheKeyBuilder.buildRoleKey(anyLong())).thenAnswer(inv -> "orgsec:r:" + inv.getArgument(0));
-        when(cacheKeyBuilder.buildPrivilegeKey(anyLong())).thenAnswer(inv -> "orgsec:priv:" + inv.getArgument(0));
+        when(cacheKeyBuilder.buildPrivilegeKey(anyString())).thenAnswer(inv -> "orgsec:priv:" + inv.getArgument(0));
 
         storage = new RedisSecurityDataStorage(
                 properties,
@@ -262,8 +262,7 @@ class RedisSecurityDataStorageTest {
         @Test
         void shouldReturnFromL1CacheIfPresent() {
             PrivilegeDef privilege = new PrivilegeDef("READ", "document");
-            Long hash = (long) "READ".hashCode();
-            when(privilegeL1Cache.get(hash)).thenReturn(privilege);
+            when(privilegeL1Cache.get("READ")).thenReturn(privilege);
 
             PrivilegeDef result = storage.getPrivilege("READ");
 
@@ -274,21 +273,19 @@ class RedisSecurityDataStorageTest {
         @Test
         void shouldReturnFromL2CacheAndPopulateL1() {
             PrivilegeDef privilege = new PrivilegeDef("READ", "document");
-            Long hash = (long) "READ".hashCode();
-            when(privilegeL1Cache.get(hash)).thenReturn(null);
-            when(privilegeL2Cache.get("orgsec:priv:" + hash)).thenReturn(privilege);
+            when(privilegeL1Cache.get("READ")).thenReturn(null);
+            when(privilegeL2Cache.get("orgsec:priv:READ")).thenReturn(privilege);
 
             PrivilegeDef result = storage.getPrivilege("READ");
 
             assertThat(result).isEqualTo(privilege);
-            verify(privilegeL1Cache).put(hash, privilege);
+            verify(privilegeL1Cache).put("READ", privilege);
         }
 
         @Test
         void shouldReturnNullOnCacheMiss() {
-            Long hash = (long) "READ".hashCode();
-            when(privilegeL1Cache.get(hash)).thenReturn(null);
-            when(privilegeL2Cache.get("orgsec:priv:" + hash)).thenReturn(null);
+            when(privilegeL1Cache.get("READ")).thenReturn(null);
+            when(privilegeL2Cache.get("orgsec:priv:READ")).thenReturn(null);
 
             assertThat(storage.getPrivilege("READ")).isNull();
         }

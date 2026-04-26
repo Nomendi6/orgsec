@@ -160,7 +160,7 @@ public class PathSanitizer {
         validatePath(childPath);
         validatePath(parentPath);
 
-        return childPath.contains(parentPath);
+        return childPath.equals(parentPath) || childPath.startsWith(parentPath);
     }
 
     /**

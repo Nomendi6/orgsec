@@ -54,7 +54,7 @@ class RedisStorageHealthIndicatorTest {
 
         assertThat(health.getStatus()).isEqualTo(Status.DOWN);
         assertThat(health.getDetails()).containsEntry("connection", "failed");
-        assertThat(health.getDetails().get("error")).asString().contains("redis unavailable");
+        assertThat(health.getDetails()).containsEntry("error", "IllegalStateException");
     }
 
     private RedisStorageHealthIndicator indicatorWith(RedisConnection connection) {

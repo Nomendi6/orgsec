@@ -30,6 +30,7 @@ import com.nomendi6.orgsec.common.store.SecurityDataStore;
 public class RsqlFilterBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(RsqlFilterBuilder.class);
+    private static final String ALL_GRANT_SENTINEL = "__ORGSEC_ALL_GRANT__";
 
     private final SecurityDataStore securityDataStore;
     private final BusinessRoleConfiguration businessRoleConfiguration;
@@ -123,11 +124,13 @@ public class RsqlFilterBuilder {
 
                         if (roleFilter != null) {
                             hasPrivilege = true;
-                            if (roleFilter.isEmpty()) {
+                            if (ALL_GRANT_SENTINEL.equals(roleFilter)) {
                                 // Empty filter means 'all' privilege - no filtering needed
                                 return "";
                             }
-                            filter = orRsql(filter, roleFilter);
+                            if (!roleFilter.isEmpty()) {
+                                filter = orRsql(filter, roleFilter);
+                            }
                         }
                     }
                 }
@@ -161,8 +164,7 @@ public class RsqlFilterBuilder {
         }
 
         if (resourceAggregatedPrivs.all) {
-            // If 'all' privilege is granted, return empty filter (allow all)
-            return "";
+            return ALL_GRANT_SENTINEL;
         }
 
         return buildRsqlForOrganizationalPrivilege(
@@ -217,7 +219,7 @@ public class RsqlFilterBuilder {
             return alias + businessRoleName + "Person.id==" + currentPerson.getId();
         }
 
-        return "";
+        return null;
     }
 
     private String buildCompanyFilter(
@@ -230,17 +232,19 @@ public class RsqlFilterBuilder {
             case EXACT:
                 return alias + businessRoleName + "Company.id==" + organizationDef.companyId;
             case HIERARCHY_DOWN:
-                // Return empty filter if path is null (fall back to no filtering)
                 if (organizationDef.companyParentPath == null) {
-                    return "";
+                    log.warn("Cannot build company hierarchy-down RSQL filter: companyParentPath is null for organization {}",
+                        organizationDef.organizationId);
+                    return null;
                 }
                 // Validate and escape path before using in RSQL
                 String safeCompanyPath = PathSanitizer.escapeForRsql(organizationDef.companyParentPath);
                 return alias + businessRoleName + "CompanyPath=*'" + safeCompanyPath + "*'";
             case HIERARCHY_UP:
-                // Return empty filter if path is null (fall back to no filtering)
                 if (organizationDef.companyParentPath == null) {
-                    return "";
+                    log.warn("Cannot build company hierarchy-up RSQL filter: companyParentPath is null for organization {}",
+                        organizationDef.organizationId);
+                    return null;
                 }
                 // Validate and escape path before using in RSQL
                 String safeCompanyPathUp = PathSanitizer.escapeForRsql(organizationDef.companyParentPath);
@@ -255,17 +259,19 @@ public class RsqlFilterBuilder {
             case EXACT:
                 return alias + businessRoleName + "Org.id==" + organizationDef.organizationId;
             case HIERARCHY_DOWN:
-                // Return empty filter if path is null (fall back to no filtering)
                 if (organizationDef.parentPath == null) {
-                    return "";
+                    log.warn("Cannot build organization hierarchy-down RSQL filter: parentPath is null for organization {}",
+                        organizationDef.organizationId);
+                    return null;
                 }
                 // Validate and escape path before using in RSQL
                 String safeOrgPath = PathSanitizer.escapeForRsql(organizationDef.parentPath);
                 return alias + businessRoleName + "OrgPath=*'" + safeOrgPath + "*'";
             case HIERARCHY_UP:
-                // Return empty filter if path is null (fall back to no filtering)
                 if (organizationDef.parentPath == null) {
-                    return "";
+                    log.warn("Cannot build organization hierarchy-up RSQL filter: parentPath is null for organization {}",
+                        organizationDef.organizationId);
+                    return null;
                 }
                 // Validate and escape path before using in RSQL
                 String safeOrgPathUp = PathSanitizer.escapeForRsql(organizationDef.parentPath);

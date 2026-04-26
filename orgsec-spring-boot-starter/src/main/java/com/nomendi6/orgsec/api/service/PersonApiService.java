@@ -83,14 +83,18 @@ public class PersonApiService {
             return null;
         }
 
+        PersonDef cached = personsStore.getPerson(personId);
+        if (cached != null) {
+            return cached;
+        }
+
         // Load full person data with memberships
         List<Tuple> persons = queryProvider.loadPersonById(personId);
         List<Tuple> personParties = queryProvider.loadPersonPartiesByPersonId(personId);
         List<Tuple> personPartyRoles = queryProvider.loadPersonPartyRolesByPersonId(personId);
         List<Tuple> personPositionRoles = queryProvider.loadPersonPositionRolesByPersonId(personId);
 
-        // Use PersonLoader to build PersonDef
-        personLoader.loadPersonsFromQueryResults(persons, personParties, personPartyRoles, personPositionRoles);
+        personLoader.syncPerson(personId, persons, personParties, personPartyRoles, personPositionRoles);
 
         // Get the loaded person from store
         return personsStore.getPerson(personId);

@@ -1,7 +1,7 @@
 package com.nomendi6.orgsec.storage.inmemory.store;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 import com.nomendi6.orgsec.model.PersonDef;
 
@@ -12,10 +12,10 @@ import com.nomendi6.orgsec.model.PersonDef;
 @Component
 public class AllPersonsStore {
 
-    private Map<Long, PersonDef> personsMap;
+    private volatile Map<Long, PersonDef> personsMap;
 
     public AllPersonsStore() {
-        this.personsMap = new HashMap<>();
+        this.personsMap = new ConcurrentHashMap<>();
     }
 
     /**
@@ -31,7 +31,7 @@ public class AllPersonsStore {
      * @param personsMap new persons map
      */
     public void setPersonsMap(Map<Long, PersonDef> personsMap) {
-        this.personsMap = personsMap;
+        this.personsMap = new ConcurrentHashMap<>(personsMap);
     }
 
     /**

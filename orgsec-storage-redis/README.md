@@ -188,6 +188,7 @@ See [application-redis-example.yml](src/main/resources/application-redis-example
 | `orgsec.storage.redis.host` | `localhost` | Redis host |
 | `orgsec.storage.redis.port` | `6379` | Redis port |
 | `orgsec.storage.redis.password` | - | Redis password (optional) |
+| `orgsec.storage.redis.ssl` | `false` | Enable TLS for Redis connections |
 
 ### TTL Settings (seconds)
 
@@ -205,13 +206,12 @@ See [application-redis-example.yml](src/main/resources/application-redis-example
 |----------|---------|-------------|
 | `orgsec.storage.redis.cache.l1-max-size` | `1000` | Max entries in L1 cache |
 | `orgsec.storage.redis.cache.obfuscate-keys` | `false` | Hash Redis keys with SHA-256 |
-| `orgsec.storage.redis.cache.enable-integrity-check` | `true` | Verify data integrity |
 
 ### Invalidation Settings
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `orgsec.storage.redis.invalidation.enabled` | `true` | Enable Pub/Sub invalidation |
+| `orgsec.storage.redis.invalidation.enabled` | `false` | Enable Pub/Sub invalidation |
 | `orgsec.storage.redis.invalidation.channel` | `orgsec:invalidation` | Redis channel name |
 | `orgsec.storage.redis.invalidation.async` | `true` | Publish events async |
 
