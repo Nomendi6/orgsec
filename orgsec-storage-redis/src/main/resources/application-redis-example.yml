@@ -1,0 +1,111 @@
+# Example configuration for OrgSec Redis Storage
+# Copy relevant sections to your application.yml
+
+spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: # Set if authentication is enabled
+      database: 0
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
+orgsec:
+  storage:
+    redis:
+      # Enable Redis storage (required)
+      enabled: true
+
+      # Redis connection settings
+      host: localhost
+      port: 6379
+      # password: your-redis-password # Uncomment if Redis requires authentication
+
+      # TTL settings (in seconds)
+      ttl:
+        person: 3600        # 1 hour
+        organization: 3600  # 1 hour
+        role: 7200          # 2 hours
+        privilege: 7200     # 2 hours
+        default: 3600       # Default TTL for other entities
+
+      # Cache configuration
+      cache:
+        l1-max-size: 1000           # Maximum entries in L1 (in-memory) cache
+        obfuscate-keys: false       # Obfuscate Redis keys (for sensitive data)
+        enable-integrity-check: true # Enable SHA-256 hash verification
+
+      # Cache invalidation via Redis Pub/Sub
+      invalidation:
+        enabled: true
+        channel: orgsec:invalidation
+        async: true  # Publish events asynchronously
+
+      # Connection pool (Lettuce)
+      pool:
+        enabled: true
+        min-idle: 5
+        max-idle: 10
+        max-active: 20
+        max-wait: 2000
+
+      # Preload strategy on startup
+      preload:
+        enabled: true
+        strategy: all  # Options: all, persons, organizations, roles
+        mode: eager    # Options: eager, progressive, lazy
+        batch-size: 100
+        batch-delay-ms: 50
+        async: false
+        parallelism: 2
+
+      # Serialization (Jackson ObjectMapper)
+      serialization:
+        fail-on-unknown-properties: false
+        strict-mode: false  # Enable for production security
+
+      # Audit logging
+      audit:
+        enabled: false
+        log-cache-access: false
+        log-privilege-checks: true
+        log-config-changes: true
+
+      # Circuit breaker (Resilience4j)
+      circuit-breaker:
+        enabled: true
+        failure-rate-threshold: 50      # Open circuit if 50% of calls fail
+        wait-duration-in-open-state: 60000  # Wait 60s before trying again (ms)
+        sliding-window-size: 100        # Number of calls to track
+        permitted-calls-in-half-open: 10 # Test calls when half-open
+
+      # Monitoring
+      monitoring:
+        enable-metrics: true
+        enable-health-check: true
+
+# Management endpoints (for health check and metrics)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Logging
+logging:
+  level:
+    com.nomendi6.orgsec.storage.redis: DEBUG
+    org.springframework.data.redis: INFO

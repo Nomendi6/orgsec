@@ -1,0 +1,2 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.nomendi6.orgsec.autoconfigure.OrgsecAutoConfiguration

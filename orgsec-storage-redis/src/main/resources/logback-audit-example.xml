@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Example Logback configuration for OrgSec security audit logging.
+
+  Copy relevant sections to your application's logback-spring.xml to enable
+  security audit logging to a separate file.
+-->
+<configuration>
+
+    <!-- Security audit log file -->
+    <appender name="SECURITY_AUDIT_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/security-audit.log</file>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/security-audit.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>90</maxHistory>
+            <totalSizeCap>10GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- JSON format for SIEM integration -->
+    <appender name="SECURITY_AUDIT_JSON" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/security-audit.json</file>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeMdcKeyName>audit.type</includeMdcKeyName>
+            <includeMdcKeyName>audit.personId</includeMdcKeyName>
+            <includeMdcKeyName>audit.privilege</includeMdcKeyName>
+            <includeMdcKeyName>audit.resource</includeMdcKeyName>
+            <includeMdcKeyName>audit.granted</includeMdcKeyName>
+            <includeMdcKeyName>audit.durationMs</includeMdcKeyName>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/security-audit.%d{yyyy-MM-dd}.json</fileNamePattern>
+            <maxHistory>90</maxHistory>
+        </rollingPolicy>
+    </appender>
+
+    <!-- Security audit logger configuration -->
+    <logger name="SECURITY_AUDIT" level="INFO" additivity="false">
+        <appender-ref ref="SECURITY_AUDIT_FILE"/>
+        <!-- Uncomment for JSON format: <appender-ref ref="SECURITY_AUDIT_JSON"/> -->
+    </logger>
+
+</configuration>

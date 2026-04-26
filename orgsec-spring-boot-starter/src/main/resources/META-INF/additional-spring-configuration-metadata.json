@@ -1,0 +1,64 @@
+{
+  "properties": [
+    {
+      "name": "orgsec.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enable OrgSec security features",
+      "defaultValue": true
+    },
+    {
+      "name": "orgsec.storage.type",
+      "type": "java.lang.String",
+      "description": "Storage type for security data",
+      "defaultValue": "inmemory"
+    },
+    {
+      "name": "orgsec.storage.inmemory.cache-ttl",
+      "type": "java.lang.Integer",
+      "description": "Cache TTL in seconds for in-memory storage",
+      "defaultValue": 3600
+    },
+    {
+      "name": "orgsec.storage.inmemory.max-entries",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of entries in in-memory storage",
+      "defaultValue": 10000
+    },
+    {
+      "name": "orgsec.security.privilege-checking",
+      "type": "java.lang.Boolean",
+      "description": "Enable privilege checking",
+      "defaultValue": true
+    },
+    {
+      "name": "orgsec.security.role-hierarchy",
+      "type": "java.lang.Boolean",
+      "description": "Enable role hierarchy",
+      "defaultValue": true
+    },
+    {
+      "name": "orgsec.security.audit-logging",
+      "type": "java.lang.Boolean",
+      "description": "Enable audit logging",
+      "defaultValue": false
+    },
+    {
+      "name": "orgsec.features.business-roles",
+      "type": "java.lang.Boolean",
+      "description": "Enable business roles feature",
+      "defaultValue": true
+    },
+    {
+      "name": "orgsec.features.position-roles",
+      "type": "java.lang.Boolean",
+      "description": "Enable position roles feature",
+      "defaultValue": true
+    },
+    {
+      "name": "orgsec.features.delegations",
+      "type": "java.lang.Boolean",
+      "description": "Enable delegations feature",
+      "defaultValue": false
+    }
+  ]
+}

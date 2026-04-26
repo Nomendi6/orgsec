@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.nomendi6.orgsec</groupId>
+        <artifactId>orgsec-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>orgsec-spring-boot-starter</artifactId>
+    <name>OrgSec Spring Boot Starter</name>
+    <description>Spring Boot Starter for OrgSec Security Library</description>
+
+    <dependencies>
+        <!-- OrgSec Core -->
+        <dependency>
+            <groupId>com.nomendi6.orgsec</groupId>
+            <artifactId>orgsec-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- OrgSec Common -->
+        <dependency>
+            <groupId>com.nomendi6.orgsec</groupId>
+            <artifactId>orgsec-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Spring Boot -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+
+        <!-- Spring Security (optional) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Spring Web (for Person API) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Default InMemory storage
+             NOTE: While this is a compile-time dependency (application code uses InMemory classes),
+             at runtime you can override with Redis storage using @Primary annotation.
+             InMemory beans will not be created when Redis is active (via @ConditionalOnMissingBean).
+        -->
+        <dependency>
+            <groupId>com.nomendi6.orgsec</groupId>
+            <artifactId>orgsec-storage-inmemory</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

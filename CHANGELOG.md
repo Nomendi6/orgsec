@@ -1,0 +1,66 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.0.0] - 2026-04-26
+
+### Added
+
+#### Core (`orgsec-core`)
+- Core API interfaces: `SecurityDataStorage`, `SecurityEnabledEntity`, `SecurityEnabledDTO`, `PrivilegeRegistry`
+- Domain models: `PersonDef`, `RoleDef`, `PrivilegeDef`, `OrganizationDef`, `ResourceDef`, `BusinessRoleDef`
+- Privilege model with operations (READ/WRITE/EXECUTE), scopes (company/org/person), and hierarchy directions (EXACT, UP, DOWN)
+- Provider interfaces: `SecurityContextProvider`, `SecurityQueryProvider`, `UserDataProvider`, `PersonDataProvider`, `PrivilegeDefinitionProvider`
+- Audit logging interfaces: `SecurityAuditLogger` with default and no-op implementations
+- Exception hierarchy: `OrgsecConfigurationException`, `OrgsecDataAccessException`, `OrgsecSecurityException`
+- Helper utilities: `PrivilegeSecurityHelper`, `RsqlHelper`, `PathSanitizer`
+
+#### Common (`orgsec-common`)
+- `PrivilegeChecker` service for privilege validation with hierarchy support
+- `BusinessRoleConfiguration` with YAML and provider-based role definitions
+- `SecurityDataStore` as unified data store bridge
+- `RsqlFilterBuilder` for security-aware RSQL query generation
+- `SecurityEventPublisher` for event-driven cache invalidation
+
+#### In-Memory Storage (`orgsec-storage-inmemory`)
+- Thread-safe in-memory `SecurityDataStorage` implementation with `ReadWriteLock`
+- Data loaders: `PersonLoader`, `OrganizationLoader`, `RoleLoader`, `PrivilegeLoader`
+- Snapshot support for testing (save/restore state)
+- Auto-initialization of privileges via `PrivilegeDefinitionProvider`
+- `PrivilegeSecurityService` for privilege operations
+
+#### Redis Storage (`orgsec-storage-redis`)
+- 2-level cache architecture: L1 (in-memory LRU) + L2 (Redis distributed)
+- Cache invalidation via Redis Pub/Sub
+- Configurable cache warming strategies: eager (all at once) and progressive (batched)
+- Circuit breaker integration with Resilience4j
+- Batch operations for efficient bulk reads/writes
+- Connection pooling with Lettuce and Commons Pool2
+- Spring Boot health indicator for Redis storage monitoring
+- Cache statistics tracking
+- Integrity hash calculation for cached data
+- Configurable TTL per entity type
+
+#### JWT Storage (`orgsec-storage-jwt`)
+- Hybrid storage: person data from JWT claims, other data from delegate storage
+- `JwtClaimsParser` for extracting OrgSec data from JWT tokens
+- `JwtTokenFilter` for automatic token extraction from HTTP requests
+- `JwtTokenContextHolder` for per-request token management
+- Support for custom JWT claim names and structure
+
+#### Spring Boot Starter (`orgsec-spring-boot-starter`)
+- Spring Boot auto-configuration with `@AutoConfiguration`
+- `SpringSecurityContextProvider` for Spring Security integration
+- Configuration properties with `orgsec.*` prefix
+- REST API (`PersonApiController`) for person data (Keycloak mapper support)
+- Conditional configuration for optional features
+
+### Technical Details
+- Java 17 minimum requirement
+- Spring Boot 3.4.5 compatibility
+- Spring Security integration
+- Maven multi-module project structure
+- JaCoCo code coverage enforcement (85% line, 80% branch for Redis module)
