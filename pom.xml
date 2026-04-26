@@ -7,7 +7,7 @@
 
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-parent</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <packaging>pom</packaging>
 
     <name>OrgSec Parent</name>
@@ -53,20 +53,16 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Library versions -->
-        <spring-boot.version>3.4.5</spring-boot.version>
-        <spring.version>6.2.6</spring.version>
+        <spring-boot.version>3.5.14</spring-boot.version>
         <junit.version>5.11.4</junit.version>
         <mockito.version>5.14.2</mockito.version>
         <assertj.version>3.26.3</assertj.version>
         <slf4j.version>2.0.17</slf4j.version>
         <jakarta.persistence.version>3.1.0</jakarta.persistence.version>
         <jakarta.validation.version>3.0.2</jakarta.validation.version>
-        <jakarta.xml.bind.version>4.0.2</jakarta.xml.bind.version>
-        <commons-lang3.version>3.17.0</commons-lang3.version>
-        <jedis.version>5.1.0</jedis.version>
-        <jwt.version>0.12.5</jwt.version>
-        <testcontainers.version>1.20.4</testcontainers.version>
-        <resilience4j.version>2.1.0</resilience4j.version>
+        <commons-lang3.version>3.18.0</commons-lang3.version>
+        <testcontainers.version>1.20.6</testcontainers.version>
+        <resilience4j.version>2.3.0</resilience4j.version>
         <commons-codec.version>1.17.1</commons-codec.version>
 
         <!-- Maven Plugin Versions -->

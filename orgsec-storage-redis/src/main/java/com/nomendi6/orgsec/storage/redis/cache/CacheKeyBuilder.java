@@ -89,14 +89,31 @@ public class CacheKeyBuilder {
     /**
      * Builds a cache key for a privilege.
      *
-     * @param privilegeId the privilege ID
+     * @param privilegeIdentifier the privilege identifier
      * @return the cache key
      */
+    public String buildPrivilegeKey(String privilegeIdentifier) {
+        if (privilegeIdentifier == null || privilegeIdentifier.trim().isEmpty()) {
+            throw new IllegalArgumentException("Privilege identifier cannot be null or empty");
+        }
+        return buildKey(PRIVILEGE_PREFIX + privilegeIdentifier);
+    }
+
+    /**
+     * Builds a cache key for a legacy numeric privilege ID.
+     *
+     * @param privilegeId the privilege ID
+     * @return the cache key
+     * @deprecated use {@link #buildPrivilegeKey(String)} to avoid 32-bit hash collisions.
+     * This legacy method maps numeric values into the same Redis key namespace as
+     * string privilege identifiers and is kept only for source compatibility.
+     */
+    @Deprecated
     public String buildPrivilegeKey(Long privilegeId) {
         if (privilegeId == null) {
             throw new IllegalArgumentException("Privilege ID cannot be null");
         }
-        return buildKey(PRIVILEGE_PREFIX + privilegeId);
+        return buildPrivilegeKey(String.valueOf(privilegeId));
     }
 
     /**

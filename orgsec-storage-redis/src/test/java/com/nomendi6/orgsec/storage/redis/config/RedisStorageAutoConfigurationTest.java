@@ -16,7 +16,6 @@ import com.nomendi6.orgsec.storage.redis.invalidation.InvalidationEventListener;
 import com.nomendi6.orgsec.storage.redis.invalidation.InvalidationEventPublisher;
 import com.nomendi6.orgsec.storage.redis.preload.CacheWarmer;
 import com.nomendi6.orgsec.storage.redis.resilience.RedisCircuitBreakerService;
-import com.nomendi6.orgsec.storage.redis.serialization.IntegrityHashCalculator;
 import com.nomendi6.orgsec.storage.redis.serialization.JsonSerializer;
 import com.nomendi6.orgsec.storage.redis.serialization.OrgsecObjectMapperFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,12 +59,10 @@ class RedisStorageAutoConfigurationTest {
 
         OrgsecObjectMapperFactory factory = configuration.orgsecObjectMapperFactory(properties);
         CacheKeyBuilder keyBuilder = configuration.cacheKeyBuilder(properties);
-        IntegrityHashCalculator hashCalculator = configuration.integrityHashCalculator(factory);
         RedisCircuitBreakerService circuitBreakerService = configuration.redisCircuitBreakerService(properties);
 
         assertThat(factory.getConfig()).isSameAs(properties.getSerialization());
         assertThat(keyBuilder.buildPersonKey(1L)).doesNotContain("person:1");
-        assertThat(hashCalculator).isNotNull();
         assertThat(circuitBreakerService.isEnabled()).isTrue();
     }
 

@@ -1,1 +1,2 @@
 com.nomendi6.orgsec.autoconfigure.OrgsecAutoConfiguration
+com.nomendi6.orgsec.autoconfigure.PersonApiServiceConfiguration

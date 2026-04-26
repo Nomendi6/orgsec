@@ -1,6 +1,7 @@
 package com.nomendi6.orgsec.storage.redis.config;
 
 import io.lettuce.core.resource.ClientResources;
+import io.lettuce.core.api.StatefulConnection;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
@@ -31,7 +32,7 @@ class LettucePoolConfigurationTest {
         properties.getPool().setTimeBetweenEvictionRuns(5000);
         properties.getPool().setMinEvictableIdleTime(6000);
 
-        GenericObjectPoolConfig<Object> config = configuration.lettucePoolConfig(properties);
+        GenericObjectPoolConfig<StatefulConnection<?, ?>> config = configuration.lettucePoolConfig(properties);
 
         assertThat(config.getMinIdle()).isEqualTo(2);
         assertThat(config.getMaxIdle()).isEqualTo(4);

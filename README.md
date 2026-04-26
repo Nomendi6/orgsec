@@ -69,14 +69,14 @@ After installation, the library will be available in your local Maven repository
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-spring-boot-starter</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 
 **Gradle:**
 
 ```gradle
-implementation 'com.nomendi6.orgsec:orgsec-spring-boot-starter:1.0.0'
+implementation 'com.nomendi6.orgsec:orgsec-spring-boot-starter:1.0.1'
 ```
 
 The starter includes `orgsec-core`, `orgsec-common`, and `orgsec-storage-inmemory` by default.
@@ -91,7 +91,7 @@ The starter uses **in-memory storage** by default. For other backends, add the c
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-storage-redis</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 
@@ -101,7 +101,7 @@ The starter uses **in-memory storage** by default. For other backends, add the c
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-storage-jwt</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 

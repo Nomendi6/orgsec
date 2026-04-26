@@ -35,6 +35,11 @@ public class RedisStorageProperties {
     private String password;
 
     /**
+     * Enable TLS for Redis connections.
+     */
+    private boolean ssl = false;
+
+    /**
      * Connection timeout in milliseconds.
      */
     @Min(value = 100, message = "Timeout must be at least 100ms")
@@ -109,6 +114,14 @@ public class RedisStorageProperties {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public boolean isSsl() {
+        return ssl;
+    }
+
+    public void setSsl(boolean ssl) {
+        this.ssl = ssl;
     }
 
     public int getTimeout() {
@@ -319,7 +332,7 @@ public class RedisStorageProperties {
         /**
          * Enable cache invalidation via Redis Pub/Sub.
          */
-        private boolean enabled = true;
+        private boolean enabled = false;
 
         /**
          * Use async publishing for invalidation events.

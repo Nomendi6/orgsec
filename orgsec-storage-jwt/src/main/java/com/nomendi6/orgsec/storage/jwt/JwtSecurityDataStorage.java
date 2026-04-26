@@ -10,9 +10,10 @@ import org.slf4j.LoggerFactory;
 
 import com.nomendi6.orgsec.helper.PrivilegeSecurityHelper;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * JWT-based SecurityDataStorage implementation.
@@ -31,8 +32,17 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
     private final JwtTokenContextHolder tokenContextHolder;
     private final SecurityDataStorage delegateStorage;
 
-    // Per-request cache for enriched PersonDef (keyed by token hash)
-    private final Map<Integer, PersonDef> personCache = new ConcurrentHashMap<>();
+    private static final int MAX_TOKEN_CACHE_SIZE = 1024;
+
+    // Bounded cache for enriched PersonDef keyed by full token value.
+    private final Map<String, PersonDef> personCache = Collections.synchronizedMap(
+        new LinkedHashMap<String, PersonDef>(256, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, PersonDef> eldest) {
+                return size() > MAX_TOKEN_CACHE_SIZE;
+            }
+        }
+    );
 
     public JwtSecurityDataStorage(
             JwtClaimsParser claimsParser,
@@ -164,13 +174,11 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
      * The cache stores the already-enriched person (with roles loaded from delegate storage).
      */
     private PersonDef getEnrichedPersonFromToken(String token) {
-        int tokenHash = token.hashCode();
-
-        return personCache.computeIfAbsent(tokenHash, hash -> {
+        return personCache.computeIfAbsent(token, currentToken -> {
             log.debug("Parsing and enriching PersonDef from JWT token");
-            PersonDef person = claimsParser.parsePersonFromToken(token);
+            PersonDef person = claimsParser.parsePersonFromToken(currentToken);
             if (person != null) {
-                return enrichPersonWithRoles(person, token);
+                return enrichPersonWithRoles(person, currentToken);
             }
             return null;
         });

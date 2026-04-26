@@ -58,8 +58,7 @@ public class RedisStorageHealthIndicator implements HealthIndicator {
             log.error("Redis health check failed", e);
             return Health.down()
                 .withDetail("connection", "failed")
-                .withDetail("error", e.getMessage())
-                .withException(e)
+                .withDetail("error", e.getClass().getSimpleName())
                 .build();
         }
     }

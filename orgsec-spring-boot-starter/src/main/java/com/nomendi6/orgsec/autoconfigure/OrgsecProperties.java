@@ -25,6 +25,11 @@ public class OrgsecProperties {
      */
     private Features features = new Features();
 
+    /**
+     * API endpoint configuration
+     */
+    private Api api = new Api();
+
     // Getters and Setters
     public boolean isEnabled() {
         return enabled;
@@ -56,6 +61,14 @@ public class OrgsecProperties {
 
     public void setFeatures(Features features) {
         this.features = features;
+    }
+
+    public Api getApi() {
+        return api;
+    }
+
+    public void setApi(Api api) {
+        this.api = api;
     }
 
     /**
@@ -173,6 +186,42 @@ public class OrgsecProperties {
 
         public void setDelegations(boolean delegations) {
             this.delegations = delegations;
+        }
+    }
+
+    /**
+     * API endpoint configuration.
+     */
+    public static class Api {
+        private Person person = new Person();
+
+        public Person getPerson() {
+            return person;
+        }
+
+        public void setPerson(Person person) {
+            this.person = person;
+        }
+
+        public static class Person {
+            private boolean enabled = false;
+            private String requiredRole = "ORGSEC_API_CLIENT";
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public String getRequiredRole() {
+                return requiredRole;
+            }
+
+            public void setRequiredRole(String requiredRole) {
+                this.requiredRole = requiredRole;
+            }
         }
     }
 }

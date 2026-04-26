@@ -47,7 +47,7 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
         personL1Cache = new L1Cache<>(100);
         L1Cache<Long, OrganizationDef> organizationL1Cache = new L1Cache<>(100);
         L1Cache<Long, RoleDef> roleL1Cache = new L1Cache<>(100);
-        L1Cache<Long, PrivilegeDef> privilegeL1Cache = new L1Cache<>(100);
+        L1Cache<String, PrivilegeDef> privilegeL1Cache = new L1Cache<>(100);
 
         // L2 caches
         personL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(PersonDef.class), keyBuilder);

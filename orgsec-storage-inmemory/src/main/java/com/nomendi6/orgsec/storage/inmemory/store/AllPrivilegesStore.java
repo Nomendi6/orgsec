@@ -1,8 +1,8 @@
 package com.nomendi6.orgsec.storage.inmemory.store;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 import com.nomendi6.orgsec.api.PrivilegeRegistry;
 import com.nomendi6.orgsec.model.PrivilegeDef;
@@ -15,10 +15,10 @@ import com.nomendi6.orgsec.model.PrivilegeDef;
 @Component
 public class AllPrivilegesStore implements PrivilegeRegistry {
 
-    private Map<String, PrivilegeDef> privilegesMap;
+    private volatile Map<String, PrivilegeDef> privilegesMap;
 
     public AllPrivilegesStore() {
-        this.privilegesMap = new HashMap<>();
+        this.privilegesMap = new ConcurrentHashMap<>();
     }
 
     /**
@@ -34,7 +34,7 @@ public class AllPrivilegesStore implements PrivilegeRegistry {
      * @param privilegesMap new privileges map
      */
     public void setPrivilegesMap(Map<String, PrivilegeDef> privilegesMap) {
-        this.privilegesMap = privilegesMap;
+        this.privilegesMap = new ConcurrentHashMap<>(privilegesMap);
     }
 
     // PrivilegeRegistry implementation methods

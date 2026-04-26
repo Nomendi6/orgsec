@@ -17,6 +17,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.Ordered;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 
 /**
  * Auto-configuration for JWT storage.
@@ -50,9 +51,19 @@ public class JwtStorageAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public JwtClaimsParser jwtClaimsParser(ObjectMapper objectMapper, JwtStorageProperties properties) {
+    public JwtClaimsParser jwtClaimsParser(ObjectMapper objectMapper, JwtDecoder jwtDecoder, JwtStorageProperties properties) {
         log.debug("Creating JwtClaimsParser bean with claim name: {}", properties.getClaimName());
-        return new JwtClaimsParser(objectMapper, properties.getClaimName());
+        return new JwtClaimsParser(objectMapper, jwtDecoder, properties.getClaimName(), properties.getClaimVersion());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(JwtDecoder.class)
+    public Object jwtDecoderRequiredFailFast() {
+        throw new IllegalStateException(
+            "orgsec.storage.features.jwt-enabled=true requires a JwtDecoder bean. " +
+            "Configure Spring Security OAuth2 Resource Server (for example spring.security.oauth2.resourceserver.jwt.issuer-uri) " +
+            "so OrgSec can validate JWT signature, issuer, audience, and expiry before reading OrgSec claims."
+        );
     }
 
     @Bean

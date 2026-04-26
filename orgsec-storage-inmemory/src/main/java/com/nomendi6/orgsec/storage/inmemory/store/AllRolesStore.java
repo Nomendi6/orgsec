@@ -1,7 +1,7 @@
 package com.nomendi6.orgsec.storage.inmemory.store;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 import com.nomendi6.orgsec.model.RoleDef;
 
@@ -12,12 +12,12 @@ import com.nomendi6.orgsec.model.RoleDef;
 @Component
 public class AllRolesStore {
 
-    private Map<Long, RoleDef> organizationRolesMap;
-    private Map<Long, RoleDef> positionRolesMap;
+    private volatile Map<Long, RoleDef> organizationRolesMap;
+    private volatile Map<Long, RoleDef> positionRolesMap;
 
     public AllRolesStore() {
-        this.organizationRolesMap = new HashMap<>();
-        this.positionRolesMap = new HashMap<>();
+        this.organizationRolesMap = new ConcurrentHashMap<>();
+        this.positionRolesMap = new ConcurrentHashMap<>();
     }
 
     /**
@@ -33,7 +33,7 @@ public class AllRolesStore {
      * @param organizationRolesMap new organizational roles map
      */
     public void setOrganizationRolesMap(Map<Long, RoleDef> organizationRolesMap) {
-        this.organizationRolesMap = organizationRolesMap;
+        this.organizationRolesMap = new ConcurrentHashMap<>(organizationRolesMap);
     }
 
     /**
@@ -49,7 +49,7 @@ public class AllRolesStore {
      * @param positionRolesMap new positional roles map
      */
     public void setPositionRolesMap(Map<Long, RoleDef> positionRolesMap) {
-        this.positionRolesMap = positionRolesMap;
+        this.positionRolesMap = new ConcurrentHashMap<>(positionRolesMap);
     }
 
     /**

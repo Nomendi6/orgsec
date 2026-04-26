@@ -1,7 +1,7 @@
 package com.nomendi6.orgsec.storage.inmemory;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -17,10 +17,10 @@ public class StorageFeatureFlags {
 
     private static final Logger log = LoggerFactory.getLogger(StorageFeatureFlags.class);
 
-    private String primary = "memory";
-    private String fallback = "memory";
-    private Features features = new Features();
-    private Map<String, String> dataSources = new HashMap<>();
+    private volatile String primary = "memory";
+    private volatile String fallback = "memory";
+    private volatile Features features = new Features();
+    private volatile Map<String, String> dataSources = new ConcurrentHashMap<>();
 
     public StorageFeatureFlags() {
         // Initialize default data sources
@@ -220,10 +220,10 @@ public class StorageFeatureFlags {
      */
     public static class Features {
 
-        private boolean jwtEnabled = false;
-        private boolean redisEnabled = false;
-        private boolean hybridModeEnabled = false;
-        private boolean memoryEnabled = true;
+        private volatile boolean jwtEnabled = false;
+        private volatile boolean redisEnabled = false;
+        private volatile boolean hybridModeEnabled = false;
+        private volatile boolean memoryEnabled = true;
 
         // Getters and setters
         public boolean isJwtEnabled() {

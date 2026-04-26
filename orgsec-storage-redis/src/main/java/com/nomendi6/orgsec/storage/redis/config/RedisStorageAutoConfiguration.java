@@ -16,7 +16,6 @@ import com.nomendi6.orgsec.storage.redis.invalidation.InvalidationEventListener;
 import com.nomendi6.orgsec.storage.redis.invalidation.InvalidationEventPublisher;
 import com.nomendi6.orgsec.storage.redis.preload.CacheWarmer;
 import com.nomendi6.orgsec.storage.redis.resilience.RedisCircuitBreakerService;
-import com.nomendi6.orgsec.storage.redis.serialization.IntegrityHashCalculator;
 import com.nomendi6.orgsec.storage.redis.serialization.JsonSerializer;
 import com.nomendi6.orgsec.storage.redis.serialization.OrgsecObjectMapperFactory;
 import org.slf4j.Logger;
@@ -97,17 +96,6 @@ public class RedisStorageAutoConfiguration {
         boolean obfuscate = properties.getCache().isObfuscateKeys();
         log.info("Creating CacheKeyBuilder with obfuscation: {}", obfuscate);
         return new CacheKeyBuilder(obfuscate);
-    }
-
-    /**
-     * Integrity hash calculator for cache poisoning detection.
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public IntegrityHashCalculator integrityHashCalculator(
-            OrgsecObjectMapperFactory objectMapperFactory) {
-        log.debug("Creating IntegrityHashCalculator with factory-managed ObjectMapper");
-        return new IntegrityHashCalculator(objectMapperFactory.getEventObjectMapper());
     }
 
     /**
@@ -227,7 +215,7 @@ public class RedisStorageAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(name = "privilegeL1Cache")
-    public L1Cache<Long, PrivilegeDef> privilegeL1Cache(RedisStorageProperties properties) {
+    public L1Cache<String, PrivilegeDef> privilegeL1Cache(RedisStorageProperties properties) {
         int maxSize = properties.getCache().getL1MaxSize();
         log.info("Creating PrivilegeDef L1 cache with max size: {}", maxSize);
         return new L1Cache<>(maxSize);
@@ -324,6 +312,7 @@ public class RedisStorageAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "orgsec.storage.redis.invalidation", name = "enabled", havingValue = "true")
     public InvalidationEventListener invalidationEventListener(
             L1Cache<Long, PersonDef> personL1Cache,
             L1Cache<Long, OrganizationDef> organizationL1Cache,
@@ -346,6 +335,7 @@ public class RedisStorageAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "orgsec.storage.redis.invalidation", name = "enabled", havingValue = "true")
     public RedisMessageListenerContainer redisMessageListenerContainer(
             RedisConnectionFactory connectionFactory,
             InvalidationEventListener invalidationEventListener,
@@ -397,7 +387,7 @@ public class RedisStorageAutoConfiguration {
             L1Cache<Long, PersonDef> personL1Cache,
             L1Cache<Long, OrganizationDef> organizationL1Cache,
             L1Cache<Long, RoleDef> roleL1Cache,
-            L1Cache<Long, PrivilegeDef> privilegeL1Cache,
+            L1Cache<String, PrivilegeDef> privilegeL1Cache,
             L2RedisCache<PersonDef> personL2Cache,
             L2RedisCache<OrganizationDef> organizationL2Cache,
             L2RedisCache<RoleDef> roleL2Cache,

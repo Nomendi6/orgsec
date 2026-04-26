@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-04-26
+## [1.0.1] - 2026-04-26
+
+### Security
+
+- Upgraded dependency baseline to Spring Boot 3.5.14 and commons-lang3 3.18.0.
+- JWT storage now requires a configured `JwtDecoder` and validates tokens before reading OrgSec claims.
+- Person API is disabled by default and, when enabled, requires `ROLE_ORGSEC_API_CLIENT` unless the consumer overrides the `orgsecApiSecurityFilterChain` bean.
+- RSQL filter generation now fails closed when hierarchy paths are missing instead of treating null paths as unrestricted access.
+- Redis privilege cache keys now use the full privilege identifier instead of a 32-bit Java hash.
+- Removed the unused Redis `IntegrityHashCalculator`; it used an unkeyed SHA-256 hash and was not wired into cache read/write paths.
+- Redis Pub/Sub invalidation is opt-in via `orgsec.storage.redis.invalidation.enabled=true` because Pub/Sub messages are trusted by all listeners on the channel.
+- Redis health details and audit logs no longer expose exception details or unsanitized user-controlled values.
 
 ### Added
 
@@ -41,7 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection pooling with Lettuce and Commons Pool2
 - Spring Boot health indicator for Redis storage monitoring
 - Cache statistics tracking
-- Integrity hash calculation for cached data
 - Configurable TTL per entity type
 
 #### JWT Storage (`orgsec-storage-jwt`)
@@ -60,7 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical Details
 - Java 17 minimum requirement
-- Spring Boot 3.4.5 compatibility
+- Spring Boot 3.5.14 compatibility
 - Spring Security integration
 - Maven multi-module project structure
 - JaCoCo code coverage enforcement (85% line, 80% branch for Redis module)

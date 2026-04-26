@@ -90,8 +90,7 @@ public class PrivilegeLoader {
             return def;
         }
 
-        // Fallback for malformed privilege names
-        return new PrivilegeDef(privilegeName, "UNKNOWN");
+        throw new IllegalArgumentException("Malformed privilege name: " + privilegeName);
     }
 
     /**
