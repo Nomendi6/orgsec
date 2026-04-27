@@ -32,10 +32,61 @@ The builder produces RSQL predicates whose field names follow a consistent patte
 
 Two things to know when wiring the parser:
 
-- **The `*Company.id` / `*Org.id` / `*Person.id` predicates are dotted paths.** The builder assumes the entity holds a JPA-managed reference (e.g., `Document.ownerCompany` of type `Party`) and that you are filtering through `id` on that relationship. If your entity stores a flat `ownerCompanyId` column instead, configure your RSQL parser's field map to translate `ownerCompany.id` -> `ownerCompanyId`.
+- **The `*Company.id` / `*Org.id` / `*Person.id` predicates are dotted paths by default.** The builder assumes the entity holds a JPA-managed reference (e.g., `Document.ownerCompany` of type `Party`) and that you are filtering through `id` on that relationship. If your entity stores a flat `ownerCompanyId` column instead, either configure `orgsec.business-roles.<role>.rsql-fields` as shown below or configure your RSQL parser's field map to translate `ownerCompany.id` -> `ownerCompanyId`.
 - **`=*'...'` is the RSQL "like" operator.** Most RSQL JPA libraries map it to `LIKE`. The builder writes `'|1|*'` for hierarchy-down (path starts with the prefix) and `'*|1|'` for hierarchy-up (path ends with the suffix). Path values are escaped through `PathSanitizer` before substitution.
 
 Multiple business roles with concurrent privileges are joined with RSQL OR (`,`); the result is wrapped in parentheses by `buildRsqlFilterForRead/WritePrivileges`.
+
+## Custom RSQL Field Selectors
+
+If your entity does not use the default OrgSec property names, configure RSQL selectors per business role:
+
+```yaml
+orgsec:
+  business-roles:
+    owner:
+      supported-fields: [COMPANY, COMPANY_PATH, ORG, ORG_PATH, PERSON]
+      rsql-fields:
+        COMPANY: ownerCompanyId
+        COMPANY_PATH: ownerCompanyPath
+        ORG: ownerOrgId
+        ORG_PATH: ownerOrgPath
+        PERSON: ownerPersonId
+```
+
+The value is the full RSQL selector. For JPA relationships, keep the dotted path:
+
+```yaml
+rsql-fields:
+  COMPANY: ownerCompany.id
+  ORG: ownerOrg.id
+  PERSON: ownerPerson.id
+```
+
+For flat id columns, use the flat property name:
+
+```yaml
+rsql-fields:
+  COMPANY: ownerCompanyId
+```
+
+Then `_COMP` emits:
+
+```text
+ownerCompanyId==<companyId>
+```
+
+`parentField` still prefixes the selector. With `parentField = "document"` and `COMPANY: ownerCompanyId`, the emitted predicate is:
+
+```text
+document.ownerCompanyId==<companyId>
+```
+
+Selectors are validated at startup. They must be simple dotted property paths such as `ownerCompanyId`, `ownerCompany.id`, or `document.ownerCompany.id`; operators, quotes, whitespace, and bracket expressions are rejected. A configured selector must also belong to a field listed in the same role's `supported-fields`.
+
+> **Note on path field types.** `COMPANY_PATH` and `ORG_PATH` follow the same validation rule: if you customize their RSQL selector, the path field type must also appear in `supported-fields` for the role. The default providers already include `COMPANY_PATH` and `ORG_PATH` for the `owner` role; custom providers must list them explicitly when overriding hierarchy selectors.
+
+Keep `rsql-fields.<FIELD>` consistent with `SecurityEnabledEntity.getSecurityField(role, fieldType)`: both must refer to the same logical attribute. OrgSec cannot validate that automatically because `getSecurityField` is arbitrary Java code; a mismatch can make single-entity checks and list filters disagree.
 
 ## Recipe 1: read filter on a list endpoint
 

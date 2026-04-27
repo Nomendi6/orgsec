@@ -31,6 +31,23 @@ orgsec:
 
 This is enough to pass the OrgSec auto-configuration. You still have to provide a `SecurityQueryProvider` bean and a `PrivilegeDefinitionProvider` bean for the in-memory backend to load anything, but the YAML side is complete.
 
+If your JPA/entity property names do not match OrgSec's default RSQL selector convention, add `rsql-fields` under the affected role:
+
+```yaml
+orgsec:
+  business-roles:
+    owner:
+      supported-fields: [COMPANY, COMPANY_PATH, ORG, ORG_PATH, PERSON]
+      rsql-fields:
+        COMPANY: ownerCompanyId
+        COMPANY_PATH: ownerCompanyPath
+        ORG: ownerOrgId
+        ORG_PATH: ownerOrgPath
+        PERSON: ownerPersonId
+```
+
+The value is the full RSQL selector. Dotted JPA relationship paths such as `ownerCompany.id` and flat id properties such as `ownerCompanyId` are both valid. Selectors are validated at startup and must be simple dotted property paths without RSQL operators or whitespace. A selector may only be configured for a field that is also listed in `supported-fields`.
+
 ## Top-level toggles
 
 `OrgsecProperties` exposes four sub-objects: `security`, `features`, `storage` (a different one from `StorageFeatureFlags` - see below), and `api`.

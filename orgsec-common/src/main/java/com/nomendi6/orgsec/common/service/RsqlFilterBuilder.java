@@ -216,7 +216,7 @@ public class RsqlFilterBuilder {
         // Person level checks - only if business role supports PERSON field
         if (resourceAggregatedPrivs.person &&
             businessRoleConfiguration.roleSupportsField(businessRoleName, SecurityFieldType.PERSON)) {
-            return alias + businessRoleName + "Person.id==" + currentPerson.getId();
+            return selector(alias, businessRoleName, SecurityFieldType.PERSON) + "==" + currentPerson.getId();
         }
 
         return null;
@@ -230,7 +230,7 @@ public class RsqlFilterBuilder {
     ) {
         switch (direction) {
             case EXACT:
-                return alias + businessRoleName + "Company.id==" + organizationDef.companyId;
+                return selector(alias, businessRoleName, SecurityFieldType.COMPANY) + "==" + organizationDef.companyId;
             case HIERARCHY_DOWN:
                 if (organizationDef.companyParentPath == null) {
                     log.warn("Cannot build company hierarchy-down RSQL filter: companyParentPath is null for organization {}",
@@ -239,7 +239,7 @@ public class RsqlFilterBuilder {
                 }
                 // Validate and escape path before using in RSQL
                 String safeCompanyPath = PathSanitizer.escapeForRsql(organizationDef.companyParentPath);
-                return alias + businessRoleName + "CompanyPath=*'" + safeCompanyPath + "*'";
+                return selector(alias, businessRoleName, SecurityFieldType.COMPANY_PATH) + "=*'" + safeCompanyPath + "*'";
             case HIERARCHY_UP:
                 if (organizationDef.companyParentPath == null) {
                     log.warn("Cannot build company hierarchy-up RSQL filter: companyParentPath is null for organization {}",
@@ -248,7 +248,7 @@ public class RsqlFilterBuilder {
                 }
                 // Validate and escape path before using in RSQL
                 String safeCompanyPathUp = PathSanitizer.escapeForRsql(organizationDef.companyParentPath);
-                return alias + businessRoleName + "CompanyPath=*'*" + safeCompanyPathUp + "'";
+                return selector(alias, businessRoleName, SecurityFieldType.COMPANY_PATH) + "=*'*" + safeCompanyPathUp + "'";
             default:
                 return "";
         }
@@ -257,7 +257,7 @@ public class RsqlFilterBuilder {
     private String buildOrgFilter(String alias, String businessRoleName, OrganizationDef organizationDef, PrivilegeDirection direction) {
         switch (direction) {
             case EXACT:
-                return alias + businessRoleName + "Org.id==" + organizationDef.organizationId;
+                return selector(alias, businessRoleName, SecurityFieldType.ORG) + "==" + organizationDef.organizationId;
             case HIERARCHY_DOWN:
                 if (organizationDef.parentPath == null) {
                     log.warn("Cannot build organization hierarchy-down RSQL filter: parentPath is null for organization {}",
@@ -266,7 +266,7 @@ public class RsqlFilterBuilder {
                 }
                 // Validate and escape path before using in RSQL
                 String safeOrgPath = PathSanitizer.escapeForRsql(organizationDef.parentPath);
-                return alias + businessRoleName + "OrgPath=*'" + safeOrgPath + "*'";
+                return selector(alias, businessRoleName, SecurityFieldType.ORG_PATH) + "=*'" + safeOrgPath + "*'";
             case HIERARCHY_UP:
                 if (organizationDef.parentPath == null) {
                     log.warn("Cannot build organization hierarchy-up RSQL filter: parentPath is null for organization {}",
@@ -275,10 +275,14 @@ public class RsqlFilterBuilder {
                 }
                 // Validate and escape path before using in RSQL
                 String safeOrgPathUp = PathSanitizer.escapeForRsql(organizationDef.parentPath);
-                return alias + businessRoleName + "OrgPath=*'*" + safeOrgPathUp + "'";
+                return selector(alias, businessRoleName, SecurityFieldType.ORG_PATH) + "=*'*" + safeOrgPathUp + "'";
             default:
                 return "";
         }
+    }
+
+    private String selector(String alias, String businessRoleName, SecurityFieldType fieldType) {
+        return alias + businessRoleConfiguration.getRsqlFieldSelector(businessRoleName, fieldType);
     }
 
     /**

@@ -69,9 +69,10 @@ The Person API is consumed by Keycloak's custom protocol mapper to assemble the 
 
 Each entry under `business-roles` is a *named* business role with a list of supported field types. The role name (`<role>`) is free-form - OrgSec does not pre-declare any business roles in 1.0.x.
 
-| Property                              | Type                       | Default | Description                                                                              | See                                                            |
-| ------------------------------------- | -------------------------- | ------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `<role>.supported-fields`             | `Set<SecurityFieldType>`   | `[]`    | Subset of `COMPANY`, `COMPANY_PATH`, `ORG`, `ORG_PATH`, `PERSON` the entity exposes for this role. | [Privileges and Business Roles](../guide/05-privileges-and-business-roles.md#supported-fields-semantics) |
+| Property                              | Type                    | Default | Description                                                                              | See                                                            |
+| ------------------------------------- | ----------------------- | ------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `<role>.supported-fields`             | `Set<SecurityFieldType>`| `[]`    | Subset of `COMPANY`, `COMPANY_PATH`, `ORG`, `ORG_PATH`, `PERSON` the entity exposes for this role. | [Privileges and Business Roles](../guide/05-privileges-and-business-roles.md#supported-fields-semantics) |
+| `<role>.rsql-fields`                  | `Map<String,String>`    | `{}`    | Optional RSQL selector override per security field (`COMPANY`, `COMPANY_PATH`, `ORG`, `ORG_PATH`, `PERSON`). Values must be simple dotted property paths such as `ownerCompanyId` or `ownerCompany.id`. Each configured key must also appear in `<role>.supported-fields` (this includes path types `COMPANY_PATH` and `ORG_PATH`). | [RSQL Filtering](../cookbook/03-rsql-filtering.md#custom-rsql-field-selectors) |
 
 ---
 

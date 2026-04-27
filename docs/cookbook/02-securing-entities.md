@@ -68,6 +68,7 @@ Notes:
 - The interface is in `com.nomendi6.orgsec.interfaces`. The package name is intentional; the file lives under an `api/` directory but the import is `interfaces`.
 - The path columns are `length = 1000` to match the `@Size(max = 1000)` annotation OrgSec puts on its own `OrganizationDef.pathId` / `parentPath` / `companyParentPath` fields. The annotation is informational on the OrgSec model; OrgSec does not run Bean Validation on the values returned by your `getSecurityField`. Keep your column widths aligned and clamp the path length on the write side of your application.
 - Using `Long` for the entity ids keeps the contract simple. Returning a JPA-managed entity (e.g. `Party`) also works - OrgSec extracts the id via reflection - but adds the risk of triggering a lazy-loading proxy on a hot path.
+- For list filtering, `RsqlFilterBuilder` must emit selectors that point at the same logical fields. If this entity stores flat ids as shown above, configure `orgsec.business-roles.owner.rsql-fields.COMPANY=ownerCompanyId`, `ORG=ownerOrgId`, and `PERSON=ownerPersonId`; otherwise the default selectors assume relationship paths such as `ownerCompany.id`.
 
 ## Recipe 2: multi-business-role entity
 

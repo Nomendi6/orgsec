@@ -11,6 +11,9 @@ orgsec:
   business-roles:
     owner:
       supported-fields: [COMPANY, COMPANY_PATH, ORG, ORG_PATH, PERSON]
+      rsql-fields:
+        COMPANY: ownerCompanyId
+        COMPANY_PATH: ownerCompanyPath
     customer:
       supported-fields: [COMPANY, COMPANY_PATH]
     contractor:
@@ -22,6 +25,10 @@ orgsec:
 ```
 
 The role name (`owner`, `customer`, `contractor`, ...) is what your `SecurityEnabledEntity.getSecurityField` checks against. The role name is treated case-insensitively at lookup time, but stay consistent in your code - lowercase by convention.
+
+`rsql-fields` is optional. It overrides the property names emitted by `RsqlFilterBuilder` for list queries. Without it, OrgSec uses the default selectors `ownerCompany.id`, `ownerCompanyPath`, `ownerOrg.id`, `ownerOrgPath`, and `ownerPerson.id`. Use `rsql-fields` when your entity stores flat ids such as `ownerCompanyId` or otherwise does not follow the default relationship naming convention.
+
+The selector and `SecurityEnabledEntity.getSecurityField(role, fieldType)` must point at the same logical field. OrgSec validates selector syntax and that the field appears in `supported-fields`, but it cannot prove that an arbitrary Java getter and an RSQL property path read the same data.
 
 ### `supported-fields` semantics
 

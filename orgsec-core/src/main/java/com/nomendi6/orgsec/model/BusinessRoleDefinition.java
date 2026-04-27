@@ -1,6 +1,9 @@
 package com.nomendi6.orgsec.model;
 
 import java.util.Collections;
+import java.util.EnumMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import com.nomendi6.orgsec.constants.SecurityFieldType;
 
@@ -12,10 +15,21 @@ public class BusinessRoleDefinition {
 
     private final String name;
     private final Set<SecurityFieldType> supportedFields;
+    private final Map<SecurityFieldType, String> rsqlFields;
 
     public BusinessRoleDefinition(String name, Set<SecurityFieldType> supportedFields) {
+        this(name, supportedFields, Collections.emptyMap());
+    }
+
+    public BusinessRoleDefinition(String name, Set<SecurityFieldType> supportedFields, Map<SecurityFieldType, String> rsqlFields) {
         this.name = name;
-        this.supportedFields = Collections.unmodifiableSet(supportedFields);
+        this.supportedFields = Collections.unmodifiableSet(supportedFields != null ? Set.copyOf(supportedFields) : Collections.emptySet());
+
+        EnumMap<SecurityFieldType, String> fields = new EnumMap<>(SecurityFieldType.class);
+        if (rsqlFields != null) {
+            fields.putAll(rsqlFields);
+        }
+        this.rsqlFields = Collections.unmodifiableMap(fields);
     }
 
     public String getName() {
@@ -24,6 +38,14 @@ public class BusinessRoleDefinition {
 
     public Set<SecurityFieldType> getSupportedFields() {
         return supportedFields;
+    }
+
+    public Map<SecurityFieldType, String> getRsqlFields() {
+        return rsqlFields;
+    }
+
+    public Optional<String> getRsqlField(SecurityFieldType fieldType) {
+        return Optional.ofNullable(rsqlFields.get(fieldType));
     }
 
     public boolean supportsField(SecurityFieldType fieldType) {
@@ -46,6 +68,10 @@ public class BusinessRoleDefinition {
 
     @Override
     public String toString() {
-        return "BusinessRoleDefinition{" + "name='" + name + '\'' + ", supportedFields=" + supportedFields + '}';
+        return "BusinessRoleDefinition{" +
+            "name='" + name + '\'' +
+            ", supportedFields=" + supportedFields +
+            ", rsqlFields=" + rsqlFields +
+            '}';
     }
 }

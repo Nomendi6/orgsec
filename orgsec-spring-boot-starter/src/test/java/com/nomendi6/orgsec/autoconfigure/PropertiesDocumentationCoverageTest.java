@@ -57,7 +57,7 @@ class PropertiesDocumentationCoverageTest {
      * fields whose key set is open-ended.
      */
     private static final Map<String, List<String>> MAP_PLACEHOLDERS = Map.of(
-        "orgsec.business-roles", List.of("<role>.supported-fields"),
+        "orgsec.business-roles", List.of("<role>.supported-fields", "<role>.rsql-fields"),
         "orgsec.storage.data-sources", List.of("person", "organization", "role", "privilege")
     );
 
