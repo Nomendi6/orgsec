@@ -26,6 +26,18 @@ OrgSec sits on top of Spring Security to fill that gap. The two are designed to 
 
 ACL is a good fit when you need per-row control and you do not have an organizational tree. OrgSec is a better fit when "who can see what" can be expressed as "person X holds business role Y inside organization Z, and the entity belongs to organization Z (or a descendant / ancestor)."
 
+## When is OrgSec better than Casbin, Cerbos, OPA, OpenFGA, or SpiceDB?
+
+OrgSec is better when your authorization problem is mostly **organizational data filtering inside a Spring application**:
+
+- the protected data belongs to company/org/person scopes,
+- organizations form a hierarchy,
+- users have different business roles in different organizations,
+- list endpoints need a query predicate, not only an `allow` / `deny` answer,
+- you want checks to run locally in the JVM and reuse Spring Boot storage/configuration.
+
+Casbin is more flexible as a general local authorization engine. Cerbos, OPA, and Cedar are stronger when you need centralized policy-as-code and governance. OpenFGA and SpiceDB are stronger when the core model is a relationship graph with complex sharing. OrgSec is stronger when the graph is mainly an organization tree and the application needs a practical, tested way to turn privileges into entity checks and RSQL filters.
+
 ## Can I use OrgSec without Spring Security?
 
 Partially. The `orgsec-spring-boot-starter` ships a `SpringSecurityContextProvider` as the default `SecurityContextProvider` bean, but you can override it with your own implementation that resolves the current user from any source. The other modules (`orgsec-core`, `orgsec-common`, `orgsec-storage-*`) do not depend on Spring Security at all.
