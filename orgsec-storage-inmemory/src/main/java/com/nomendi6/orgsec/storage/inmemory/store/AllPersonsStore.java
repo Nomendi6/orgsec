@@ -40,6 +40,9 @@ public class AllPersonsStore {
      * @return PersonDef or null if not found
      */
     public PersonDef getPerson(Long personId) {
+        if (personId == null) {
+            return null;
+        }
         return personsMap.get(personId);
     }
 

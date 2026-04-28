@@ -41,7 +41,7 @@ Add the dependency to your `pom.xml`:
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-storage-redis</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.3</version>
 </dependency>
 ```
 

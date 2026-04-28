@@ -44,6 +44,13 @@ class AllPersonsStoreTest {
     }
 
     @Test
+    void shouldReturnNullForNullPersonId() {
+        store.putPerson(1L, createPerson(1L, "John Doe"));
+
+        assertThat(store.getPerson(null)).isNull();
+    }
+
+    @Test
     void shouldUpdateExistingPerson() {
         // Given
         Long personId = 1L;
