@@ -50,6 +50,14 @@ class AllPrivilegesStoreTest {
     }
 
     @Test
+    void shouldReturnNullForNullPrivilegeIdentifier() {
+        store.registerPrivilege("READ_USER", createReadPrivilege("READ_USER", "user"));
+
+        assertThat(store.getPrivilege(null)).isNull();
+        assertThat(store.hasPrivilege(null)).isFalse();
+    }
+
+    @Test
     void shouldPutAndGetPrivilege() {
         // Given
         String identifier = "WRITE_USER";

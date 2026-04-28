@@ -144,6 +144,51 @@ class PrivilegeCheckerTest {
             // When/Then
             assertThat(privilegeChecker.hasRequiredOperation(privilege, PrivilegeOperation.READ)).isFalse();
         }
+
+        @Test
+        void shouldAllowExecuteWhenPrivilegeIsExecute() {
+            // Given
+            PrivilegeDef privilege = createPrivilege(PrivilegeOperation.EXECUTE);
+
+            // When/Then
+            assertThat(privilegeChecker.hasRequiredOperation(privilege, PrivilegeOperation.EXECUTE)).isTrue();
+        }
+
+        @Test
+        void shouldDenyExecuteWhenPrivilegeIsRead() {
+            // Given
+            PrivilegeDef privilege = createPrivilege(PrivilegeOperation.READ);
+
+            // When/Then
+            assertThat(privilegeChecker.hasRequiredOperation(privilege, PrivilegeOperation.EXECUTE)).isFalse();
+        }
+
+        @Test
+        void shouldDenyExecuteWhenPrivilegeIsWrite() {
+            // Given
+            PrivilegeDef privilege = createPrivilege(PrivilegeOperation.WRITE);
+
+            // When/Then
+            assertThat(privilegeChecker.hasRequiredOperation(privilege, PrivilegeOperation.EXECUTE)).isFalse();
+        }
+
+        @Test
+        void shouldDenyReadWhenPrivilegeIsExecute() {
+            // Given
+            PrivilegeDef privilege = createPrivilege(PrivilegeOperation.EXECUTE);
+
+            // When/Then
+            assertThat(privilegeChecker.hasRequiredOperation(privilege, PrivilegeOperation.READ)).isFalse();
+        }
+
+        @Test
+        void shouldDenyWriteWhenPrivilegeIsExecute() {
+            // Given
+            PrivilegeDef privilege = createPrivilege(PrivilegeOperation.EXECUTE);
+
+            // When/Then
+            assertThat(privilegeChecker.hasRequiredOperation(privilege, PrivilegeOperation.WRITE)).isFalse();
+        }
     }
 
     @Nested

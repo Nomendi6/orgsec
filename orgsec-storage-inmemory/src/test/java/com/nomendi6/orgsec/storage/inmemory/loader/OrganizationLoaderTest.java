@@ -1,6 +1,5 @@
 package com.nomendi6.orgsec.storage.inmemory.loader;
 
-import com.nomendi6.orgsec.exceptions.OrgsecSecurityException;
 import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.storage.inmemory.store.AllOrganizationsStore;
 import com.nomendi6.orgsec.storage.inmemory.store.AllRolesStore;
@@ -10,14 +9,13 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class OrganizationLoaderTest {
 
     @Test
-    void shouldSanitizePathsWhenLoadingOrganizations() {
+    void shouldLoadOrganizationsWithPipeFormattedPaths() {
         AllOrganizationsStore store = new AllOrganizationsStore();
         OrganizationLoader loader = new OrganizationLoader(new AllRolesStore(), store);
 
@@ -30,11 +28,16 @@ class OrganizationLoaderTest {
     }
 
     @Test
-    void shouldRejectMalformedPathsWhenLoadingOrganizations() {
-        OrganizationLoader loader = new OrganizationLoader(new AllRolesStore(), new AllOrganizationsStore());
+    void shouldPreserveLegacySegmentSemanticsWhenLoadingOrganizations() {
+        AllOrganizationsStore store = new AllOrganizationsStore();
+        OrganizationLoader loader = new OrganizationLoader(new AllRolesStore(), store);
 
-        assertThatThrownBy(() -> loader.loadOrganizationsFromQueryResults(List.of(partyTuple("/1/10/", "|1|", "|1|")), List.of()))
-            .isInstanceOf(OrgsecSecurityException.class);
+        loader.loadOrganizationsFromQueryResults(List.of(partyTuple("ow", "|ow|", "|ow|")), List.of());
+
+        OrganizationDef organization = store.getOrganization(10L);
+        assertThat(organization.pathId).isEqualTo("ow");
+        assertThat(organization.parentPath).isEqualTo("|ow|");
+        assertThat(organization.companyParentPath).isEqualTo("|ow|");
     }
 
     private Tuple partyTuple(String pathId, String parentPath, String companyParentPath) {

@@ -62,7 +62,8 @@ public class PrivilegeChecker {
             (operation == PrivilegeOperation.WRITE && resourceAggregatedPrivs.operation == PrivilegeOperation.WRITE) ||
             (operation == PrivilegeOperation.READ &&
                 (resourceAggregatedPrivs.operation == PrivilegeOperation.WRITE ||
-                    resourceAggregatedPrivs.operation == PrivilegeOperation.READ))
+                    resourceAggregatedPrivs.operation == PrivilegeOperation.READ)) ||
+            (operation == PrivilegeOperation.EXECUTE && resourceAggregatedPrivs.operation == PrivilegeOperation.EXECUTE)
         );
     }
 

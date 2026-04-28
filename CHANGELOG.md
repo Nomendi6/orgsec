@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-04-28
+
+### Fixed
+
+- `OrganizationLoader` and `PersonLoader` no longer call `PathSanitizer.sanitizePath` on the `pathId`, `parentPath`, and `companyParentPath` columns read from `Tuple` query results. Version 1.0.1 added these calls and unintentionally tightened the SQL contract: applications whose schema stores `pathId` as a local segment (e.g. `'ow'`) and `parentPath` as the pipe-separated full path (e.g. `'|ow|'`) failed to start with `OrgsecSecurityException: Invalid path format ...`. The 1.0.0 contract is restored: tuple values are passed to `OrganizationDef` unchanged. Applications that need path validation can call `PathSanitizer` from their own `SecurityQueryProvider`.
+- `AllPersonsStore.getPerson(null)`, `AllOrganizationsStore.getOrganization(null)`, `AllRolesStore.getOrganizationRole(null)`, `AllRolesStore.getPositionRole(null)`, and `AllPrivilegesStore.getPrivilege(null)` / `hasPrivilege(null)` now return `null` / `false` instead of throwing `NullPointerException`. In 1.0.1 the backing maps were migrated from `HashMap` to `ConcurrentHashMap` for thread-safety; `ConcurrentHashMap` rejects `null` keys, which silently broke the documented "or null if not found" contract for callers that probe with a `null` id.
+
 ## [1.0.1] - 2026-04-26
 
 ### Security

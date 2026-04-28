@@ -8,7 +8,6 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import com.nomendi6.orgsec.helper.PathSanitizer;
 import com.nomendi6.orgsec.helper.PrivilegeSecurityHelper;
 import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.RoleDef;
@@ -104,10 +103,10 @@ public class OrganizationLoader {
                 party.get("name", String.class),
                 party.get("id", Long.class),
                 null,
-                PathSanitizer.sanitizePath(party.get("pathId", String.class)),
-                PathSanitizer.sanitizePath(party.get("parentPath", String.class)),
+                party.get("pathId", String.class),
+                party.get("parentPath", String.class),
                 party.get("companyId", Long.class),
-                PathSanitizer.sanitizePath(party.get("companyParentPath", String.class))
+                party.get("companyParentPath", String.class)
             );
             workOrganizationMap.put(organization.organizationId, organization);
         }
@@ -159,10 +158,10 @@ public class OrganizationLoader {
                 party.get("name", String.class),
                 party.get("id", Long.class),
                 null,
-                PathSanitizer.sanitizePath(party.get("pathId", String.class)),
-                PathSanitizer.sanitizePath(party.get("parentPath", String.class)),
+                party.get("pathId", String.class),
+                party.get("parentPath", String.class),
                 party.get("companyId", Long.class),
-                PathSanitizer.sanitizePath(party.get("companyParentPath", String.class))
+                party.get("companyParentPath", String.class)
             );
 
             // Process assigned roles for this party

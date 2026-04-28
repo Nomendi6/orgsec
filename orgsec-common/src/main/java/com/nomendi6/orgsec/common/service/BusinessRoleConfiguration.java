@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import com.nomendi6.orgsec.constants.SecurityFieldType;
+import com.nomendi6.orgsec.exceptions.OrgsecConfigurationException;
 import com.nomendi6.orgsec.model.BusinessRoleDefinition;
 
 /**
@@ -19,6 +20,8 @@ import com.nomendi6.orgsec.model.BusinessRoleDefinition;
 public class BusinessRoleConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(BusinessRoleConfiguration.class);
+    private static final int MAX_RSQL_SELECTOR_LENGTH = 200;
+    private static final String RSQL_SELECTOR_PATTERN = "[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*";
 
     private Map<String, BusinessRoleConfig> businessRoles = new LinkedHashMap<>();
 
@@ -52,6 +55,7 @@ public class BusinessRoleConfiguration {
 
         // Apply YAML configuration overrides if present
         applyYamlConfiguration();
+        validateBusinessRoleDefinitions();
 
         log.info("Business roles initialization completed. Active roles: {}", businessRoleDefinitions.keySet());
     }
@@ -63,12 +67,44 @@ public class BusinessRoleConfiguration {
                 String roleName = entry.getKey();
                 BusinessRoleConfig config = entry.getValue();
 
-                if (config != null && config.getSupportedFields() != null) {
-                    businessRoleDefinitions.put(roleName, new BusinessRoleDefinition(roleName, Set.copyOf(config.getSupportedFields())));
+                if (config != null && (config.getSupportedFields() != null || config.getRsqlFields() != null)) {
+                    BusinessRoleDefinition existing = businessRoleDefinitions.get(roleName);
+                    Set<SecurityFieldType> supportedFields = resolveSupportedFields(config, existing);
+                    Map<SecurityFieldType, String> rsqlFields = resolveRsqlFields(roleName, config, existing);
+
+                    businessRoleDefinitions.put(roleName, new BusinessRoleDefinition(roleName, supportedFields, rsqlFields));
                     log.debug("Applied YAML override for role: {}", roleName);
                 }
             }
         }
+    }
+
+    private Set<SecurityFieldType> resolveSupportedFields(BusinessRoleConfig config, BusinessRoleDefinition existing) {
+        if (config.getSupportedFields() != null) {
+            return Set.copyOf(config.getSupportedFields());
+        }
+        if (existing != null) {
+            return existing.getSupportedFields();
+        }
+        return Collections.emptySet();
+    }
+
+    private Map<SecurityFieldType, String> resolveRsqlFields(
+        String roleName,
+        BusinessRoleConfig config,
+        BusinessRoleDefinition existing
+    ) {
+        Map<SecurityFieldType, String> rsqlFields = new EnumMap<>(SecurityFieldType.class);
+        if (existing != null) {
+            rsqlFields.putAll(existing.getRsqlFields());
+        }
+        if (config.getRsqlFields() != null) {
+            for (Map.Entry<String, String> fieldEntry : config.getRsqlFields().entrySet()) {
+                SecurityFieldType fieldType = parseSecurityFieldType(roleName, fieldEntry.getKey());
+                rsqlFields.put(fieldType, fieldEntry.getValue());
+            }
+        }
+        return rsqlFields;
     }
 
     /**
@@ -100,11 +136,22 @@ public class BusinessRoleConfiguration {
     }
 
     /**
-     * Add or update a business role definition.
-     * This method is primarily used by Spring Boot configuration binding.
+     * Add or update a business role definition programmatically.
+     * Spring Boot configuration binding goes through {@link BusinessRoleConfig} and {@link #applyYamlConfiguration()};
+     * this entry point is for code that registers business roles outside the YAML / provider lifecycle.
      */
     public void addBusinessRole(String name, Set<SecurityFieldType> supportedFields) {
-        businessRoleDefinitions.put(name, new BusinessRoleDefinition(name, supportedFields));
+        addBusinessRole(name, supportedFields, Collections.emptyMap());
+    }
+
+    /**
+     * Add or update a business role definition with custom RSQL selectors.
+     * Selectors are validated immediately; invalid input throws {@link OrgsecConfigurationException}.
+     */
+    public void addBusinessRole(String name, Set<SecurityFieldType> supportedFields, Map<SecurityFieldType, String> rsqlFields) {
+        BusinessRoleDefinition definition = new BusinessRoleDefinition(name, supportedFields, rsqlFields);
+        validateRsqlFields(name, definition);
+        businessRoleDefinitions.put(name, definition);
     }
 
     /**
@@ -113,6 +160,86 @@ public class BusinessRoleConfiguration {
     public boolean roleSupportsField(String roleName, SecurityFieldType fieldType) {
         BusinessRoleDefinition definition = businessRoleDefinitions.get(roleName);
         return definition != null && definition.supportsField(fieldType);
+    }
+
+    /**
+     * Resolve the RSQL selector for a business role and security field type.
+     * Custom selectors are configured through orgsec.business-roles.<role>.rsql-fields.
+     */
+    public String getRsqlFieldSelector(String roleName, SecurityFieldType fieldType) {
+        BusinessRoleDefinition definition = businessRoleDefinitions.get(roleName);
+        if (definition != null) {
+            Optional<String> customSelector = definition.getRsqlField(fieldType);
+            if (customSelector.isPresent()) {
+                return customSelector.get();
+            }
+        }
+        return getDefaultRsqlFieldSelector(roleName, fieldType);
+    }
+
+    private String getDefaultRsqlFieldSelector(String roleName, SecurityFieldType fieldType) {
+        String fieldName = fieldType.generateFieldName(roleName);
+        switch (fieldType) {
+            case COMPANY:
+            case ORG:
+            case PERSON:
+                return fieldName + ".id";
+            case COMPANY_PATH:
+            case ORG_PATH:
+                return fieldName;
+            default:
+                return fieldName;
+        }
+    }
+
+    private void validateBusinessRoleDefinitions() {
+        for (BusinessRoleDefinition definition : businessRoleDefinitions.values()) {
+            validateRsqlFields(definition.getName(), definition);
+        }
+    }
+
+    private void validateRsqlFields(String roleName, BusinessRoleDefinition definition) {
+        for (Map.Entry<SecurityFieldType, String> entry : definition.getRsqlFields().entrySet()) {
+            SecurityFieldType fieldType = entry.getKey();
+            if (!definition.supportsField(fieldType)) {
+                throw new OrgsecConfigurationException(
+                    "Invalid rsql-fields configuration for business role '" + roleName + "': field " + fieldType +
+                    " is not listed in supported-fields"
+                );
+            }
+            validateRsqlSelector(roleName, fieldType, entry.getValue());
+        }
+    }
+
+    private SecurityFieldType parseSecurityFieldType(String roleName, String rawKey) {
+        SecurityFieldType fieldType = SecurityFieldType.fromCode(rawKey);
+        if (fieldType == null) {
+            throw new OrgsecConfigurationException(
+                "Invalid rsql-fields configuration for business role '" + roleName + "': unknown security field '" + rawKey + "'"
+            );
+        }
+        return fieldType;
+    }
+
+    private void validateRsqlSelector(String roleName, SecurityFieldType fieldType, String selector) {
+        if (selector == null || selector.isBlank()) {
+            throw new OrgsecConfigurationException(
+                "Invalid rsql-fields configuration for business role '" + roleName + "', field " + fieldType +
+                ": selector must not be blank"
+            );
+        }
+        if (selector.length() > MAX_RSQL_SELECTOR_LENGTH) {
+            throw new OrgsecConfigurationException(
+                "Invalid rsql-fields configuration for business role '" + roleName + "', field " + fieldType +
+                ": selector length must not exceed " + MAX_RSQL_SELECTOR_LENGTH + " characters"
+            );
+        }
+        if (!selector.matches(RSQL_SELECTOR_PATTERN)) {
+            throw new OrgsecConfigurationException(
+                "Invalid rsql-fields configuration for business role '" + roleName + "', field " + fieldType +
+                ": selector '" + selector + "' is not a valid RSQL field path"
+            );
+        }
     }
 
     // Setters for Spring Boot configuration binding
@@ -129,7 +256,8 @@ public class BusinessRoleConfiguration {
      */
     public static class BusinessRoleConfig {
 
-        private Set<SecurityFieldType> supportedFields = new HashSet<>();
+        private Set<SecurityFieldType> supportedFields;
+        private Map<String, String> rsqlFields;
 
         public Set<SecurityFieldType> getSupportedFields() {
             return supportedFields;
@@ -137,6 +265,14 @@ public class BusinessRoleConfiguration {
 
         public void setSupportedFields(Set<SecurityFieldType> supportedFields) {
             this.supportedFields = supportedFields;
+        }
+
+        public Map<String, String> getRsqlFields() {
+            return rsqlFields;
+        }
+
+        public void setRsqlFields(Map<String, String> rsqlFields) {
+            this.rsqlFields = rsqlFields;
         }
     }
 }

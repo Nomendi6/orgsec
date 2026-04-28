@@ -40,6 +40,9 @@ public class AllOrganizationsStore {
      * @return OrganizationDef or null if not found
      */
     public OrganizationDef getOrganization(Long organizationId) {
+        if (organizationId == null) {
+            return null;
+        }
         return organizationMap.get(organizationId);
     }
 
