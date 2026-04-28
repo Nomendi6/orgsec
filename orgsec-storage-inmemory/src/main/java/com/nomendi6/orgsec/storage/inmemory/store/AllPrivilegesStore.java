@@ -46,6 +46,9 @@ public class AllPrivilegesStore implements PrivilegeRegistry {
 
     @Override
     public PrivilegeDef getPrivilege(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
         return privilegesMap.get(identifier);
     }
 
@@ -61,6 +64,9 @@ public class AllPrivilegesStore implements PrivilegeRegistry {
 
     @Override
     public boolean hasPrivilege(String identifier) {
+        if (identifier == null) {
+            return false;
+        }
         return privilegesMap.containsKey(identifier);
     }
 

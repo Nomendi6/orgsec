@@ -23,16 +23,27 @@ Structural org path says where the organization is in the tree. Resource securit
 
 ## Structural Organization Fields
 
-Typical organization-node fields are:
+Typical organization-node columns on the application side look like:
 
-- `pathId`: full path of this node, such as `|1|10|22|`
-- `parentPath`: path of the parent node, such as `|1|10|`
-- `rootPath`: path of the root company or top node
-- `pathLevel`: tree depth
-- `parent`: parent organization reference
-- `rootEntity`: root company/root organization reference
+| Column         | Format          | Example                | Meaning                                                                |
+| -------------- | --------------- | ---------------------- | ---------------------------------------------------------------------- |
+| `path_id`      | local segment   | `o1_1`                 | Local identifier of this node - just the segment, no separators        |
+| `parent_path`  | pipe-delimited  | `|c1|o1|o1_1|`         | Full hierarchical path **including this node**                         |
+| `root_path`    | pipe-delimited  | `|c1|`                 | Full path of the root company or top node                              |
+| `path_level`   | numeric         | `2`                    | Tree depth (top-level company is `0`, increases per level)             |
+| `parent_id`    | foreign key     | `120`                  | Parent organization reference                                          |
+| `root_party_id`| foreign key     | `2`                    | Root company / root organization reference                             |
 
-OrgSec's internal `OrganizationDef` expects this information through the storage/provider layer. It does not create full application organization records for you.
+A typical CSV import row for a company and one of its organizations looks like:
+
+```text
+id; code;     name;          tparty;       path_id;  parent_path;            path_level; parent_id; root_party_id
+1;  ow;       COwner;        COMPANY;      ow;       |ow|;                   0;          null;      null
+110;ow_o_1;   COwner O_1;    ORGANIZATION; o1;       |ow|o1|;                1;          1;         1
+111;ow_o_1_1; COwner O_1_1;  ORGANIZATION; o1_1;     |ow|o1|o1_1|;           2;          110;       1
+```
+
+The application owns these columns. OrgSec consumes them through the storage/provider layer; the SQL aliases in your `SecurityQueryProvider` map them onto the `Tuple` keys the loader expects (`pathId`, `parentPath`, `companyParentPath`). The library uses `parentPath` (the full path including the node) as the hierarchy anchor for `_ORGHD` / `_ORGHU` privileges, and `companyParentPath` for `_COMPHD` / `_COMPHU`.
 
 ## Resource Security Fields
 

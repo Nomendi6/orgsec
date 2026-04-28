@@ -8,7 +8,7 @@
     <parent>
         <groupId>com.nomendi6.orgsec</groupId>
         <artifactId>orgsec-parent</artifactId>
-        <version>1.0.2</version>
+        <version>1.0.3</version>
     </parent>
 
     <artifactId>orgsec-core</artifactId>

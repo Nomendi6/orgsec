@@ -58,6 +58,9 @@ public class AllRolesStore {
      * @return RoleDef or null if not found
      */
     public RoleDef getOrganizationRole(Long roleId) {
+        if (roleId == null) {
+            return null;
+        }
         return organizationRolesMap.get(roleId);
     }
 
@@ -67,6 +70,9 @@ public class AllRolesStore {
      * @return RoleDef or null if not found
      */
     public RoleDef getPositionRole(Long roleId) {
+        if (roleId == null) {
+            return null;
+        }
         return positionRolesMap.get(roleId);
     }
 
@@ -76,6 +82,9 @@ public class AllRolesStore {
      * @return RoleDef or null if not found
      */
     public RoleDef getOrganizationRole(String roleCode) {
+        if (roleCode == null) {
+            return null;
+        }
         for (Map.Entry<Long, RoleDef> entry : organizationRolesMap.entrySet()) {
             RoleDef roleDef = entry.getValue();
             if (roleDef.name.equals(roleCode)) {

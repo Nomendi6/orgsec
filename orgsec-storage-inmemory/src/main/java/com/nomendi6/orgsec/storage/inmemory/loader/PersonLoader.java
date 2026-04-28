@@ -8,7 +8,6 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import com.nomendi6.orgsec.helper.PathSanitizer;
 import com.nomendi6.orgsec.helper.PrivilegeSecurityHelper;
 import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.PersonDef;
@@ -220,10 +219,10 @@ public class PersonLoader {
                 personParty.get("orgunitName", String.class),
                 personParty.get("orgunitId", Long.class),
                 personParty.get("positionId", Long.class),
-                PathSanitizer.sanitizePath(personParty.get("pathId", String.class)),
-                PathSanitizer.sanitizePath(personParty.get("parentPath", String.class)),
+                personParty.get("pathId", String.class),
+                personParty.get("parentPath", String.class),
                 personParty.get("companyId", Long.class),
-                PathSanitizer.sanitizePath(personParty.get("companyParentPath", String.class))
+                personParty.get("companyParentPath", String.class)
             );
             if (personId != null) {
                 workPersonsMap.get(personId).organizationsMap.put(organizationDef.organizationId, organizationDef);
@@ -342,10 +341,10 @@ public class PersonLoader {
                 personParty.get("orgunitName", String.class),
                 personParty.get("orgunitId", Long.class),
                 personParty.get("positionId", Long.class),
-                PathSanitizer.sanitizePath(personParty.get("pathId", String.class)),
-                PathSanitizer.sanitizePath(personParty.get("parentPath", String.class)),
+                personParty.get("pathId", String.class),
+                personParty.get("parentPath", String.class),
                 personParty.get("companyId", Long.class),
-                PathSanitizer.sanitizePath(personParty.get("companyParentPath", String.class))
+                personParty.get("companyParentPath", String.class)
             );
             personDef.organizationsMap.put(organizationDef.organizationId, organizationDef);
         }

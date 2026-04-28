@@ -75,21 +75,23 @@ You will mostly write code against `SecurityEnabledEntity`, `PrivilegeChecker`, 
 
 ## Organizational hierarchy
 
-OrgSec assumes your organizations form a tree (or a DAG with a single canonical path; OrgSec does not invent paths if you have multiple). The hierarchy is encoded in two columns on each `OrganizationDef`:
+OrgSec assumes your organizations form a tree (or a DAG with a single canonical path; OrgSec does not invent paths if you have multiple). The hierarchy is encoded in a few columns on each `OrganizationDef`:
 
-| Field          | Format       | Example         | Meaning                                            |
-| -------------- | ------------ | --------------- | -------------------------------------------------- |
-| `pathId`       | pipe-delimited | `|1|10|22|`     | Path from the root (`1`) down to this node (`22`)  |
-| `parentPath`   | pipe-delimited | `|1|10|`        | Parent's `pathId` (path **above** this node)       |
-| `companyId`    | numeric      | `1`             | The company anchor for this org (often the root)   |
-| `companyParentPath` | pipe-delimited | `|1|`     | Path within the company line                       |
+| Field               | Format          | Example             | Meaning                                                                 |
+| ------------------- | --------------- | ------------------- | ----------------------------------------------------------------------- |
+| `pathId`            | local segment   | `o1_1`              | Local identifier of this node - the segment, no separators              |
+| `parentPath`        | pipe-delimited  | `|c1|o1|o1_1|`      | Full path from the root down to **this node**, used as the hierarchy anchor for `_ORGHD` / `_ORGHU` |
+| `companyId`         | numeric         | `1`                 | The company anchor for this org (often the root)                        |
+| `companyParentPath` | pipe-delimited  | `|c1|`              | Full path of the root company, used as the hierarchy anchor for `_COMPHD` / `_COMPHU` |
 
-Hierarchy decisions are made by string operations on these columns:
+Hierarchy decisions are made by string operations on the path columns:
 
-- *Is `org A` a descendant of `org B`?* -> `A.pathId.startsWith(B.pathId)`.
-- *Is `org A` an ancestor of `org B`?* -> `B.pathId.startsWith(A.pathId)`.
+- *Is `org A` a descendant of `org B`?* -> `A.parentPath.startsWith(B.parentPath)`.
+- *Is `org A` an ancestor of `org B`?* -> `B.parentPath.startsWith(A.parentPath)`.
 
-This is why OrgSec needs the columns to be present and well-formed. Empty or `null` paths are rejected as fail-closed (after the 1.0.0 security review); they cannot evaluate to "matches everywhere."
+The field name `parentPath` is historical: despite the name, the value contains the **full path of this node**, not the path strictly above it. Hierarchy comparison uses this field, not `pathId`.
+
+OrgSec needs the path columns to be present and well-formed. Empty or `null` paths are rejected as fail-closed (after the 1.0.0 security review); they cannot evaluate to "matches everywhere."
 
 ## Business role vs. position role
 

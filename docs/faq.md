@@ -34,7 +34,7 @@ OrgSec sits on top of Spring Security to fill that gap. The two are designed to 
 | --------------------- | -------------------------------- | ----------------------------------------------------------- |
 | Model unit            | Per-row ACL entry                | Per-privilege grant scoped to an organization               |
 | Storage               | JDBC ACL tables                  | Pluggable: in-memory / Redis / JWT                          |
-| Hierarchy             | Optional, ACL inheritance        | Required, encoded in `pathId` strings                       |
+| Hierarchy             | Optional, ACL inheritance        | Required, encoded in pipe-delimited path strings            |
 | Read amplification    | One ACL lookup per row           | One privilege evaluation per request, plus cache lookups    |
 | Write amplification   | High (every row mutation writes) | Low (privilege definitions change rarely)                   |
 | Common deployment     | Document-management style apps   | Multi-tenant SaaS with organizational hierarchy             |
