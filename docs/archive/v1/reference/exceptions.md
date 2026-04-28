@@ -107,7 +107,7 @@ Thrown in two places:
 
 ### `java.lang.IllegalArgumentException`
 
-Thrown by `PrivilegeLoader.createPrivilegeDefinition` when the privilege identifier is missing the structural shape the parser requires - specifically, when fewer than two underscore separators are present. The parser does **not** throw on unknown scope tokens or unknown operation suffixes; those are silently accepted and produce a `PrivilegeDef` that grants nothing. See [Privileges - Privilege identifier convention](../usage/05-privileges.md#naming-convention) and [Operations / Troubleshooting](../operations/troubleshooting.md#illegalargumentexception-malformed-privilege-name-) for the full story.
+Thrown by `PrivilegeLoader.createPrivilegeDefinition` when the privilege identifier is missing the structural shape the parser requires - specifically, when fewer than two underscore separators are present. The parser does **not** throw on unknown scope tokens or unknown operation suffixes; those are silently accepted and produce a `PrivilegeDef` that grants nothing. See [Privileges and Business Roles - Privilege identifier convention](../guide/05-privileges-and-business-roles.md#privilege-identifier-convention) and [Operations / Troubleshooting](../operations/troubleshooting.md#illegalargumentexception-malformed-privilege-name-) for the full story.
 
 OrgSec does not wrap the exception in a dedicated type - the original `IllegalArgumentException` propagates up. Application code typically catches it in the `PrivilegeDefinitionProvider`'s `@PostConstruct` and either lets it abort startup (the simplest behavior) or wraps it in an application-specific exception type for richer diagnostics. There is no OrgSec-shipped wrapper class for this case.
 
@@ -149,5 +149,5 @@ Note the deliberate asymmetry: `OrgsecSecurityException` carries detail your cli
 ## Where to go next
 
 - [Operations / Troubleshooting](../operations/troubleshooting.md) - symptoms-and-fixes runbook.
-- [Privileges](../usage/05-privileges.md) - what causes `AccessDeniedException` from `RsqlFilterBuilder`.
-- [Configuration - Validation at startup](../reference/properties.md) - what causes `IllegalStateException` at boot.
+- [Privileges and Business Roles](../guide/05-privileges-and-business-roles.md) - what causes `AccessDeniedException` from `RsqlFilterBuilder`.
+- [Configuration - Validation at startup](../guide/04-configuration.md#validation-at-startup) - what causes `IllegalStateException` at boot.

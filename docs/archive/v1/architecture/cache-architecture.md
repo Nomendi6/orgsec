@@ -244,11 +244,11 @@ For the typical "user logs in, makes some requests, logs out" workflow, stalenes
 
 In other words, the L2 TTL is a backstop for cache **content**, not for **L1 hits**. To bound the worst-case staleness on the L1 hit path, you must rely on either invalidation arriving or on size-pressure-driven LRU eviction; if neither happens, the entry can stay indefinitely.
 
-If your application requires stricter freshness for a specific operation (typically revocations), use the `updateXxx` path described in [Usage / Load security data](../usage/08-load-security-data.md). The cache architecture supports it; the application has to invoke it.
+If your application requires stricter freshness for a specific operation (typically revocations), use the `updateXxx` path described in [Cookbook / Cache invalidation](../cookbook/04-cache-invalidation.md). The cache architecture supports it; the application has to invoke it.
 
 ## Where to go next
 
 - [Storage / Redis](../storage/03-redis.md) - the operator-facing reference.
-- [Usage / Load security data](../usage/08-load-security-data.md) - recipes for `notify` / `update`.
+- [Cookbook / Cache invalidation](../cookbook/04-cache-invalidation.md) - recipes for `notify` / `update`.
 - [Architecture / Auto-configuration](./auto-configuration.md) - how the cache beans wire.
 - [Operations / Monitoring](../operations/monitoring.md) - observe cache stats.

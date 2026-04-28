@@ -1,6 +1,6 @@
 # Privilege Model Reference
 
-This page is the tabular reference for OrgSec's privilege model. Read [Privileges](../usage/05-privileges.md) and [Business roles](../usage/04-business-roles.md) for the narrative; come here when you need the truth tables.
+This page is the tabular reference for OrgSec's privilege model. Read [Privileges and Business Roles](../guide/05-privileges-and-business-roles.md) for the narrative; come here when you need the truth tables.
 
 ## Operation enum
 
@@ -173,7 +173,7 @@ The cascade is short-circuit: the first non-`NONE` scope decides the outcome. Se
 | Axis           | Join rule                                                                 |
 | -------------- | ------------------------------------------------------------------------- |
 | `all`          | `a.all OR b.all`                                                          |
-| `operation`    | `PrivilegeDef.add(a, b)` - not `PrivilegeOperation.combine`. See the table in [PrivilegeDef.add](#privilegedefadda-b---the-operation-rule-used-by-aggregation). |
+| `operation`    | `PrivilegeDef.add(a, b)` - not `PrivilegeOperation.combine`. See the table in [PrivilegeDef.add](#privilegedefadda-b--the-operation-rule-used-by-aggregation). |
 | `company`      | See direction join below; if result becomes non-`NONE`, drops `org`/`person` |
 | `org`          | Same direction join; only consulted if `company == NONE` after join       |
 | `person`       | `a.person OR b.person`; only consulted if both `company == NONE` and `org == NONE` |
@@ -230,6 +230,6 @@ A business role with `supported-fields: []` (or unset) is technically legal: Org
 
 ## Where to go next
 
-- [Privileges](../usage/05-privileges.md) - the practical privilege guide.
-- [Business roles](../usage/04-business-roles.md) - how entity fields are selected.
+- [Privileges and Business Roles](../guide/05-privileges-and-business-roles.md) - the narrative.
 - [Architecture / Privilege evaluation](../architecture/privilege-evaluation.md) - step-by-step `hasRequiredOperation`.
+- [Cookbook / Defining privileges](../cookbook/01-defining-privileges.md) - recipes that exercise these rules.

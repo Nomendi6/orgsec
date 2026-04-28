@@ -55,7 +55,7 @@ The remaining beans the starter contributes are wired through two mechanisms:
 
    The default `@SpringBootApplication` scan rooted at the application's own base package (e.g. `com.example.docs`) does not reach the OrgSec packages, so the application must declare an explicit `@ComponentScan`. The exact set depends on whether the application needs only the privilege evaluator (minimal) or the end-to-end current-user authorization flow (full).
 
-   **Minimal evaluator scan** (First Working Example / wiring-only smoke tests):
+   **Minimal evaluator scan** (Quick Start / wiring-only smoke tests):
 
    ```java
    @SpringBootApplication
@@ -286,4 +286,4 @@ If `JwtDecoder` is missing under `jwt-enabled: true`, step 6 throws and the appl
 - [Architecture / Overview](./overview.md) - module layering and bean graph.
 - [Architecture / Cache architecture](./cache-architecture.md) - what the Redis beans actually do.
 - [Architecture / Privilege evaluation](./privilege-evaluation.md) - what `PrivilegeChecker` does at request time.
-- [Configuration](../reference/properties.md) - the YAML side.
+- [Configuration](../guide/04-configuration.md) - the YAML side.

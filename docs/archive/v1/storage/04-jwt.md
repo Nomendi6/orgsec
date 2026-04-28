@@ -2,13 +2,9 @@
 
 The JWT backend reads the current user's `PersonDef` from a JWT claim instead of from a database. It is the natural fit for OAuth2-fronted applications - especially when Keycloak (or any IdP that lets you inject a custom claim) is in front of your service. Person identity becomes stateless: every instance can answer authorization questions about the caller without consulting a shared cache, because the answer travels in the token.
 
-See [Glossary](../reference/glossary.md) for JWT, IdP, and related authorization terms.
-
 The JWT backend is **hybrid by design**: it never serves organizations, roles, or privileges itself. Those are delegated to another backend (memory or Redis) configured per data type. This keeps the token small and the cache logic for stable data unchanged.
 
 > **Critical:** the JWT backend requires a Spring Security `JwtDecoder` bean. Without one, OrgSec **fails fast** at startup with `IllegalStateException`. This is intentional - an OrgSec deployment that accepts unverified tokens is a critical security regression. The fail-fast was added in the 1.0.1 security review.
-
-If a delegated organization, role, or privilege is missing, JWT storage does not dynamically load it from the database. The delegate backend must already contain the data, or the authorization path fails closed.
 
 ## Architecture
 
@@ -75,7 +71,7 @@ spring:
 
 Spring Security exposes a `JwtDecoder` bean that pulls the JWKS from the issuer's metadata, validates `iss`, `exp`, and `nbf`, and (with proper configuration) `aud`. OrgSec piggy-backs on this validation; the token has been verified before any OrgSec code touches it.
 
-For tests, supply a `JwtDecoder` bean manually - the simplest implementation is `NimbusJwtDecoder.withSecretKey(...)` for HMAC-signed test tokens. See [Archive / JWT-Keycloak app](../archive/v1/examples/jwt-keycloak-app.md) for a working test setup.
+For tests, supply a `JwtDecoder` bean manually - the simplest implementation is `NimbusJwtDecoder.withSecretKey(...)` for HMAC-signed test tokens. See [Examples / JWT-Keycloak app](../examples/jwt-keycloak-app.md) for a working test setup.
 
 ## OrgSec configuration
 
@@ -149,7 +145,7 @@ The JWT parser is permissive about unknown JSON fields (`@JsonIgnoreProperties(i
 
 OrgSec ships a custom Keycloak protocol mapper that produces this claim from your OrgSec data. The mapper calls the Person API endpoint `GET /api/orgsec/person/by-user/{userId}` (which is part of `orgsec-spring-boot-starter`, off by default) and injects the resulting JSON as the `orgsec` claim.
 
-The full setup - service-account setup, Keycloak realm wiring, mapper deployment - is in [Keycloak Person API](../spring/03-keycloak-person-api.md). The mapper itself lives in [`Nomendi6/orgsec-keycloak-mapper`](https://github.com/Nomendi6/orgsec-keycloak-mapper).
+The full setup - service-account setup, Keycloak realm wiring, mapper deployment - is in [Cookbook / Keycloak mapper](../cookbook/05-keycloak-mapper.md). The mapper itself lives in [`Nomendi6/orgsec-keycloak-mapper`](https://github.com/Nomendi6/orgsec-keycloak-mapper).
 
 If you do not use Keycloak, you can produce the claim from any token issuer that supports custom claims - the format is documented above and is independent of the issuer.
 
@@ -202,7 +198,7 @@ The Person path is stateless; the Organization / Role path is shared across inst
 
 ## Where to go next
 
-- [Choose storage](./01-choose-storage.md) - the decision tree.
-- [Keycloak Person API](../spring/03-keycloak-person-api.md) - full Keycloak setup.
-- [Archive / JWT-Keycloak app](../archive/v1/examples/jwt-keycloak-app.md) - copy-paste-friendly project.
-- [Configuration](../reference/properties.md) - the YAML reference.
+- [Storage Overview](./01-overview.md) - the decision tree.
+- [Cookbook / Keycloak mapper](../cookbook/05-keycloak-mapper.md) - full Keycloak setup.
+- [Examples / JWT-Keycloak app](../examples/jwt-keycloak-app.md) - copy-paste-friendly project.
+- [Configuration](../guide/04-configuration.md) - the YAML reference.

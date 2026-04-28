@@ -1,6 +1,4 @@
-# In-Memory Storage
-
-The in-memory backend loads user grants into the local JVM. It does not initialize Resource Security Context fields on your protected entities; your application still owns that create/update logic.
+# In-memory Storage
 
 The in-memory backend is the default and the simplest. It loads `PersonDef` / `OrganizationDef` / `RoleDef` / `PrivilegeDef` instances at startup, holds them in thread-safe maps, and serves every authorization read directly from heap. There is no external infrastructure to manage and no extra dependency to add - the starter pulls it in transitively.
 
@@ -44,7 +42,7 @@ The backend has three lifecycle methods inherited from `SecurityDataStorage`:
 - **`refresh()`** - reloads the entire dataset from your `SecurityQueryProvider`. Use it when you have a reason to re-read everything (configuration change, external bulk import). For incremental updates, prefer the notify hooks.
 - **`notifyPartyRoleChanged(Long roleId)` / `notifyPositionRoleChanged(Long roleId)` / `notifyPersonChanged(Long personId)` / `notifyOrganizationChanged(Long orgId)`** - reload only the affected entity and any aggregated views that depend on it.
 
-In a single-instance deployment the notify hooks keep the cache in sync with your database. Call them from the place where the data changes - usually a domain event listener or a service that performs the role assignment. There is no JPA listener hooked in by default; if your team prefers automatic invalidation, see [Usage / Load security data](../usage/08-load-security-data.md).
+In a single-instance deployment the notify hooks keep the cache in sync with your database. Call them from the place where the data changes - usually a domain event listener or a service that performs the role assignment. There is no JPA listener hooked in by default; if your team prefers automatic invalidation, see [Cookbook / Cache invalidation](../cookbook/04-cache-invalidation.md).
 
 ## When to use it
 
@@ -86,30 +84,6 @@ The in-memory backend caches everything for the lifetime of the process. There i
 
 ## Testing utilities
 
-For tests, examples, and demos, prefer `OrgsecInMemoryFixtures` when you want a readable programmatic setup instead of a full `SecurityQueryProvider`.
-
-```java
-fixtures
-    .load()
-    .privilege("DOCUMENT_ORGHD_R")
-    .company(1L, "Acme")
-    .organization(10L, "EU Region", "|1|10|")
-    .company(1L)
-    .organization(22L, "Shop-22", "|1|10|22|")
-    .company(1L)
-    .role("SHOP_MANAGER")
-    .grants("DOCUMENT_ORGHD_R")
-    .asBusinessRole("owner")
-    .person(1L, "Alice")
-    .defaultCompany(1L)
-    .defaultOrgunit(22L)
-    .memberOf(22L)
-    .withRole("SHOP_MANAGER")
-    .apply();
-```
-
-Production data should flow through `SecurityQueryProvider` or another storage adapter.
-
 For integration tests that mutate the cache, OrgSec ships `StorageSnapshot` - an immutable snapshot of the four maps that you can take before the test and apply afterwards.
 
 ```java
@@ -140,7 +114,7 @@ The `takeSnapshot()` and `restore()` helpers are not currently published as part
 
 ## Where to go next
 
-- [Choose storage](./01-choose-storage.md) - the decision tree.
-- [Configuration](../reference/properties.md) - the YAML reference.
+- [Storage Overview](./01-overview.md) - the decision tree.
+- [Configuration](../guide/04-configuration.md) - the YAML reference.
 - [Storage / Redis](./03-redis.md) - the multi-instance answer.
-- [Archive / In-memory app](../archive/v1/examples/in-memory-app.md) - copy-paste-friendly starter project.
+- [Examples / In-memory app](../examples/in-memory-app.md) - copy-paste-friendly starter project.

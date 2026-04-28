@@ -1,20 +1,5 @@
 # FAQ
 
-## How does OrgSec compare to Casbin, Cerbos, OPA, OpenFGA, or SpiceDB?
-
-OrgSec is narrower. It is strongest when the dominant problem is organization-tree authorization inside a Spring Boot application: company/org/person scopes, hierarchy-down or hierarchy-up privileges, business roles on protected entities, and RSQL list filtering.
-
-Use a broader policy or relationship system when you need a general policy language, centralized PDP, relationship graph across many object types, policy administration UI, or non-Spring enforcement across a large platform.
-
-See [Glossary](./reference/glossary.md) for RBAC, ABAC, ReBAC, PDP, PEP, RSQL, JWT, IdP, and JPA terminology.
-
-| Tool | Strongest fit | OrgSec difference |
-| --- | --- | --- |
-| Casbin | Flexible local authorization models. | OrgSec is less general but gives a ready-made org hierarchy and RSQL filtering model. |
-| Cerbos / OPA | External policy-as-code PDP. | OrgSec runs in the JVM and avoids a network decision call. |
-| OpenFGA / SpiceDB | Zanzibar-style relationship graphs. | OrgSec focuses on person -> organization tree -> protected row, not arbitrary graph permissions. |
-| Spring Security roles | Coarse endpoint/service gates. | OrgSec adds row-level company/org/person scope and list filtering. |
-
 A grab-bag of questions that come up on the issue tracker. The answers are short by design. For each topic, the deeper material is one or two clicks away - follow the links.
 
 ## What problem does OrgSec solve that Spring Security does not?
@@ -26,7 +11,7 @@ Spring Security handles *authentication* and *coarse* authorization (`hasRole(..
 - Privilege scopes that cascade *exactly* -> *down the sub-tree* -> *up the ancestors*.
 - A pluggable storage layer for the authorization data.
 
-OrgSec sits on top of Spring Security to fill that gap. The two are designed to compose - OrgSec's `SpringSecurityContextProvider` reads the current user from `SecurityContextHolder`, and `PrivilegeChecker` is callable from `@PreAuthorize` expressions. See [Spring Security Integration](./spring/02-spring-security.md).
+OrgSec sits on top of Spring Security to fill that gap. The two are designed to compose - OrgSec's `SpringSecurityContextProvider` reads the current user from `SecurityContextHolder`, and `PrivilegeChecker` is callable from `@PreAuthorize` expressions. See [Spring Security Integration](./guide/06-spring-security-integration.md).
 
 ## How does OrgSec compare to Spring Security ACL?
 
@@ -92,15 +77,15 @@ No. The default in-memory backend has zero infrastructure dependencies. Redis is
 
 ## Can I add my own storage backend?
 
-Yes. Implement `SecurityDataStorage` and provide a Spring Boot auto-configuration that wires your bean. The full recipe is in [Architecture / Custom storage backend](./architecture/custom-backend.md).
+Yes. Implement `SecurityDataStorage` and provide a Spring Boot auto-configuration that wires your bean. The full recipe is in [Cookbook / Custom storage backend](./cookbook/06-custom-storage-backend.md).
 
 ## Why are privileges strings rather than enums?
 
-Enums force a closed set of values. OrgSec is a library; it cannot know in advance what privileges your application needs. String identifiers let each application define its own vocabulary while OrgSec stays generic. The naming convention (`RESOURCE_SCOPE_OPERATION`) gives you a parser that builds the `PrivilegeDef` for free, so the cost of strings vs. enums is small. See [Privileges](./usage/05-privileges.md#naming-convention).
+Enums force a closed set of values. OrgSec is a library; it cannot know in advance what privileges your application needs. String identifiers let each application define its own vocabulary while OrgSec stays generic. The naming convention (`RESOURCE_SCOPE_OPERATION`) gives you a parser that builds the `PrivilegeDef` for free, so the cost of strings vs. enums is small. See [Privileges and Business Roles](./guide/05-privileges-and-business-roles.md#privilege-identifier-convention).
 
 ## Why is `business-role` separate from `role`?
 
-A *business role* (`owner`, `customer`, `contractor`) is a category of relationship between a person and an organization. A *position role* (`SHOP_MANAGER`, `BACK_OFFICE_CLERK`) is a concrete duty title that carries privileges. The same business role can be played by many position roles - for example, both `SHOP_MANAGER` and `REGION_DIRECTOR` are tagged as `owner`. The two concepts answer different questions: business role tells the entity which fields to expose; position role tells the person which privileges to carry. See [Core Concepts - Business role vs. position role](./reference/concepts.md#business-role-vs-position-role).
+A *business role* (`owner`, `customer`, `contractor`) is a category of relationship between a person and an organization. A *position role* (`SHOP_MANAGER`, `BACK_OFFICE_CLERK`) is a concrete duty title that carries privileges. The same business role can be played by many position roles - for example, both `SHOP_MANAGER` and `REGION_DIRECTOR` are tagged as `owner`. The two concepts answer different questions: business role tells the entity which fields to expose; position role tells the person which privileges to carry. See [Core Concepts - Business role vs. position role](./guide/03-core-concepts.md#business-role-vs-position-role).
 
 ## Why does the privilege model have three direction values for *each* scope?
 
@@ -117,7 +102,7 @@ The exact call depends on your storage backend:
 - **In-memory.** Call `notifyXxxChanged(...)` from the place where the change happens. The backend reloads the affected entity through `SecurityQueryProvider`, so the cache is correct on the next request.
 - **Redis.** `notifyXxxChanged` only invalidates L1 and publishes the invalidation event - it does *not* refresh L2. For immediate freshness (typical revocation flows), reload the entity from your database after commit and call `updateXxx(id, freshDef)` instead; the Redis backend writes through to L1 + L2 and publishes the invalidation. Reserve `notify` for cases where TTL-bounded staleness is acceptable.
 
-There is no JPA listener wired by default. The recipes with concrete patterns - including the in-memory and Redis variants of the service-method approach - are in [Usage / Load security data](./usage/08-load-security-data.md).
+There is no JPA listener wired by default. The recipes with concrete patterns - including the in-memory and Redis variants of the service-method approach - are in [Cookbook / Cache invalidation](./cookbook/04-cache-invalidation.md).
 
 ## Where do I ask for help?
 

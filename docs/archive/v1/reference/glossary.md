@@ -32,17 +32,6 @@ This page explains the abbreviations used in the OrgSec documentation and in com
 | **JPA** | Jakarta Persistence API | The Java persistence API used by many Spring applications. OrgSec does not require JPA internally, but its RSQL filters are often translated into JPA criteria. |
 | **L1 / L2 cache** | Level 1 / Level 2 cache | L1 is a local in-process cache; L2 is a shared cache such as Redis. OrgSec's Redis backend uses both. |
 
-## OrgSec Terms
-
-| Term | Meaning |
-| --- | --- |
-| **Resource Security Context** | Company, organization, person, and path fields on a protected record. OrgSec compares these values with the current user's grants. |
-| **Runtime user context** | Current person, default company/org, memberships, roles, and privileges for the authenticated caller. |
-| **Business role** | Relationship name such as `owner` or `customer` that selects which fields on the protected resource are used. |
-| **Position role** | Organizational duty such as `SHOP_MANAGER` that carries privileges. |
-| **Fixture** | Programmatic test/demo data setup. `OrgsecInMemoryFixtures` populates the in-memory backend without a database provider. |
-| **Resource** | Application resource name used in privilege identifiers, such as `DOCUMENT` in `DOCUMENT_ORGHD_R`. |
-
 ## Tool Names Often Mentioned In Comparisons
 
 | Name | What it is |

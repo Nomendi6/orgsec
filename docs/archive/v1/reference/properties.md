@@ -26,22 +26,22 @@ The conventions used in the tables below:
 
 | Property                              | Type      | Default                | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ---------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `enabled`                             | `boolean` | `true`                 | Master OrgSec switch. Setting `false` disables auto-configuration.                       | [Spring Boot starter](../spring/01-spring-boot-starter.md) |
+| `enabled`                             | `boolean` | `true`                 | Master OrgSec switch. Setting `false` disables auto-configuration.                       | [Configuration](../guide/04-configuration.md#top-level-toggles) |
 
 ### Security toggles - `orgsec.security.*`
 
 | Property                              | Type      | Default                | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ---------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `privilege-checking`                  | `boolean` | `true`                 | Reserved; not enforced in 1.0.x. The field binds from YAML but no OrgSec code reads it.  | [Privileges](../usage/05-privileges.md) |
-| `role-hierarchy`                      | `boolean` | `true`                 | Reserved; not enforced in 1.0.x.                                                         | [Privileges](../usage/05-privileges.md) |
-| `audit-logging`                       | `boolean` | `false`                | Reserved; not enforced in 1.0.x. To enable audit logging, use `orgsec.storage.redis.audit.enabled` or supply your own `SecurityAuditLogger` bean. | [Monitoring](../operations/monitoring.md) |
+| `privilege-checking`                  | `boolean` | `true`                 | Reserved; not enforced in 1.0.x. The field binds from YAML but no OrgSec code reads it.  | [Configuration](../guide/04-configuration.md#top-level-toggles) |
+| `role-hierarchy`                      | `boolean` | `true`                 | Reserved; not enforced in 1.0.x.                                                         | [Privileges and Business Roles](../guide/05-privileges-and-business-roles.md) |
+| `audit-logging`                       | `boolean` | `false`                | Reserved; not enforced in 1.0.x. To enable audit logging, use `orgsec.storage.redis.audit.enabled` or supply your own `SecurityAuditLogger` bean. | [Configuration - Auditing](../guide/04-configuration.md#auditing) |
 
 ### Feature flags - `orgsec.features.*`
 
 | Property                              | Type      | Default                | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ---------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `business-roles`                      | `boolean` | `true`                 | Reserved; not enforced in 1.0.x. Business-role aggregation is always active when `BusinessRoleConfiguration` is on the classpath. | [Privileges](../usage/05-privileges.md) |
-| `position-roles`                      | `boolean` | `true`                 | Reserved; not enforced in 1.0.x.                                                         | [Core Concepts](../reference/concepts.md#business-role-vs-position-role) |
+| `business-roles`                      | `boolean` | `true`                 | Reserved; not enforced in 1.0.x. Business-role aggregation is always active when `BusinessRoleConfiguration` is on the classpath. | [Privileges and Business Roles](../guide/05-privileges-and-business-roles.md) |
+| `position-roles`                      | `boolean` | `true`                 | Reserved; not enforced in 1.0.x.                                                         | [Core Concepts](../guide/03-core-concepts.md#business-role-vs-position-role) |
 | `delegations`                         | `boolean` | `false`                | Reserved; delegation feature not implemented in 1.0.x.                                   | - |
 
 ### Storage type and in-memory tuning - `orgsec.storage.*` (legacy properties on `OrgsecProperties`)
@@ -50,7 +50,7 @@ These properties predate `StorageFeatureFlags`. The canonical way to select a ba
 
 | Property                              | Type      | Default                | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ---------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `type`                                | `String`  | `"inmemory"`           | Legacy storage type selector. Prefer `orgsec.storage.primary`.                           | [Choose storage](../storage/01-choose-storage.md) |
+| `type`                                | `String`  | `"inmemory"`           | Legacy storage type selector. Prefer `orgsec.storage.primary`.                           | [Configuration](../guide/04-configuration.md#choosing-a-storage-backend) |
 | `inmemory.cache-ttl`                  | `int`     | `3600`                 | Reserved; not enforced by the in-memory backend in 1.0.x.                                | [Storage / In-memory](../storage/02-in-memory.md#configuration) |
 | `inmemory.max-entries`                | `int`     | `10000`                | Reserved; not enforced by the in-memory backend in 1.0.x.                                | [Storage / In-memory](../storage/02-in-memory.md#configuration) |
 
@@ -60,8 +60,8 @@ The Person API is consumed by Keycloak's custom protocol mapper to assemble the 
 
 | Property                              | Type      | Default                | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ---------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `enabled`                             | `boolean` | `false`                | Expose `GET /api/orgsec/person/by-user/{userId}`.                                               | [Keycloak Person API](../spring/03-keycloak-person-api.md) |
-| `required-role`                       | `String`  | `"ORGSEC_API_CLIENT"`  | Role required to call the endpoint. Enforced via Spring Security `hasRole(requiredRole)`, which **prepends `ROLE_`** - the authenticated principal must carry authority `ROLE_<requiredRole>` (default: `ROLE_ORGSEC_API_CLIENT`). | [Spring Security](../spring/02-spring-security.md) |
+| `enabled`                             | `boolean` | `false`                | Expose `GET /api/orgsec/person/by-user/{userId}`.                                               | [Cookbook / Keycloak mapper](../cookbook/05-keycloak-mapper.md) |
+| `required-role`                       | `String`  | `"ORGSEC_API_CLIENT"`  | Role required to call the endpoint. Enforced via Spring Security `hasRole(requiredRole)`, which **prepends `ROLE_`** - the authenticated principal must carry authority `ROLE_<requiredRole>` (default: `ROLE_ORGSEC_API_CLIENT`). | [Configuration - Person API](../guide/04-configuration.md#top-level-toggles) |
 
 ---
 
@@ -71,8 +71,8 @@ Each entry under `business-roles` is a *named* business role with a list of supp
 
 | Property                              | Type                    | Default | Description                                                                              | See                                                            |
 | ------------------------------------- | ----------------------- | ------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `<role>.supported-fields`             | `Set<SecurityFieldType>`| `[]`    | Subset of `COMPANY`, `COMPANY_PATH`, `ORG`, `ORG_PATH`, `PERSON` the entity exposes for this role. | [Business roles](../usage/04-business-roles.md) |
-| `<role>.rsql-fields`                  | `Map<String,String>`    | `{}`    | Optional RSQL selector override per security field (`COMPANY`, `COMPANY_PATH`, `ORG`, `ORG_PATH`, `PERSON`). Values must be simple dotted property paths such as `ownerCompanyId` or `ownerCompany.id`. Each configured key must also appear in `<role>.supported-fields` (this includes path types `COMPANY_PATH` and `ORG_PATH`). | [Filter a list endpoint](../usage/07-filter-list-endpoint.md#custom-field-selectors) |
+| `<role>.supported-fields`             | `Set<SecurityFieldType>`| `[]`    | Subset of `COMPANY`, `COMPANY_PATH`, `ORG`, `ORG_PATH`, `PERSON` the entity exposes for this role. | [Privileges and Business Roles](../guide/05-privileges-and-business-roles.md#supported-fields-semantics) |
+| `<role>.rsql-fields`                  | `Map<String,String>`    | `{}`    | Optional RSQL selector override per security field (`COMPANY`, `COMPANY_PATH`, `ORG`, `ORG_PATH`, `PERSON`). Values must be simple dotted property paths such as `ownerCompanyId` or `ownerCompany.id`. Each configured key must also appear in `<role>.supported-fields` (this includes path types `COMPANY_PATH` and `ORG_PATH`). | [RSQL Filtering](../cookbook/03-rsql-filtering.md#custom-rsql-field-selectors) |
 
 ---
 
@@ -84,8 +84,8 @@ Each entry under `business-roles` is a *named* business role with a list of supp
 
 | Property                              | Type      | Default       | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `primary`                             | `String`  | `"memory"`    | Active backend: `memory` / `redis` / `jwt`.                                              | [Choose storage](../storage/01-choose-storage.md) |
-| `fallback`                            | `String`  | `"memory"`    | Reserved/informational in 1.0.x. Exposed by `StorageFeatureFlags` for higher-level routing and future fallback behavior; the Redis backend itself does not fall back to this storage on miss or outage.                                 | [Choose storage](../storage/01-choose-storage.md)      |
+| `primary`                             | `String`  | `"memory"`    | Active backend: `memory` / `redis` / `jwt`.                                              | [Configuration](../guide/04-configuration.md#choosing-a-storage-backend) |
+| `fallback`                            | `String`  | `"memory"`    | Reserved/informational in 1.0.x. Exposed by `StorageFeatureFlags` for higher-level routing and future fallback behavior; the Redis backend itself does not fall back to this storage on miss or outage.                                 | [Configuration - storage selection](../guide/04-configuration.md#choosing-a-storage-backend)      |
 
 ### Feature flags - `orgsec.storage.features.*`
 
@@ -94,7 +94,7 @@ Each entry under `business-roles` is a *named* business role with a list of supp
 | `memory-enabled`                      | `boolean` | `true`  | Activate the in-memory backend (also used as a delegate).                                | [Storage / In-memory](../storage/02-in-memory.md)              |
 | `redis-enabled`                       | `boolean` | `false` | Activate the Redis backend (must be `true` alongside `primary=redis`).                   | [Storage / Redis](../storage/03-redis.md)                      |
 | `jwt-enabled`                         | `boolean` | `false` | Activate the JWT backend (must be `true` alongside `primary=jwt`).                       | [Storage / JWT](../storage/04-jwt.md)                          |
-| `hybrid-mode-enabled`                 | `boolean` | `false` | When `true`, honor `data-sources` per data type. When `false`, route everything to `primary`. | [Hybrid storage](../storage/05-hybrid.md) |
+| `hybrid-mode-enabled`                 | `boolean` | `false` | When `true`, honor `data-sources` per data type. When `false`, route everything to `primary`. | [Configuration](../guide/04-configuration.md#per-data-type-routing-hybrid-mode) |
 
 ### Hybrid-mode routing - `orgsec.storage.data-sources.*`
 
@@ -103,9 +103,9 @@ Each entry routes one entity type to a specific source. Honored only when `hybri
 | Property                              | Type     | Default     | Description                                                                              | See                                                            |
 | ------------------------------------- | -------- | ----------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `person`                              | `String` | `"primary"` | One of `primary`, `memory`, `redis`, `jwt`.                                              | [Storage / JWT](../storage/04-jwt.md#orgsec-configuration)     |
-| `organization`                        | `String` | `"primary"` | One of `primary`, `memory`, `redis`, `jwt`.                                              | [Hybrid storage](../storage/05-hybrid.md) |
-| `role`                                | `String` | `"primary"` | One of `primary`, `memory`, `redis`, `jwt`.                                              | [Hybrid storage](../storage/05-hybrid.md) |
-| `privilege`                           | `String` | `"memory"`  | One of `primary`, `memory`, `redis`, `jwt`. Recommended to keep at `memory`.             | [Hybrid storage](../storage/05-hybrid.md) |
+| `organization`                        | `String` | `"primary"` | One of `primary`, `memory`, `redis`, `jwt`.                                              | [Configuration](../guide/04-configuration.md#per-data-type-routing-hybrid-mode) |
+| `role`                                | `String` | `"primary"` | One of `primary`, `memory`, `redis`, `jwt`.                                              | [Configuration](../guide/04-configuration.md#per-data-type-routing-hybrid-mode) |
+| `privilege`                           | `String` | `"memory"`  | One of `primary`, `memory`, `redis`, `jwt`. Recommended to keep at `memory`.             | [Configuration](../guide/04-configuration.md#per-data-type-routing-hybrid-mode) |
 
 ---
 
@@ -212,10 +212,10 @@ Bound only when `orgsec-storage-redis` is on the classpath. All defaults apply p
 
 | Property                              | Type      | Default | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `enabled`                       | `boolean` | `false` | Audit logging for Redis backend events.                                                  | [Monitoring](../operations/monitoring.md)         |
-| `log-cache-access`              | `boolean` | `false` | Log every cache hit / miss (verbose).                                                    | [Monitoring](../operations/monitoring.md)         |
-| `log-privilege-checks`          | `boolean` | `true`  | Log privilege check events.                                                              | [Monitoring](../operations/monitoring.md)         |
-| `log-config-changes`            | `boolean` | `true`  | Log configuration changes (feature-flag flips).                                          | [Monitoring](../operations/monitoring.md)         |
+| `enabled`                       | `boolean` | `false` | Audit logging for Redis backend events.                                                  | [Configuration](../guide/04-configuration.md#auditing)         |
+| `log-cache-access`              | `boolean` | `false` | Log every cache hit / miss (verbose).                                                    | [Configuration](../guide/04-configuration.md#auditing)         |
+| `log-privilege-checks`          | `boolean` | `true`  | Log privilege check events.                                                              | [Configuration](../guide/04-configuration.md#auditing)         |
+| `log-config-changes`            | `boolean` | `true`  | Log configuration changes (feature-flag flips).                                          | [Configuration](../guide/04-configuration.md#auditing)         |
 
 ---
 
@@ -251,6 +251,6 @@ The test takes less than a second and is cheap to run on every build.
 
 ## Where to go next
 
-- [Spring Boot starter](../spring/01-spring-boot-starter.md) - how the starter uses these properties.
+- [Configuration guide](../guide/04-configuration.md) - how the properties fit together.
 - [Storage / Redis](../storage/03-redis.md) - Redis-specific recommendations.
 - [Storage / JWT](../storage/04-jwt.md) - JWT-specific recommendations.

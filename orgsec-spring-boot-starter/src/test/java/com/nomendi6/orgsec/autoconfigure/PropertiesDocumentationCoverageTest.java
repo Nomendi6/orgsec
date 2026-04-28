@@ -1,6 +1,7 @@
 package com.nomendi6.orgsec.autoconfigure;
 
 import com.nomendi6.orgsec.common.service.BusinessRoleConfiguration;
+import com.nomendi6.orgsec.constants.SecurityFieldType;
 import com.nomendi6.orgsec.storage.inmemory.StorageFeatureFlags;
 import com.nomendi6.orgsec.storage.jwt.config.JwtStorageProperties;
 import com.nomendi6.orgsec.storage.redis.config.RedisStorageProperties;
@@ -22,6 +23,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,6 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Asserts that every property bound by an {@code @ConfigurationProperties} class
  * in the OrgSec library is documented in {@code docs/reference/properties.md},
  * and that the documentation does not list properties that no longer exist.
+ * Also covers the source-driven documentation lists for business roles,
+ * security field types, and OrgSec exception classes.
  *
  * <p>The test walks the public, settable fields of the five canonical configuration
  * classes (and their nested static config classes) and produces canonical
@@ -37,10 +43,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * see {@link #MAP_PLACEHOLDERS} for the enumerated keys per map.
  *
  * <p>This test acts as a single-source-of-truth gate: if you add or remove
- * an {@code @ConfigurationProperties} field, this test will fail until the
- * documentation is updated.
+ * an {@code @ConfigurationProperties} field, a {@link SecurityFieldType},
+ * an example YAML business role, or an {@code Orgsec*Exception} class, this
+ * test will fail until the documentation is updated.
  */
 class PropertiesDocumentationCoverageTest {
+
+    private static final Pattern BUSINESS_ROLE_LINE = Pattern.compile("^\\s{4}([a-z][a-z0-9_-]*):\\s*$");
+    private static final Pattern FENCED_BLOCK = Pattern.compile("(?s)```.*?```");
 
     private static final List<Class<?>> ROOT_PROPERTY_CLASSES = List.of(
         OrgsecProperties.class,
@@ -108,6 +118,63 @@ class PropertiesDocumentationCoverageTest {
 
         assertThat(orphaned)
             .as("Properties documented in docs/reference/properties.md that no @ConfigurationProperties field binds")
+            .isEmpty();
+    }
+
+    @Test
+    void everyBusinessRoleInYamlExampleIsExplained() throws IOException {
+        String docs = readDoc("docs/usage/04-business-roles.md");
+        Set<String> yamlRoles = extractBusinessRolesFromYamlExample(docs);
+        String narrative = stripFencedBlocks(docs);
+
+        TreeSet<String> missing = new TreeSet<>();
+        for (String role : yamlRoles) {
+            if (!narrative.contains("`" + role + "`")) {
+                missing.add(role);
+            }
+        }
+
+        assertThat(yamlRoles)
+            .as("Business roles declared in the YAML example in docs/usage/04-business-roles.md")
+            .isNotEmpty();
+        assertThat(missing)
+            .as("Business roles declared in YAML but not explained in docs/usage/04-business-roles.md narrative")
+            .isEmpty();
+    }
+
+    @Test
+    void everySecurityFieldTypeIsDocumented() throws IOException {
+        String docs = readDoc("docs/usage/04-business-roles.md");
+
+        TreeSet<String> missing = new TreeSet<>();
+        for (SecurityFieldType fieldType : SecurityFieldType.values()) {
+            if (!docs.contains("`" + fieldType.name() + "`")) {
+                missing.add(fieldType.name());
+            }
+        }
+
+        assertThat(missing)
+            .as("SecurityFieldType enum values missing from docs/usage/04-business-roles.md")
+            .isEmpty();
+    }
+
+    @Test
+    void everyOrgsecExceptionIsDocumented() throws IOException {
+        String docs = readDoc("docs/reference/exceptions.md");
+        Set<String> exceptionClasses = collectOrgsecExceptionClasses();
+
+        TreeSet<String> missing = new TreeSet<>();
+        for (String exceptionClass : exceptionClasses) {
+            if (!docs.contains(exceptionClass)) {
+                missing.add(exceptionClass);
+            }
+        }
+
+        assertThat(exceptionClasses)
+            .as("Orgsec*Exception classes discovered in source")
+            .isNotEmpty();
+        assertThat(missing)
+            .as("Orgsec*Exception classes missing from docs/reference/exceptions.md")
             .isEmpty();
     }
 
@@ -241,25 +308,70 @@ class PropertiesDocumentationCoverageTest {
     }
 
     private String readDocs() throws IOException {
-        Path docs = locateDocs();
+        Path docs = locateRepoRoot().resolve("docs/reference/properties.md");
         return Files.readString(docs);
     }
 
-    private Path locateDocs() {
-        Path candidate = Path.of("..", "docs", "reference", "properties.md").toAbsolutePath().normalize();
-        if (Files.exists(candidate)) {
+    private String readDoc(String relativePath) throws IOException {
+        return Files.readString(locateRepoRoot().resolve(relativePath));
+    }
+
+    private Path locateRepoRoot() {
+        Path candidate = Path.of("..").toAbsolutePath().normalize();
+        if (Files.exists(candidate.resolve("docs/reference/properties.md"))) {
             return candidate;
         }
-        candidate = Path.of("docs", "reference", "properties.md").toAbsolutePath().normalize();
-        if (Files.exists(candidate)) {
+        candidate = Path.of(".").toAbsolutePath().normalize();
+        if (Files.exists(candidate.resolve("docs/reference/properties.md"))) {
             return candidate;
         }
         throw new IllegalStateException(
-            "docs/reference/properties.md not found relative to module working directory; tried: "
-                + Path.of("..", "docs", "reference", "properties.md").toAbsolutePath().normalize()
+            "Repository root not found relative to module working directory; tried: "
+                + Path.of("..").toAbsolutePath().normalize()
                 + " and "
-                + Path.of("docs", "reference", "properties.md").toAbsolutePath().normalize()
+                + Path.of(".").toAbsolutePath().normalize()
         );
+    }
+
+    private Set<String> extractBusinessRolesFromYamlExample(String docs) {
+        Set<String> roles = new TreeSet<>();
+        boolean insideBusinessRoles = false;
+        for (String line : docs.split("\n")) {
+            if (line.trim().equals("business-roles:")) {
+                insideBusinessRoles = true;
+                continue;
+            }
+            if (!insideBusinessRoles) {
+                continue;
+            }
+            if (line.startsWith("    ") && !line.startsWith("      ")) {
+                Matcher matcher = BUSINESS_ROLE_LINE.matcher(line);
+                if (matcher.matches()) {
+                    roles.add(matcher.group(1));
+                }
+                continue;
+            }
+            if (!line.isBlank() && !line.startsWith("      ") && !line.startsWith("    ")) {
+                insideBusinessRoles = false;
+            }
+        }
+        return roles;
+    }
+
+    private String stripFencedBlocks(String docs) {
+        return FENCED_BLOCK.matcher(docs).replaceAll("");
+    }
+
+    private Set<String> collectOrgsecExceptionClasses() throws IOException {
+        Path exceptionsDir = locateRepoRoot().resolve("orgsec-core/src/main/java/com/nomendi6/orgsec/exceptions");
+        try (Stream<Path> files = Files.walk(exceptionsDir)) {
+            return files
+                .filter(Files::isRegularFile)
+                .map(path -> path.getFileName().toString())
+                .filter(name -> name.startsWith("Orgsec") && name.endsWith("Exception.java"))
+                .map(name -> name.substring(0, name.length() - ".java".length()))
+                .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+        }
     }
 
     /**

@@ -4,8 +4,6 @@ The Redis backend is the answer to the in-memory backend's only structural probl
 
 > **Important - how reads behave on cache miss.** The 1.0.x Redis backend is a *cache*, not a read-through facade. It serves whatever has been *put into the caches* - through the preload step at startup, through `notifyXxxChanged` calls from your domain code, or through Pub/Sub fan-out from another instance. On L1+L2 miss `getPerson` / `getOrganization` / etc. return `null`. There is no automatic database fall-through. Plan your warmup and your invalidation calls accordingly.
 
-Redis stores the user-grant side of authorization. It does not set or repair Resource Security Context fields on ordinary protected rows.
-
 ## Architecture
 
 ```mermaid
@@ -147,7 +145,7 @@ orgsec:
 
 Enabling invalidation does not change the *write* path - that still calls `notifyXxxChanged` directly. It changes the *read* path on remote instances: when one instance publishes an invalidation, all subscribers drop their L1 entry. The next read on a remote instance falls through to L2; on L2 miss it returns `null` (the Redis backend never reads from your database directly).
 
-For a deeper recipe on the right places to call `notifyXxxChanged`, see [Usage / Load security data](../usage/08-load-security-data.md).
+For a deeper recipe on the right places to call `notifyXxxChanged`, see [Cookbook / Cache invalidation](../cookbook/04-cache-invalidation.md).
 
 ## Preload strategies
 
@@ -254,7 +252,7 @@ The full list with rationale is in [Operations / Production checklist](../operat
 
 ## Where to go next
 
-- [Choose storage](./01-choose-storage.md) - the decision tree.
-- [Archive / Redis app](../archive/v1/examples/redis-app.md) - copy-paste-friendly project.
-- [Usage / Load security data](../usage/08-load-security-data.md) - when and where to call notify hooks.
+- [Storage Overview](./01-overview.md) - the decision tree.
+- [Examples / Redis app](../examples/redis-app.md) - copy-paste-friendly project.
+- [Cookbook / Cache invalidation](../cookbook/04-cache-invalidation.md) - when and where to call notify hooks.
 - [Operations / Production checklist](../operations/production-checklist.md) - pre-deployment checks.

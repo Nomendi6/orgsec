@@ -1,6 +1,6 @@
 # Architecture Overview
 
-This page is the architecture reference for advanced users and contributors. It covers how the modules layer, how the beans wire at startup, what runs on which thread, and where the natural extension points are. The audience is someone who has read [Core Concepts](../reference/concepts.md) and now wants to know *why* OrgSec is shaped the way it is.
+This page is the architecture reference for advanced users and contributors. It covers how the modules layer, how the beans wire at startup, what runs on which thread, and where the natural extension points are. The audience is someone who has read [Core Concepts](../guide/03-core-concepts.md) and now wants to know *why* OrgSec is shaped the way it is.
 
 ## Module layering
 
@@ -25,8 +25,8 @@ flowchart TB
     Core --> Starter
     Common --> Starter
     InMem --> Starter
-    Redis -.->|optional| Starter
-    Jwt -.->|optional| Starter
+    Redis -. optional .-> Starter
+    Jwt -. optional .-> Starter
 ```
 
 Three rules govern what depends on what:
@@ -70,7 +70,7 @@ flowchart LR
     BRC --> PC
     BRC --> RFB
     PC --> RFB
-    SCP -.->|uses| PC
+    SCP -. uses .-> PC
 ```
 
 A few load-bearing observations:
@@ -152,7 +152,7 @@ public class MyBackend implements SecurityDataStorage {
 
 The notify hooks (`notifyPersonChanged`, `notifyOrganizationChanged`, ...) are optional but strongly recommended - without them, the cache cannot be invalidated incrementally, and only `refresh()` (full reload) keeps it correct.
 
-For the contract details, the source is the authoritative reference: [`SecurityDataStorage.java`](https://github.com/Nomendi6/orgsec/blob/main/orgsec-core/src/main/java/com/nomendi6/orgsec/storage/SecurityDataStorage.java). The full implementation walkthrough is in [Architecture / Custom storage backend](../architecture/custom-backend.md).
+For the contract details, the source is the authoritative reference: [`SecurityDataStorage.java`](https://github.com/Nomendi6/orgsec/blob/main/orgsec-core/src/main/java/com/nomendi6/orgsec/storage/SecurityDataStorage.java). The full implementation walkthrough is in [Cookbook / Custom storage backend](../cookbook/06-custom-storage-backend.md).
 
 ## Where the design choices come from
 
@@ -170,4 +170,4 @@ A few non-obvious shapes in the architecture and the reason behind each:
 - [Architecture / Auto-configuration](./auto-configuration.md) - what Spring Boot wires when.
 - [Architecture / Privilege evaluation](./privilege-evaluation.md) - step-by-step `hasRequiredOperation`.
 - [Architecture / Cache architecture](./cache-architecture.md) - L1/L2 internals.
-- [Architecture / Custom storage backend](../architecture/custom-backend.md) - implement a fourth backend.
+- [Cookbook / Custom storage backend](../cookbook/06-custom-storage-backend.md) - implement a fourth backend.

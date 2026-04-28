@@ -210,4 +210,4 @@ The reason is non-policy: a metrics binder forces a Micrometer dependency on eve
 - [Operations / Production checklist](./production-checklist.md) - what monitoring to enable before going live.
 - [Operations / Troubleshooting](./troubleshooting.md) - runbook.
 - [Storage / Redis - Health and monitoring](../storage/03-redis.md#health-and-monitoring) - Redis-specific signals.
-- [Monitoring](../operations/monitoring.md) - the `audit-logging` flag in context.
+- [Configuration - Auditing](../guide/04-configuration.md#auditing) - the `audit-logging` flag in context.

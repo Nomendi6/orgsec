@@ -53,7 +53,7 @@ The `redis.enabled: true` flag gates `RedisStorageAutoConfiguration` through `@C
 - Two custom `SecurityDataStorage` beans, both without `@Primary`.
 - Mixing a community-contributed storage backend with an OrgSec-bundled one without coordinating which is `@Primary`.
 
-**Fix.** Mark exactly one `SecurityDataStorage` bean as `@Primary`, or constrain the others with `@Qualifier("...")` so they are not eligible for primary injection. If you want OrgSec's bundled backend to win, leave it as the only `@Primary` bean and remove `@Primary` from the others. See [Choose storage](../storage/01-choose-storage.md) and [Architecture / Auto-configuration](../architecture/auto-configuration.md#override-patterns).
+**Fix.** Mark exactly one `SecurityDataStorage` bean as `@Primary`, or constrain the others with `@Qualifier("...")` so they are not eligible for primary injection. If you want OrgSec's bundled backend to win, leave it as the only `@Primary` bean and remove `@Primary` from the others. See [Configuration - Choosing a storage backend](../guide/04-configuration.md#choosing-a-storage-backend) and [Architecture / Auto-configuration](../architecture/auto-configuration.md#override-patterns).
 
 ## Privilege checks return `false` unexpectedly
 
@@ -62,8 +62,8 @@ The `redis.enabled: true` flag gates `RedisStorageAutoConfiguration` through `@C
 Most common causes, in order:
 
 1. **The path columns on the entity are null.** A `_COMPHD` / `_ORGHD` privilege fails closed when the entity returns `null` for `COMPANY_PATH` / `ORG_PATH`. Check that your `getSecurityField(role, COMPANY_PATH)` returns the pipe-delimited path (`|1|10|22|`), not `null` - and that you denormalize the path on entity write.
-2. **The business role's `supported-fields` list is wrong.** A role declared as `supported-fields: [COMPANY]` cannot evaluate hierarchical privileges - OrgSec will not even ask for `COMPANY_PATH`. See [Business roles](../usage/04-business-roles.md).
-3. **The cache holds a stale `PersonDef`.** Especially likely on Redis - calling `notifyPersonChanged` only invalidates L1, not L2. For revocations use `updatePerson` after commit (see [Usage / Load security data](../usage/08-load-security-data.md)).
+2. **The business role's `supported-fields` list is wrong.** A role declared as `supported-fields: [COMPANY]` cannot evaluate hierarchical privileges - OrgSec will not even ask for `COMPANY_PATH`. See [Privileges and Business Roles - supported-fields semantics](../guide/05-privileges-and-business-roles.md#supported-fields-semantics).
+3. **The cache holds a stale `PersonDef`.** Especially likely on Redis - calling `notifyPersonChanged` only invalidates L1, not L2. For revocations use `updatePerson` after commit (see [Cookbook / Cache invalidation](../cookbook/04-cache-invalidation.md)).
 4. **`personId` mismatch.** If `SecurityContextProvider.getCurrentUserLogin()` returns the OAuth2 `sub` (a UUID) and your `PersonDataProvider` looks up by login (a username), the lookup may fail silently and yield no `PersonDef`. Add a debug log to check what is actually being passed.
 5. **`anonymousUser` slipped through.** Spring Security populates `Authentication` with principal `"anonymousUser"` for `permitAll()` paths. `SpringSecurityContextProvider` filters this out, but a custom provider may not. Replicate the filter (`!"anonymousUser".equals(principal)`).
 
@@ -102,7 +102,7 @@ Then turn on `DEBUG` logging for `com.nomendi6.orgsec.storage.redis.invalidation
 
 **Cause.** `notify` clears L1 across instances but does **not** refresh L2. Remote instances re-read from L2 and see the *old* value.
 
-**Fix.** For revocations and other immediate-freshness changes, use `updatePerson` (write-through) after the database commit. See [Usage / Load security data - Recipe 3 Redis variant](../usage/08-load-security-data.md).
+**Fix.** For revocations and other immediate-freshness changes, use `updatePerson` (write-through) after the database commit. See [Cookbook / Cache invalidation - Recipe 3 Redis variant](../cookbook/04-cache-invalidation.md#redis-variant-update-after-commit).
 
 ### `notifyXxxChanged` not called on a domain change
 
@@ -152,13 +152,13 @@ If the circuit stays open forever, your Redis password / TLS / network is miscon
 
 **Cause.** The mapper's service-account principal does not carry the authority `ROLE_<requiredRole>`.
 
-**Fix.** Spring Security's `hasRole(...)` prepends `ROLE_` automatically. With the default `required-role: ORGSEC_API_CLIENT`, the principal must have `ROLE_ORGSEC_API_CLIENT`. Configure a `JwtAuthenticationConverter` that produces `ROLE_*` authorities from your IdP's claims (typically by reading `realm_access.roles` and prefixing). See [Keycloak Person API](../spring/03-keycloak-person-api.md) and [Spring Security Integration - Authority vs role](../spring/02-spring-security.md#authority-vs-role).
+**Fix.** Spring Security's `hasRole(...)` prepends `ROLE_` automatically. With the default `required-role: ORGSEC_API_CLIENT`, the principal must have `ROLE_ORGSEC_API_CLIENT`. Configure a `JwtAuthenticationConverter` that produces `ROLE_*` authorities from your IdP's claims (typically by reading `realm_access.roles` and prefixing). See [Cookbook / Keycloak mapper](../cookbook/05-keycloak-mapper.md) and [Spring Security Integration - Authority vs role](../guide/06-spring-security-integration.md#authority-vs-role).
 
 ### Person API returns `401 Unauthorized`
 
 **Cause.** No valid JWT on the request.
 
-**Fix.** Verify the mapper's static bearer token is still valid (the mapper does not refresh it). If it has expired, paste a fresh token into the mapper config. For long-running deployments consider switching to `api-key` auth with infrastructure-managed rotation - see [Keycloak Person API - Choosing the auth type](../spring/03-keycloak-person-api.md#choosing-the-auth-type).
+**Fix.** Verify the mapper's static bearer token is still valid (the mapper does not refresh it). If it has expired, paste a fresh token into the mapper config. For long-running deployments consider switching to `api-key` auth with infrastructure-managed rotation - see [Cookbook / Keycloak mapper - Choosing the auth type](../cookbook/05-keycloak-mapper.md#choosing-the-auth-type).
 
 ## JWT-specific issues
 
@@ -195,7 +195,7 @@ If the circuit stays open forever, your Redis password / TLS / network is miscon
 **Fix sequence:**
 
 - For **in-memory**, a single `notifyPersonChanged(personId)` call after commit (Recipe 3 from Cache invalidation) reloads the entity.
-- For **Redis**, replace the notify with a reload + `updatePerson(personId, fresh)` call from an `AFTER_COMMIT` listener. The reload should happen *after* the JPA transaction commits to avoid pre-commit / rollback races. See [Usage / Load security data - Redis variant](../usage/08-load-security-data.md).
+- For **Redis**, replace the notify with a reload + `updatePerson(personId, fresh)` call from an `AFTER_COMMIT` listener. The reload should happen *after* the JPA transaction commits to avoid pre-commit / rollback races. See [Cookbook / Cache invalidation - Redis variant](../cookbook/04-cache-invalidation.md#redis-variant-update-after-commit).
 - For an immediate emergency fix without a code change, restart the affected JVM (in-memory) or wait for the L2 TTL (Redis); both are last-resort options.
 
 ### After role change, only some instances see the new value
@@ -208,5 +208,5 @@ If the circuit stays open forever, your Redis password / TLS / network is miscon
 
 - [Operations / Production checklist](./production-checklist.md) - preventive items.
 - [Operations / Monitoring](./monitoring.md) - what to watch.
-- [Usage / Load security data](../usage/08-load-security-data.md) - the canonical reference for `notify` / `update` semantics.
-- [Configuration](../reference/properties.md) - full property reference.
+- [Cookbook / Cache invalidation](../cookbook/04-cache-invalidation.md) - the canonical reference for `notify` / `update` semantics.
+- [Configuration](../guide/04-configuration.md) - full property reference.

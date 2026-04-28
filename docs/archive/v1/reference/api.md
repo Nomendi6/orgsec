@@ -4,12 +4,6 @@ This page is the index of OrgSec's public Java API - the types you can depend on
 
 The numbers here cover **OrgSec 1.0.x**. Internal helpers and implementation classes that are not in the tables below should be considered unstable, even if they are technically `public`.
 
-## Fixture API
-
-`com.nomendi6.orgsec.storage.inmemory.fixtures.OrgsecInMemoryFixtures` is a programmatic helper for tests, examples, and demos using the in-memory backend. It can register privileges, companies, organizations, roles, business role tags, persons, memberships, and then atomically apply the fixture to in-memory storage.
-
-Production data should normally flow through `SecurityQueryProvider` or another storage adapter.
-
 ## Generating Javadoc
 
 ```bash
@@ -154,7 +148,7 @@ For the full handling guidance see [Reference / Exceptions](./exceptions.md).
 
 ## Service-layer call patterns
 
-Two API call patterns dominate application code. Both are described in narrative form in the First Working Example and usage guides; they are listed here as the canonical entry points.
+Two API call patterns dominate application code. Both are described in narrative form in the Quick Start and the cookbook; they are listed here as the canonical entry points.
 
 ### Programmatic single-entity check
 
@@ -175,7 +169,7 @@ String rsql = rsqlFilterBuilder.buildRsqlFilterForReadPrivileges(
 
 ## Where to go next
 
-- [Core Concepts](../reference/concepts.md) - the narrative.
+- [Core Concepts](../guide/03-core-concepts.md) - the narrative.
 - [Privilege Model Reference](./privilege-model.md) - truth tables.
 - [Reference / Properties](./properties.md) - configuration surface.
 - [Reference / Exceptions](./exceptions.md) - failure modes.

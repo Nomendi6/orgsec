@@ -135,8 +135,6 @@ No path comparison - just an id equality.
 
 ## Worked example 1: `_COMPHD_R` allows access to a descendant company
 
-This is a non-canonical path example used only to show the company-scope string comparison. The onboarding example uses Acme / EU Region / Shop-22 paths.
-
 Setup:
 
 - Caller `Alice` holds position role `REGION_MANAGER` at org `O22`. The role grants `DOCUMENT_COMPHD_R`.
@@ -170,7 +168,7 @@ Trace:
 4. The cascade falls through to org / person checks, both of which are not in the privilege (`org == NONE`, `person == false`), so the cascade does not match.
 5. `checkOrganizationPrivilege` returns `false`. **Denied.**
 
-The two examples differ only in the entity's company path. The implementation is one `String.startsWith` call away from being right or wrong - this is why the path-denormalization and validation rules in [Usage / Security-enabled entity](../usage/01-security-enabled-entity.md) matter.
+The two examples differ only in the entity's company path. The implementation is one `String.startsWith` call away from being right or wrong - this is why the path-denormalization and validation rules in [Cookbook / Securing entities](../cookbook/02-securing-entities.md) matter.
 
 ## Worked example 3: external auditor with `_ALL` privilege
 
@@ -214,6 +212,6 @@ For evaluation, the only thing that matters is the final aggregated `PrivilegeDe
 ## Where to go next
 
 - [Reference / Privilege model](../reference/privilege-model.md) - truth tables and aggregation.
-- [Privileges](../usage/05-privileges.md) - the narrative.
+- [Privileges and Business Roles](../guide/05-privileges-and-business-roles.md) - the narrative.
 - [Architecture / Cache architecture](./cache-architecture.md) - how cached `PersonDef` / `OrganizationDef` instances reach the evaluator.
-- [Usage / Security-enabled entity](../usage/01-security-enabled-entity.md) - how the entity exposes the fields the evaluator reads.
+- [Cookbook / Securing entities](../cookbook/02-securing-entities.md) - how the entity exposes the fields the evaluator reads.
