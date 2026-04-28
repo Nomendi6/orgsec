@@ -182,7 +182,7 @@ public void register() {
 
 `allowOrg(company, org, person)` sets all three scope axes in one call. The `name` and `resourceName` fields are bookkeeping - OrgSec uses them in audit messages and aggregated views. Use this sparingly; the convention exists so that aggregation produces predictable identifier names.
 
-> **Note on `EXECUTE`.** `PrivilegeOperation.EXECUTE` exists in the enum and `PrivilegeDef.allowOperation(EXECUTE)` is accepted, but `PrivilegeChecker.hasRequiredOperation(..., EXECUTE)` always returns `false` in 1.0.x - the method does not have an `EXECUTE` branch. Privileges built with `EXECUTE` (or registered through identifiers ending in `_E`) register cleanly but never satisfy a standard authorization check until that branch lands. Until then, prefer `WRITE` for any operation that should be authorized through the standard flow, or model execute-style operations as a separate resource with `READ` / `WRITE` privileges.
+> **Note on `EXECUTE`.** `PrivilegeOperation.EXECUTE` is an independent operation. A privilege built with `EXECUTE` (or registered through an identifier ending in `_E`) satisfies `hasRequiredOperation(..., EXECUTE)`, but it does not imply `READ` or `WRITE`; `READ` and `WRITE` also do not imply `EXECUTE`.
 
 ## Recipe 9: testing privilege evaluation
 

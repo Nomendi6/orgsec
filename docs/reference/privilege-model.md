@@ -48,13 +48,9 @@ The notable cell is `READ + EXECUTE = READ`. When two position roles grant `_R` 
 | `NONE`            | `false`            | `false`             | `false`               |
 | `READ`            | `true`             | `false`             | `false`               |
 | `WRITE`           | `true`             | `true`              | `false`               |
-| `EXECUTE`         | `false`            | `false`             | `false`               |
+| `EXECUTE`         | `false`            | `false`             | `true`                |
 
-In 1.0.x the method has explicit branches for `WRITE` and `READ` only. **There is no branch for `EXECUTE`** - calls with `requested == EXECUTE` always return `false`, even when `granted.operation == EXECUTE`. If you need execute-style operations in 1.0.x, model them as a separate resource with `_R` privileges, or call into the lower-level evaluator with the right operation by hand. The missing branch will be addressed in a future release; until then, treat `EXECUTE` as effectively unsupported by `hasRequiredOperation`.
-
-This also means the `_E` privilege identifiers parsed by `PrivilegeLoader.createPrivilegeDefinition` (which produce `PrivilegeDef.operation = EXECUTE`) are accepted at registration time but never satisfy a check through `hasRequiredOperation`.
-
-`WRITE` *implies* `READ` in the table above; that is the only widening the method does.
+`WRITE` *implies* `READ` in the table above; that is the only widening the method does. `EXECUTE` is a separate action: it satisfies only an `EXECUTE` request, and `READ` / `WRITE` do not satisfy `EXECUTE`.
 
 ## Direction enum
 
