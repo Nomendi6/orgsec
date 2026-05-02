@@ -54,7 +54,7 @@ The flow:
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-storage-jwt</artifactId>
-    <version>1.0.3</version>
+    <version>2.0.0-SNAPSHOT</version>
 </dependency>
 ```
 

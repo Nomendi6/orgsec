@@ -1,9 +1,8 @@
 package com.nomendi6.orgsec.storage.redis.invalidation;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.RedisTemplate;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -57,7 +56,7 @@ class InvalidationEventPublisherTest {
     void shouldNotPropagateSerializationFailure() throws Exception {
         RedisTemplate<String, String> redisTemplate = mock(RedisTemplate.class);
         ObjectMapper objectMapper = mock(ObjectMapper.class);
-        doThrow(new JsonProcessingException("bad json") {}).when(objectMapper).writeValueAsString(org.mockito.ArgumentMatchers.any());
+        doThrow(new RuntimeException("bad json")).when(objectMapper).writeValueAsString(org.mockito.ArgumentMatchers.any());
         InvalidationEventPublisher publisher = new InvalidationEventPublisher(
                 redisTemplate, "channel", false, "instance-1", objectMapper);
 

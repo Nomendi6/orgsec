@@ -1,10 +1,10 @@
 package com.nomendi6.orgsec.storage.redis.invalidation;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nomendi6.orgsec.storage.redis.cache.L1Cache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.connection.Message;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;

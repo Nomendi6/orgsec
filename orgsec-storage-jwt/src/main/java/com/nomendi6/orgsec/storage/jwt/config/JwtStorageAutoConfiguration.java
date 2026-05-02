@@ -1,6 +1,5 @@
 package com.nomendi6.orgsec.storage.jwt.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nomendi6.orgsec.storage.SecurityDataStorage;
 import com.nomendi6.orgsec.storage.jwt.JwtClaimsParser;
 import com.nomendi6.orgsec.storage.jwt.JwtSecurityDataStorage;
@@ -18,6 +17,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.Ordered;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Auto-configuration for JWT storage.

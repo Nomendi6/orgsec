@@ -19,7 +19,7 @@ Thank you for your interest in contributing to OrgSec!
 
 ### Requirements
 
-- Java 17+
+- Java 21+ (the 1.0.x maintenance line builds on Java 17)
 - Maven 3.6+
 - Docker (for Redis integration tests)
 

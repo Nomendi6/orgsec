@@ -70,11 +70,11 @@ Not in 1.0.x. The library targets servlet-stack Spring Security and uses `Thread
 | 1.0.x       | Java 17      |
 | 2.0.x       | Java 21      |
 
-OrgSec is built and tested against the *minimum*. Newer Java versions (Java 21, Java 25) work as long as your Spring Boot version supports them. There is no upper bound.
+OrgSec is built and tested against the *minimum*. OrgSec 2.0.x also has a Java 25 smoke profile that keeps emitted bytecode at Java 21. There is no upper bound beyond what the active Spring Boot line supports.
 
 ## Is OrgSec production-ready?
 
-OrgSec 1.0.x is the first publicly released line. It went through a security review before the 1.0.1 release; the findings (fail-closed cascade, JWT decoder requirement, Person API authorization, Redis TLS guidance) are reflected in the code and in this documentation. Read the [Security Policy](../SECURITY.md) for the disclosure process.
+OrgSec 1.0.x is the first publicly released line. OrgSec 2.0.x moves that baseline to Spring Boot 4 / Spring Security 7 while keeping the public storage and privilege SPIs source-compatible unless the changelog says otherwise. Read the [Security Policy](../SECURITY.md) for the disclosure process.
 
 The library does not ship a "production-ready" badge. Read the documentation, the [CHANGELOG](../CHANGELOG.md), and the [Production Checklist](./operations/production-checklist.md), and decide for yourself.
 

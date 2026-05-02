@@ -51,7 +51,7 @@ Redis is opt-in - add the dependency:
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-storage-redis</artifactId>
-    <version>1.0.3</version>
+    <version>2.0.0-SNAPSHOT</version>
 </dependency>
 ```
 

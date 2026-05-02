@@ -1,6 +1,6 @@
 # Properties Reference
 
-This is the complete catalogue of OrgSec configuration properties for the **1.0.x** line. The list is generated from the five `@ConfigurationProperties` classes in the codebase and is verified by `PropertiesDocumentationCoverageTest` - if you add or remove a property in the source, the test will fail until this file is updated.
+This is the complete catalogue of OrgSec configuration properties for the **2.0.x** line. The list is generated from the five `@ConfigurationProperties` classes in the codebase and is verified by `PropertiesDocumentationCoverageTest` - if you add or remove a property in the source, the test will fail until this file is updated.
 
 If you are looking for the *narrative* explanation of a property, follow the link in the **See** column. If you are looking up "what does this property do?", the table on this page is authoritative.
 

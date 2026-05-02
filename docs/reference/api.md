@@ -2,7 +2,7 @@
 
 This page is the index of OrgSec's public Java API - the types you can depend on, grouped by purpose. The truth is in the source code and the auto-generated Javadoc; this page exists so you can see the *shape* of the surface in one place.
 
-The numbers here cover **OrgSec 1.0.x**. Internal helpers and implementation classes that are not in the tables below should be considered unstable, even if they are technically `public`.
+The numbers here cover **OrgSec 2.0.x**. Internal helpers and implementation classes that are not in the tables below should be considered unstable, even if they are technically `public`.
 
 ## Fixture API
 
@@ -24,7 +24,7 @@ mvn javadoc:aggregate
 # Aggregated HTML at target/site/apidocs/index.html
 ```
 
-There is no published Javadoc URL for 1.0.x as of this writing; build it locally or consult the source on GitHub.
+There is no published Javadoc URL for 2.0.x as of this writing; build it locally or consult the source on GitHub.
 
 ## Stability annotations
 

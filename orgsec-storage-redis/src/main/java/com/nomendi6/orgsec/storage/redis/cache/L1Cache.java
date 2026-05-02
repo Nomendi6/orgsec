@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * L1 (in-memory) cache with LRU eviction policy.
  * <p>
- * This cache stores frequently accessed objects in memory for fast retrieval (< 0.1ms latency).
+ * This cache stores frequently accessed objects in memory for fast retrieval (&lt; 0.1ms latency).
  * When the cache reaches its maximum size, the least recently used entry is automatically evicted.
  * </p>
  * <p>

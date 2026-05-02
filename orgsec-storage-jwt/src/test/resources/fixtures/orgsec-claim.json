@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "person": {
+    "id": 42,
+    "name": "Alice OrgSec",
+    "relatedUserId": "keycloak-user-42",
+    "relatedUserLogin": "alice",
+    "defaultCompanyId": 10,
+    "defaultOrgunitId": 101
+  },
+  "memberships": [
+    {
+      "organizationId": 101,
+      "companyId": 10,
+      "pathId": "|10|101|",
+      "positionRoleIds": [1001, 1002]
+    },
+    {
+      "organizationId": 102,
+      "companyId": 10,
+      "pathId": "|10|102|",
+      "positionRoleIds": []
+    }
+  ]
+}
