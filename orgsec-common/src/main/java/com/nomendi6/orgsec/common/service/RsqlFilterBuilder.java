@@ -261,7 +261,11 @@ public class RsqlFilterBuilder {
                 }
                 return companyUpClause;
             default:
-                return "";
+                // Unhandled direction (e.g. ALL, which is not a valid company/org scope - 'all' is a
+                // separate flag). Returning "" would mark the privilege as present with no filter,
+                // i.e. grant unfiltered access. Fail closed instead.
+                log.warn("Unsupported company privilege direction {} - denying", direction);
+                return null;
         }
     }
 
@@ -296,7 +300,9 @@ public class RsqlFilterBuilder {
                 }
                 return orgUpClause;
             default:
-                return "";
+                // See buildCompanyFilter: an unhandled direction must deny, not grant unfiltered.
+                log.warn("Unsupported organization privilege direction {} - denying", direction);
+                return null;
         }
     }
 
