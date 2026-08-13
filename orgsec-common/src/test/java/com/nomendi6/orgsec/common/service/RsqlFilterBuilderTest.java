@@ -75,7 +75,8 @@ class RsqlFilterBuilderTest {
 
         String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
-        assertThat(filter).isEqualTo("(ownerCompanyPath=*'*|1|10|')");
+        // Ancestors are enumerated as path prefixes; a suffix LIKE would match the principal only.
+        assertThat(filter).isEqualTo("(ownerCompanyPath=in=('|1|','|1|10|'))");
     }
 
     @Test
@@ -114,7 +115,51 @@ class RsqlFilterBuilderTest {
 
         String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
-        assertThat(filter).isEqualTo("(ownerOrgPath=*'*|1|10|')");
+        // Ancestors are enumerated as path prefixes; a suffix LIKE would match the principal only.
+        assertThat(filter).isEqualTo("(ownerOrgPath=in=('|1|','|1|10|'))");
+    }
+
+    @Test
+    void shouldEnumerateEveryAncestorPrefixForOrgHierarchyUp() {
+        when(storage.getPerson(1L)).thenReturn(personWithPrivilege(
+            "owner",
+            privilege(PrivilegeDirection.NONE, PrivilegeDirection.HIERARCHY_UP, false),
+            "|A|B|C|"
+        ));
+
+        String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
+
+        // Every ancestor plus the principal itself, each prefix keeping its trailing separator so
+        // that |A| cannot match an unrelated |AX| branch.
+        assertThat(filter).isEqualTo("(ownerOrgPath=in=('|A|','|A|B|','|A|B|C|'))");
+    }
+
+    @Test
+    void shouldNotEmitSuffixLikeFormForHierarchyUp() {
+        when(storage.getPerson(1L)).thenReturn(personWithPrivilege(
+            "owner",
+            privilege(PrivilegeDirection.NONE, PrivilegeDirection.HIERARCHY_UP, false),
+            "|A|B|C|"
+        ));
+
+        String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
+
+        // 'col LIKE %path' matches the principal's own path and no ancestor at all.
+        assertThat(filter).doesNotContain("=*'*");
+    }
+
+    @Test
+    void shouldKeepPrefixLikeFormForHierarchyDown() {
+        when(storage.getPerson(1L)).thenReturn(personWithPrivilege(
+            "owner",
+            privilege(PrivilegeDirection.NONE, PrivilegeDirection.HIERARCHY_DOWN, false),
+            "|A|B|C|"
+        ));
+
+        String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
+
+        // A subtree IS expressible as a prefix pattern, so HIERARCHY_DOWN is unchanged.
+        assertThat(filter).isEqualTo("(ownerOrgPath=*'|A|B|C|*')");
     }
 
     @Test
@@ -191,7 +236,7 @@ class RsqlFilterBuilderTest {
         ));
         String orgFilter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
-        assertThat(companyFilter).isEqualTo("(ownerCompanyHierarchy=*'*|1|10|')");
+        assertThat(companyFilter).isEqualTo("(ownerCompanyHierarchy=in=('|1|','|1|10|'))");
         assertThat(orgFilter).isEqualTo("(ownerOrganizationHierarchy=*'|1|10|*')");
     }
 
