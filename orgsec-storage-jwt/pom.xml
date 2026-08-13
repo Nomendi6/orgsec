@@ -8,7 +8,7 @@
     <parent>
         <groupId>com.nomendi6.orgsec</groupId>
         <artifactId>orgsec-parent</artifactId>
-        <version>1.0.3</version>
+        <version>2.0.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>orgsec-storage-jwt</artifactId>
@@ -107,15 +107,24 @@
 
         <!-- JSON -->
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
+            <groupId>tools.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <!--
+            JwtClaimsParser is constructor-injected with an ObjectMapper bean. In Spring Boot 3
+            that bean came from JacksonAutoConfiguration inside spring-boot-autoconfigure; in
+            Spring Boot 4 the Jackson auto-configuration moved to its own artifact, so it must be
+            declared explicitly rather than relied upon transitively.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-jackson</artifactId>
         </dependency>
 
         <!-- Apache Commons -->
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
-            <version>${commons-lang3.version}</version>
         </dependency>
 
         <!-- Logging -->
@@ -128,19 +137,16 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>${mockito.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
-            <version>${assertj.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>

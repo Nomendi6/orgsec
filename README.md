@@ -1,7 +1,7 @@
 # OrgSec
 
-[![Java](https://img.shields.io/badge/Java-17%2B-blue)](https://openjdk.org/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.14-green)](https://spring.io/projects/spring-boot)
+[![Java](https://img.shields.io/badge/Java-21%2B-blue)](https://openjdk.org/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.6-green)](https://spring.io/projects/spring-boot)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 OrgSec is a Spring Boot library that adds organizational role-based access control (RBAC) to Java applications. It models access as **privileges** scoped to a **business role** (`owner`, `customer`, `contractor`, ...) within an **organizational hierarchy**, evaluates them at runtime, and serves authorization data through a pluggable storage backend (in-memory, Redis, or JWT).
@@ -32,7 +32,7 @@ The full documentation lives in [`docs/`](./docs/index.md).
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-spring-boot-starter</artifactId>
-    <version>1.0.3</version>
+    <version>2.0.0-SNAPSHOT</version>
 </dependency>
 ```
 
@@ -47,30 +47,33 @@ orgsec:
       supported-fields: [COMPANY, COMPANY_PATH]
 ```
 
-Then implement `SecurityEnabledEntity` on your domain class, register your privileges through a `PrivilegeDefinitionProvider`, and inject `PrivilegeChecker` where you need to make a decision. The full path is in the [Quick Start](./docs/guide/02-quick-start.md) (under thirty minutes) and the in-memory [example app](./docs/examples/in-memory-app.md).
+Then implement `SecurityEnabledEntity` on your domain class, register your privileges through a `PrivilegeDefinitionProvider`, and inject `PrivilegeChecker` where you need to make a decision. The full path is in [First Working Example](./docs/start-here/04-first-working-example.md).
 
 ## Documentation
 
 - [Documentation home](./docs/index.md)
-- [Introduction](./docs/guide/01-introduction.md) - what OrgSec solves and when to use it
-- [Quick Start](./docs/guide/02-quick-start.md) - first privilege check in 30 minutes
-- [Core Concepts](./docs/guide/03-core-concepts.md) - the privilege model in depth
-- [Configuration](./docs/guide/04-configuration.md) - every `orgsec.*` property in context
-- [Storage Overview](./docs/storage/01-overview.md) - pick a backend
+- [What is OrgSec](./docs/start-here/01-what-is-orgsec.md) - what OrgSec solves and when to use it
+- [First Working Example](./docs/start-here/04-first-working-example.md) - first privilege check end to end
+- [Privileges](./docs/usage/05-privileges.md) - the privilege model in depth
+- [Business Roles](./docs/usage/04-business-roles.md) - how business roles map to security fields
+- [Choose Storage](./docs/storage/01-choose-storage.md) - pick a backend
 - [Properties Reference](./docs/reference/properties.md) - every property name, type, default
 
 ## Compatibility
 
 | OrgSec version | Spring Boot   | Spring Security | Java | Status                                       |
 | -------------- | ------------- | --------------- | ---- | -------------------------------------------- |
-| **1.0.x**      | 3.5.x         | 6.x             | 17   | Current GA; receives security and bug fixes  |
-| 2.0.x          | 4.x (planned) | 7.x (planned)   | 21   | In development; not yet released             |
+| **2.0.x**      | 4.0.x         | 7.x             | 21   | Current development line; GA target          |
+| 1.0.x          | 3.5.x         | 6.x             | 17   | Maintenance line for Spring Boot 3 apps      |
 
 ## Building
 
 ```bash
 # Full build with tests
 mvn clean install
+
+# Java 25 supported smoke, still emitting Java 21 bytecode
+mvn clean install -Pjava25
 
 # Build without tests
 mvn clean install -DskipTests

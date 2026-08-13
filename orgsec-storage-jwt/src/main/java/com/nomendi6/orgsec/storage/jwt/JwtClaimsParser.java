@@ -1,6 +1,5 @@
 package com.nomendi6.orgsec.storage.jwt;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nomendi6.orgsec.helper.PathSanitizer;
 import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.PersonDef;
@@ -13,6 +12,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 import java.util.Map;

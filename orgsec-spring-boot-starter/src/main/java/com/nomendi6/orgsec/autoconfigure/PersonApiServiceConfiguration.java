@@ -10,8 +10,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.autoconfigure.security.SecurityProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -46,7 +46,7 @@ public class PersonApiServiceConfiguration {
     @Bean(name = "orgsecApiSecurityFilterChain")
     @ConditionalOnClass(SecurityFilterChain.class)
     @ConditionalOnMissingBean(name = "orgsecApiSecurityFilterChain")
-    @Order(SecurityProperties.BASIC_AUTH_ORDER - 50)
+    @Order(SecurityFilterProperties.BASIC_AUTH_ORDER - 50)
     public SecurityFilterChain orgsecApiSecurityFilterChain(HttpSecurity http, OrgsecProperties properties) throws Exception {
         String requiredRole = properties.getApi().getPerson().getRequiredRole();
         return http

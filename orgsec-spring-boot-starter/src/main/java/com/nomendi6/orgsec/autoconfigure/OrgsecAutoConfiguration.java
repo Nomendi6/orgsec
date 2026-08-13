@@ -7,8 +7,6 @@ import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.AutoConfigureBefore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration;
-import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,8 +19,14 @@ import java.util.Optional;
 @AutoConfiguration
 @ConditionalOnClass(PrivilegeSecurityService.class)
 @EnableConfigurationProperties(OrgsecProperties.class)
-@AutoConfigureBefore(SecurityAutoConfiguration.class)
-@AutoConfigureAfter(JpaRepositoriesAutoConfiguration.class)
+// Spring Boot 4 split the old servlet SecurityAutoConfiguration: the filter-chain and
+// @EnableWebSecurity parts moved to ServletWebSecurityAutoConfiguration, so both are named here
+// to keep the ordering that let OrgSec contribute beans before Spring Security creates its defaults.
+@AutoConfigureBefore(name = {
+    "org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration",
+    "org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration"
+})
+@AutoConfigureAfter(name = "org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration")
 @ComponentScan(
     basePackages = {"com.nomendi6.orgsec.api"},
     excludeFilters = {

@@ -3,14 +3,15 @@ package com.nomendi6.orgsec.storage.redis.serialization;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.storage.redis.config.RedisStorageProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.cfg.EnumFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Factory for creating configured ObjectMapper instances for OrgSec library.
@@ -106,8 +107,7 @@ public class OrgsecObjectMapperFactory {
      * <ul>
      *   <li>NON_NULL inclusion - null fields are excluded from JSON</li>
      *   <li>FAIL_ON_UNKNOWN_PROPERTIES disabled - for forward compatibility</li>
-     *   <li>JavaTimeModule - ISO 8601 date/time format</li>
-     *   <li>WRITE_DATES_AS_TIMESTAMPS disabled - human-readable dates</li>
+     *   <li>Java time values - ISO 8601 date/time format</li>
      *   <li>FIELD visibility - direct field access for domain objects</li>
      *   <li>PersonDefMixin - constructor-based deserialization for PersonDef</li>
      * </ul>
@@ -118,31 +118,20 @@ public class OrgsecObjectMapperFactory {
     public ObjectMapper createObjectMapper() {
         log.debug("Creating OrgSec ObjectMapper with standard configuration");
 
-        ObjectMapper mapper = new ObjectMapper();
+        JsonMapper.Builder builder = JsonMapper.builder()
+            .changeDefaultPropertyInclusion(value -> JsonInclude.Value.construct(JsonInclude.Include.NON_NULL, JsonInclude.Include.NON_NULL))
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, config.isFailOnUnknownProperties())
+            .disable(SerializationFeature.INDENT_OUTPUT)
+            .changeDefaultVisibility(visibility -> visibility
+                .withVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE)
+                .withVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY))
+            .addMixIn(PersonDef.class, PersonDefMixin.class);
 
-        // Null handling - exclude null fields from JSON
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-
-        // Unknown properties - configurable for security vs compatibility tradeoff
-        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, config.isFailOnUnknownProperties());
+        ObjectMapper mapper = builder.build();
 
         if (config.isFailOnUnknownProperties()) {
             log.info("OrgSec ObjectMapper configured with FAIL_ON_UNKNOWN_PROPERTIES=true (strict mode)");
         }
-
-        // Date/Time handling - ISO 8601 format
-        mapper.registerModule(new JavaTimeModule());
-        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-
-        // Pretty print - disabled for compact JSON
-        mapper.disable(SerializationFeature.INDENT_OUTPUT);
-
-        // Use fields directly instead of getters/setters (for classes like PersonDef with public fields)
-        mapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE);
-        mapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
-
-        // Register MixIn for PersonDef to handle constructor-based deserialization
-        mapper.addMixIn(PersonDef.class, PersonDefMixin.class);
 
         return mapper;
     }
@@ -154,6 +143,7 @@ public class OrgsecObjectMapperFactory {
      * <ul>
      *   <li>FAIL_ON_UNKNOWN_PROPERTIES enabled - reject unexpected fields</li>
      *   <li>FAIL_ON_NULL_FOR_PRIMITIVES enabled - prevent null in primitive fields</li>
+     *   <li>FAIL_ON_READING_DUP_TREE_KEY enabled - reject duplicate JSON keys</li>
      *   <li>FAIL_ON_NUMBERS_FOR_ENUMS enabled - prevent numeric enum values</li>
      * </ul>
      * </p>
@@ -166,32 +156,20 @@ public class OrgsecObjectMapperFactory {
     public ObjectMapper createSecureObjectMapper() {
         log.info("Creating secure OrgSec ObjectMapper with strict configuration");
 
-        ObjectMapper mapper = new ObjectMapper();
-
-        // Null handling - exclude null fields from JSON
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-
-        // Strict deserialization settings for security
-        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true);
-        mapper.configure(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, true);
-        mapper.configure(DeserializationFeature.FAIL_ON_NUMBERS_FOR_ENUMS, true);
-        mapper.configure(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY, true);
-
-        // Date/Time handling - ISO 8601 format
-        mapper.registerModule(new JavaTimeModule());
-        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-
-        // Pretty print - disabled for compact JSON
-        mapper.disable(SerializationFeature.INDENT_OUTPUT);
-
-        // Use fields directly instead of getters/setters
-        mapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE);
-        mapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
-
-        // Register MixIn for PersonDef
-        mapper.addMixIn(PersonDef.class, PersonDefMixin.class);
-
-        return mapper;
+        return JsonMapper.builder()
+            .changeDefaultPropertyInclusion(value -> JsonInclude.Value.construct(JsonInclude.Include.NON_NULL, JsonInclude.Include.NON_NULL))
+            .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
+            .enable(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY)
+            // Jackson 3 moved this out of DeserializationFeature into EnumFeature; it stays
+            // enabled here so numeric enum values are rejected instead of coerced by ordinal.
+            .enable(EnumFeature.FAIL_ON_NUMBERS_FOR_ENUMS)
+            .disable(SerializationFeature.INDENT_OUTPUT)
+            .changeDefaultVisibility(visibility -> visibility
+                .withVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE)
+                .withVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY))
+            .addMixIn(PersonDef.class, PersonDefMixin.class)
+            .build();
     }
 
     /**
@@ -207,13 +185,7 @@ public class OrgsecObjectMapperFactory {
     public ObjectMapper createSimpleObjectMapper() {
         log.debug("Creating simple ObjectMapper for basic operations");
 
-        ObjectMapper mapper = new ObjectMapper();
-
-        // Date/Time handling - ISO 8601 format
-        mapper.registerModule(new JavaTimeModule());
-        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-
-        return mapper;
+        return JsonMapper.builder().build();
     }
 
     /**

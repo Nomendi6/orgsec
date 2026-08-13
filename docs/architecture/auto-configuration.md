@@ -20,8 +20,11 @@ Spring Boot picks each up without your application doing anything beyond adding 
 @AutoConfiguration
 @ConditionalOnClass(PrivilegeSecurityService.class)
 @EnableConfigurationProperties(OrgsecProperties.class)
-@AutoConfigureBefore(SecurityAutoConfiguration.class)
-@AutoConfigureAfter(JpaRepositoriesAutoConfiguration.class)
+@AutoConfigureBefore(name = {
+    "org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration",
+    "org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration"
+})
+@AutoConfigureAfter(name = "org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration")
 @ComponentScan(
     basePackages = {"com.nomendi6.orgsec.api"},
     excludeFilters = {
@@ -35,8 +38,8 @@ Five things to know:
 
 - **`@ConditionalOnClass(PrivilegeSecurityService.class)`** - gate that ensures the in-memory module is on the classpath. Since the starter pulls `orgsec-storage-inmemory` in transitively, this is effectively always true; the conditional exists to keep the auto-config dormant if a future deployment removes the in-memory module entirely.
 - **`@EnableConfigurationProperties(OrgsecProperties.class)`** - binds the top-level `orgsec.*` block to `OrgsecProperties`. The other property classes (`BusinessRoleConfiguration`, `StorageFeatureFlags`, `RedisStorageProperties`, `JwtStorageProperties`) bind from their own `@ConfigurationProperties` annotations and do not need to be enabled here.
-- **`@AutoConfigureBefore(SecurityAutoConfiguration.class)`** - OrgSec's auto-config runs *before* Spring Security's, which gives `OrgsecAutoConfiguration` a chance to contribute or replace beans Spring Security would otherwise create. The `orgsecApiSecurityFilterChain` filter-chain ordering itself is set by `@Order(SecurityProperties.BASIC_AUTH_ORDER - 50)` on the bean declaration in `PersonApiServiceConfiguration`, not by this `@AutoConfigureBefore` directive.
-- **`@AutoConfigureAfter(JpaRepositoriesAutoConfiguration.class)`** - OrgSec's auto-config runs *after* Spring's JPA-repositories auto-config, so application-side `SecurityQueryProvider` beans that depend on JPA repositories are available when OrgSec wires its in-memory storage.
+- **`@AutoConfigureBefore(SecurityAutoConfiguration, ServletWebSecurityAutoConfiguration)`** - OrgSec's auto-config runs *before* Spring Security's, which gives `OrgsecAutoConfiguration` a chance to contribute or replace beans Spring Security would otherwise create. Spring Boot 4 split the old servlet `SecurityAutoConfiguration`: it now contributes only `DefaultAuthenticationEventPublisher` and `SecurityEvaluationContextExtension`, while the default `SecurityFilterChain` and `@EnableWebSecurity` moved to `ServletWebSecurityAutoConfiguration` - so both are named. The `orgsecApiSecurityFilterChain` filter-chain ordering itself is set by `@Order(SecurityFilterProperties.BASIC_AUTH_ORDER - 50)` on the bean declaration in `PersonApiServiceConfiguration`, not by this `@AutoConfigureBefore` directive.
+- **`@AutoConfigureAfter(DataJpaRepositoriesAutoConfiguration)`** - OrgSec's auto-config runs *after* Spring's JPA-repositories auto-config, so application-side `SecurityQueryProvider` beans that depend on JPA repositories are available when OrgSec wires its in-memory storage. (Spring Boot 4 renamed `JpaRepositoriesAutoConfiguration` to `DataJpaRepositoriesAutoConfiguration` and moved it to `org.springframework.boot.data.jpa.autoconfigure`.) Both ordering directives use the string `name = ...` form rather than class literals, because the referenced auto-configuration classes live in optional Spring Boot modules that need not be on the classpath.
 - **`@ComponentScan(basePackages = "com.nomendi6.orgsec.api", excludeFilters = ...)`** - scans the `api` package only (with `api.controller.*` and `api.service.*` excluded; those are wired by `PersonApiServiceConfiguration` instead). The Java package `com.nomendi6.orgsec.api` contains the SPI interfaces `PrivilegeRegistry` and `PrivilegeDefinitionProvider`. (Note: `SecurityEnabledEntity` and `SecurityEnabledDTO` files sit in the same source directory but declare `package com.nomendi6.orgsec.interfaces;`, so the `api` scan does not reach them - not that it matters, since they are interfaces.) The scan picks up any `@Component`-annotated classes inside the `api` package, but the interface implementations live in other packages and reach the context through other means. For example, `PrivilegeRegistry`'s implementation is `AllPrivilegesStore` in `com.nomendi6.orgsec.storage.inmemory.store` - the `api` scan does **not** register that bean. The scan does not cover storage or common-module beans either; those are wired through the application-side component scan described below.
 
 The class declares one bean directly:
@@ -111,7 +114,7 @@ The remaining beans the starter contributes are wired through two mechanisms:
 ## `RedisStorageAutoConfiguration`
 
 ```java
-@AutoConfiguration(after = JacksonAutoConfiguration.class)
+@AutoConfiguration(afterName = "org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration")
 @ConditionalOnClass(RedisConnectionFactory.class)
 @ConditionalOnProperty(prefix = "orgsec.storage.redis", name = "enabled", havingValue = "true")
 @EnableConfigurationProperties(RedisStorageProperties.class)
@@ -120,7 +123,7 @@ public class RedisStorageAutoConfiguration {
 
 Three gates, in order:
 
-- **`@AutoConfigureBefore` is not used; `after = JacksonAutoConfiguration.class` is.** Redis serializers depend on Jackson's `ObjectMapper`, so Redis wiring must run after Jackson has set up its bean.
+- **`@AutoConfigureBefore` is not used; `afterName = "...JacksonAutoConfiguration"` is.** Redis serializers depend on Jackson's `ObjectMapper`, so Redis wiring must run after Jackson has set up its bean. Spring Boot 4 moved Jackson auto-configuration out of `spring-boot-autoconfigure` into the separate `spring-boot-jackson` module, hence the string `afterName` form rather than a class literal.
 - **`@ConditionalOnClass(RedisConnectionFactory.class)`** - `spring-boot-starter-data-redis` must be on the classpath. The Redis module declares this dependency, so the condition is always satisfied when the JAR is present.
 - **`@ConditionalOnProperty(prefix = "orgsec.storage.redis", name = "enabled", havingValue = "true")`** - the activation flag the application must set. Without it, no Redis bean is created. This is the gate that the configuration guide and properties reference both call out.
 
@@ -255,7 +258,7 @@ In short: bean-name reuse is the right pattern only for JWT; for Redis and in-me
 
 ```java
 @Bean(name = "orgsecApiSecurityFilterChain")
-@Order(SecurityProperties.BASIC_AUTH_ORDER - 50)
+@Order(SecurityFilterProperties.BASIC_AUTH_ORDER - 50)
 public SecurityFilterChain customOrgsecApiSecurityFilterChain(HttpSecurity http) throws Exception {
     return http
         .securityMatcher("/api/orgsec/person/**")
@@ -271,13 +274,13 @@ The bean's name (`orgsecApiSecurityFilterChain`) is what `PersonApiServiceConfig
 For a starter + Redis + JWT deployment with all flags enabled, OrgSec's five auto-configurations and the relevant Spring Boot core ones execute in roughly this order. Spring Boot orders auto-configurations by their `@AutoConfigureBefore` / `@AutoConfigureAfter` constraints; classes with no explicit ordering run whenever their conditions are satisfied.
 
 1. `JacksonAutoConfiguration` (Spring Boot core).
-2. `RedisStorageAutoConfiguration` (gated `after = JacksonAutoConfiguration.class`).
-3. `JpaRepositoriesAutoConfiguration` (Spring Boot core; relevant when applications expose `SecurityQueryProvider` through JPA).
-4. `OrgsecAutoConfiguration` (gated `after = JpaRepositoriesAutoConfiguration.class`, `before = SecurityAutoConfiguration.class`).
+2. `RedisStorageAutoConfiguration` (gated `afterName = "...jackson.autoconfigure.JacksonAutoConfiguration"`).
+3. `DataJpaRepositoriesAutoConfiguration` (Spring Boot core; relevant when applications expose `SecurityQueryProvider` through JPA).
+4. `OrgsecAutoConfiguration` (gated after `DataJpaRepositoriesAutoConfiguration`, before `SecurityAutoConfiguration` and `ServletWebSecurityAutoConfiguration`).
 5. `StorageConfiguration` (no explicit ordering; Spring runs it whenever its conditions are satisfied. The `AllPersonsStore` / `AllOrganizationsStore` / loader component beans this configuration's `primaryInMemoryStorage` ultimately depends on come from the application-side component scan described above, **not** from `StorageConfiguration` itself).
 6. `JwtStorageAutoConfiguration` (no explicit ordering; runs whenever its conditions are satisfied).
-7. `PersonApiServiceConfiguration` (no explicit class-level ordering; the filter-chain bean it declares is ordered through `@Order(SecurityProperties.BASIC_AUTH_ORDER - 50)`).
-8. `SecurityAutoConfiguration` (Spring Boot core, gated to run after OrgSec).
+7. `PersonApiServiceConfiguration` (no explicit class-level ordering; the filter-chain bean it declares is ordered through `@Order(SecurityFilterProperties.BASIC_AUTH_ORDER - 50)`).
+8. `SecurityAutoConfiguration` and `ServletWebSecurityAutoConfiguration` (Spring Boot core, gated to run after OrgSec).
 
 If `JwtDecoder` is missing under `jwt-enabled: true`, step 6 throws and the application context fails to refresh. If Redis is unreachable, step 2 still creates beans (the connection is lazy) and the failure surfaces on the first call - the circuit breaker handles the rest.
 

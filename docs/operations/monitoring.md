@@ -180,7 +180,9 @@ OrgSec does **not** ship that registration code - intentionally. If you need Mic
 
 ## Circuit breaker observability
 
-The Redis backend uses Resilience4j's circuit breaker. Resilience4j has its own Micrometer / Actuator integration (`resilience4j-micrometer`, `resilience4j-spring-boot3`) which is independent of OrgSec. Add those modules to your project if you want circuit-breaker state on `/actuator/health` or as Micrometer metrics. OrgSec configures the circuit breaker; it does not export its state.
+The Redis backend uses Resilience4j's circuit breaker. Resilience4j has its own Micrometer / Actuator integration (`resilience4j-micrometer`, `resilience4j-spring-boot4`) which is independent of OrgSec. Add those modules to your project if you want circuit-breaker state on `/actuator/health` or as Micrometer metrics. OrgSec configures the circuit breaker; it does not export its state.
+
+> On OrgSec 2.0.x use `resilience4j-spring-boot4`. The `resilience4j-spring-boot3` adapter binds to Spring Boot 3 auto-configuration classes and will not work on a Spring Boot 4 application.
 
 ## Pub/Sub invalidation logging
 

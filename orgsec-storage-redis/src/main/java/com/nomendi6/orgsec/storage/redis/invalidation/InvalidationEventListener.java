@@ -1,11 +1,11 @@
 package com.nomendi6.orgsec.storage.redis.invalidation;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nomendi6.orgsec.storage.redis.cache.L1Cache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Listener for cache invalidation events from Redis Pub/Sub.

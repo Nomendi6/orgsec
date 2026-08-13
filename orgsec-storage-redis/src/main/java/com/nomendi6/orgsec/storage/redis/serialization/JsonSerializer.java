@@ -1,10 +1,9 @@
 package com.nomendi6.orgsec.storage.redis.serialization;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nomendi6.orgsec.storage.redis.resilience.CacheSerializationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Generic JSON serializer for domain objects.
@@ -68,7 +67,7 @@ public class JsonSerializer<T> {
 
         try {
             return objectMapper.writeValueAsString(object);
-        } catch (JsonProcessingException e) {
+        } catch (RuntimeException e) {
             log.error("Failed to serialize object of type {}: {}", targetType.getSimpleName(), e.getMessage());
             throw new CacheSerializationException(
                 "Failed to serialize " + targetType.getSimpleName(),
@@ -91,7 +90,7 @@ public class JsonSerializer<T> {
 
         try {
             return objectMapper.readValue(json, targetType);
-        } catch (JsonProcessingException e) {
+        } catch (RuntimeException e) {
             log.error("Failed to deserialize JSON to {}: {}", targetType.getSimpleName(), e.getMessage());
             throw new CacheSerializationException(
                 "Failed to deserialize " + targetType.getSimpleName(),

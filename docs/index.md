@@ -63,8 +63,8 @@ The important split is simple: storage gives OrgSec the user's grants; the prote
 
 | OrgSec version | Spring Boot | Spring Security | Java | Status |
 | --- | --- | --- | --- | --- |
-| **1.0.x** | 3.5.x | 6.x | 17 | Current GA; receives security and bug fixes |
-| 2.0.x | 4.x planned | 7.x planned | 21 | In development; not yet released |
+| **2.0.x** | 4.0.x | 7.x | 21 | Current development line; GA target |
+| 1.0.x | 3.5.x | 6.x | 17 | Maintenance line for Spring Boot 3 apps |
 
 ## License And Links
 

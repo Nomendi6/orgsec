@@ -24,7 +24,6 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -49,7 +48,7 @@ import java.util.UUID;
  * ObjectMapper - no ObjectMapper beans are exposed by this configuration.
  * </p>
  */
-@AutoConfiguration(after = JacksonAutoConfiguration.class)
+@AutoConfiguration(afterName = "org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration")
 @ConditionalOnClass(RedisConnectionFactory.class)
 @ConditionalOnProperty(prefix = "orgsec.storage.redis", name = "enabled", havingValue = "true")
 @EnableConfigurationProperties(RedisStorageProperties.class)

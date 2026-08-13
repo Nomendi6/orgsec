@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - Unreleased
+
+### Changed
+
+- Upgraded the baseline to Java 21 and Spring Boot 4.0.6, bringing Spring Security 7 and Jakarta EE 11 managed dependencies through the Spring Boot BOM.
+- Added a Java 25 supported build profile. The profile requires JDK 25 for the Maven process but keeps the compiled bytecode at `--release 21`.
+- Migrated Jackson databind usage to Jackson 3 `tools.jackson.*` APIs while keeping Jackson annotations in the `com.fasterxml.jackson.annotation.*` namespace.
+- Updated the Redis backend to the Spring Boot 4 compatible Resilience4j adapter and Testcontainers 2.x managed by the Spring Boot BOM.
+- Updated the JWT backend to keep Spring Security's `JwtDecoder` as the validation surface and added contract coverage for the mapper-compatible `orgsec` claim shape.
+
+### Migration Notes
+
+- Applications must run on Java 21 or newer. Java 17 remains supported only on the OrgSec 1.0.x line.
+- Applications must use Spring Boot 4.x / Spring Security 7.x with OrgSec 2.0.x. Spring Boot 3.5.x applications should remain on OrgSec 1.0.x.
+- If an application uses OrgSec Redis or JWT internals directly, update imports from Jackson 2 `com.fasterxml.jackson.databind.*` to Jackson 3 `tools.jackson.databind.*`. Jackson *annotations* stay in the `com.fasterxml.jackson.annotation.*` namespace — Jackson 3 has no annotation package of its own and reads those directly.
+- `RedisStorageHealthIndicator` now implements `org.springframework.boot.health.contributor.HealthIndicator` instead of `org.springframework.boot.actuate.health.HealthIndicator`, following the Spring Boot 4 actuator split. Applications that reference the type directly must update the import; applications that only rely on the `/actuator/health` endpoint are unaffected.
+- The Keycloak custom mapper contract is unchanged: the JWT claim root is `orgsec`, with `version`, `person`, and `memberships`. Rebuild and smoke-test the mapper before releasing an application that depends on JWT storage.
+- Apgen integration is external to this repository. Generate and test one application with `organizationalSecurity=true` against `2.0.0-SNAPSHOT` before cutting the final 2.0.0 release.
+
 ## [1.0.3] - 2026-04-28
 
 ### Fixed
