@@ -348,6 +348,85 @@ class PrivilegeCheckerTest {
         }
     }
 
+    /**
+     * HIERARCHY_UP means "the entity sits on the principal's ancestor chain", so the entity path has
+     * to be a PREFIX of the principal path. Paths are rooted and materialized ({@code |seg|seg|}),
+     * which is what makes prefix comparison exact - the trailing separator rules out
+     * {@code |A|} matching {@code |AX|}.
+     */
+    @Nested
+    class HierarchyUpPathSemantics {
+
+        private static final String PRINCIPAL = "|A|B|C|";
+
+        private final PersonData currentPerson = createPersonData(1L);
+
+        @Test
+        void companyUp_allowsAncestorAndSelf() {
+            assertThat(checkCompanyUp("|A|")).isTrue();
+            assertThat(checkCompanyUp("|A|B|")).isTrue();
+            assertThat(checkCompanyUp(PRINCIPAL)).isTrue();
+        }
+
+        @Test
+        void companyUp_deniesDescendant() {
+            assertThat(checkCompanyUp("|A|B|C|D|")).isFalse();
+        }
+
+        @Test
+        void companyUp_deniesCrossTreeSuffixCollision() {
+            // A suffix comparison would accept this unrelated branch, a prefix comparison rejects it.
+            assertThat(checkCompanyUp("|X|A|B|C|")).isFalse();
+        }
+
+        @Test
+        void companyUp_deniesUnrelatedBranch() {
+            assertThat(checkCompanyUp("|Z|")).isFalse();
+        }
+
+        @Test
+        void orgUp_behavesIdenticallyToCompanyUp() {
+            assertThat(checkOrgUp("|A|B|")).isTrue();
+            assertThat(checkOrgUp(PRINCIPAL)).isTrue();
+            assertThat(checkOrgUp("|A|B|C|D|")).isFalse();
+            assertThat(checkOrgUp("|X|A|B|C|")).isFalse();
+        }
+
+        private boolean checkCompanyUp(String entityCompanyPath) {
+            OrganizationDef principalOrg = createOrganizationDef(10L, PRINCIPAL, 100L, PRINCIPAL);
+            return privilegeChecker.checkOrganizationPrivilege(
+                currentPerson,
+                principalOrg,
+                createPrivilegeWithCompany(PrivilegeDirection.HIERARCHY_UP),
+                100L,
+                entityCompanyPath,
+                null,
+                null,
+                null,
+                true,
+                false,
+                false
+            );
+        }
+
+        private boolean checkOrgUp(String entityOrgPath) {
+            OrganizationDef principalOrg = createOrganizationDef(10L, PRINCIPAL, 100L, PRINCIPAL);
+            return privilegeChecker.checkOrganizationPrivilege(
+                currentPerson,
+                principalOrg,
+                createPrivilegeWithOrg(PrivilegeDirection.HIERARCHY_UP),
+                null,
+                null,
+                10L,
+                entityOrgPath,
+                null,
+                false,
+                true,
+                false
+            );
+        }
+    }
+
     // ========== HELPER METHODS ==========
 
     private ResourceDef createResourceDef() {
