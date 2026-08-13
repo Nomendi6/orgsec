@@ -271,6 +271,33 @@ class RsqlFilterBuilderTest {
     }
 
     @Test
+    void shouldFailClosedForUnsupportedOrgDirection() {
+        // ALL is not a valid org/company scope - unrestricted access is expressed by the separate
+        // 'all' flag. An unhandled direction must deny; returning an empty clause would have marked
+        // the privilege as present with no filter, i.e. granted unfiltered access.
+        when(storage.getPerson(1L)).thenReturn(personWithPrivilege(
+            "owner",
+            privilege(PrivilegeDirection.NONE, PrivilegeDirection.ALL, false),
+            "|1|10|"
+        ));
+
+        assertThatThrownBy(() -> builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON))
+            .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void shouldFailClosedForUnsupportedCompanyDirection() {
+        when(storage.getPerson(1L)).thenReturn(personWithPrivilege(
+            "owner",
+            privilege(PrivilegeDirection.ALL, PrivilegeDirection.NONE, false),
+            "|1|10|"
+        ));
+
+        assertThatThrownBy(() -> builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON))
+            .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
     void shouldStillAllowExplicitAllPrivilege() {
         when(storage.getPerson(1L)).thenReturn(personWithPrivilege(
             "owner",
