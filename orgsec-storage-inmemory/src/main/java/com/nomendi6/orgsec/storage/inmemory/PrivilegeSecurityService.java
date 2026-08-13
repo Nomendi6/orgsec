@@ -222,17 +222,28 @@ public class PrivilegeSecurityService {
                             return true;
                         }
 
-                        // Check specific business role privileges - use direct delegation to PrivilegeChecker
-                        if (
-                            privilegeChecker.checkBusinessRolePrivilege(
-                                currentPerson,
-                                organizationDef,
-                                resourceAggregatedPrivs,
-                                businessRoleName,
-                                entityDTO
-                            )
-                        ) {
-                            return true;
+                        // The scope is checked per privilege and OR-ed, not taken from the aggregate.
+                        // An aggregate carries a single direction and cannot express "HIERARCHY_DOWN
+                        // OR HIERARCHY_UP" (subtree or ancestors), so a role holding both would be
+                        // summarized into one direction and denied on records the other one covers.
+                        for (PrivilegeDef privilege : resourceDef.getPrivilegesList()) {
+                            if (!privilegeChecker.hasRequiredOperation(privilege, operation)) {
+                                continue;
+                            }
+                            if (privilege.all) {
+                                return true;
+                            }
+                            if (
+                                privilegeChecker.checkBusinessRolePrivilege(
+                                    currentPerson,
+                                    organizationDef,
+                                    privilege,
+                                    businessRoleName,
+                                    entityDTO
+                                )
+                            ) {
+                                return true;
+                            }
                         }
                     }
                 }
