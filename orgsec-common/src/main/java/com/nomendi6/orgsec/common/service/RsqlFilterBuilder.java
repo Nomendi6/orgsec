@@ -32,6 +32,9 @@ public class RsqlFilterBuilder {
     private static final Logger log = LoggerFactory.getLogger(RsqlFilterBuilder.class);
     private static final String ALL_GRANT_SENTINEL = "__ORGSEC_ALL_GRANT__";
 
+    /** Separator of the materialized organization path, as enforced by {@link PathSanitizer}. */
+    private static final char PATH_SEPARATOR = '|';
+
     private final SecurityDataStore securityDataStore;
     private final BusinessRoleConfiguration businessRoleConfiguration;
 
@@ -246,9 +249,17 @@ public class RsqlFilterBuilder {
                         organizationDef.organizationId);
                     return null;
                 }
-                // Validate and escape path before using in RSQL
-                String safeCompanyPathUp = PathSanitizer.escapeForRsql(organizationDef.companyParentPath);
-                return selector(alias, businessRoleName, SecurityFieldType.COMPANY_PATH) + "=*'*" + safeCompanyPathUp + "'";
+                // Ancestors are enumerated as an '=in=' list of path prefixes, not a suffix LIKE.
+                String companyUpClause = buildAncestorInClause(
+                    selector(alias, businessRoleName, SecurityFieldType.COMPANY_PATH),
+                    organizationDef.companyParentPath
+                );
+                if (companyUpClause == null) {
+                    log.warn("Cannot build company hierarchy-up RSQL filter: no ancestor prefixes in path {} for organization {}",
+                        organizationDef.companyParentPath, organizationDef.organizationId);
+                    return null;
+                }
+                return companyUpClause;
             default:
                 return "";
         }
@@ -273,12 +284,66 @@ public class RsqlFilterBuilder {
                         organizationDef.organizationId);
                     return null;
                 }
-                // Validate and escape path before using in RSQL
-                String safeOrgPathUp = PathSanitizer.escapeForRsql(organizationDef.parentPath);
-                return selector(alias, businessRoleName, SecurityFieldType.ORG_PATH) + "=*'*" + safeOrgPathUp + "'";
+                // Ancestors are enumerated as an '=in=' list of path prefixes, not a suffix LIKE.
+                String orgUpClause = buildAncestorInClause(
+                    selector(alias, businessRoleName, SecurityFieldType.ORG_PATH),
+                    organizationDef.parentPath
+                );
+                if (orgUpClause == null) {
+                    log.warn("Cannot build organization hierarchy-up RSQL filter: no ancestor prefixes in path {} for organization {}",
+                        organizationDef.parentPath, organizationDef.organizationId);
+                    return null;
+                }
+                return orgUpClause;
             default:
                 return "";
         }
+    }
+
+    /**
+     * Builds the RSQL clause for HIERARCHY_UP (ancestors): the entity path must be a PREFIX of the
+     * principal path, i.e. the entity is an ancestor of the principal or the principal itself.
+     * <p>
+     * This cannot be expressed with the RSQL LIKE operator {@code =*}. LIKE always makes the
+     * <em>column</em> the target of the match ({@code col LIKE 'pattern'}), whereas ancestors need
+     * the column on the pattern side ({@code 'principalPath' LIKE col || '%'}). The previous
+     * {@code =*'*path'} form compiled to {@code col LIKE '%path'} - "ends with path" - and on rooted
+     * paths with unique segment ids the only path ending in {@code |A|B|C|} is {@code |A|B|C|}
+     * itself. The filter therefore matched the principal's own organization and no ancestor at all,
+     * silently hiding rows that {@link PrivilegeChecker#checkOrgPrivilege} does grant on a
+     * single-record read.
+     * <p>
+     * Ancestors are instead enumerated as every prefix of the path, each ending with the separator
+     * so that {@code |A|} cannot match {@code |AX|}: {@code |A|B|C|} yields
+     * {@code =in=('|A|','|A|B|','|A|B|C|')}, the principal itself included. RSQL {@code =in=} is an
+     * exact, case-sensitive comparison, consistent with the EXACT direction.
+     * <p>
+     * The opposite direction needs no such treatment: a subtree IS expressible as a prefix pattern,
+     * so HIERARCHY_DOWN keeps using {@code =*'path*'}.
+     *
+     * @param selectorExpr the already-built selector (alias plus field), e.g. {@code "doc.orgPath"}
+     * @param parentPath the materialized organization path ({@code |seg|seg|})
+     * @return {@code "selector=in=('p1','p2',...)"}, or {@code null} when the path holds no prefix
+     */
+    private String buildAncestorInClause(String selectorExpr, String parentPath) {
+        // Validates the path format and escapes RSQL special characters. A valid path holds only
+        // separators, alphanumerics and underscores, so escaping is a no-op on it and the separator
+        // positions in safePath match the original - substring(0, i + 1) is a valid prefix path.
+        String safePath = PathSanitizer.escapeForRsql(parentPath);
+
+        StringBuilder elements = new StringBuilder();
+        for (int i = 1; i < safePath.length(); i++) {
+            if (safePath.charAt(i) == PATH_SEPARATOR) {
+                if (elements.length() > 0) {
+                    elements.append(',');
+                }
+                elements.append('\'').append(safePath, 0, i + 1).append('\'');
+            }
+        }
+        if (elements.length() == 0) {
+            return null;
+        }
+        return selectorExpr + "=in=(" + elements + ")";
     }
 
     private String selector(String alias, String businessRoleName, SecurityFieldType fieldType) {
