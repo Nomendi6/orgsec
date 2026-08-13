@@ -271,6 +271,44 @@ class RsqlFilterBuilderTest {
     }
 
     @Test
+    void shouldOrBothClausesWhenRoleHoldsDownAndUpForSameResource() {
+        // A role granted both <RESOURCE>_ORGHD_R and <RESOURCE>_ORGHU_R may read its subtree AND its
+        // ancestors. That union is not representable by the single direction of the aggregate, so
+        // the clauses have to be built per privilege and OR-ed.
+        when(storage.getPerson(1L)).thenReturn(personWithPrivilegeList(
+            "owner",
+            List.of(
+                privilege(PrivilegeDirection.NONE, PrivilegeDirection.HIERARCHY_DOWN, false),
+                privilege(PrivilegeDirection.NONE, PrivilegeDirection.HIERARCHY_UP, false)
+            ),
+            "|A|B|"
+        ));
+
+        String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
+
+        assertThat(filter).contains("ownerOrgPath=*'|A|B|*'");
+        assertThat(filter).contains("ownerOrgPath=in=('|A|','|A|B|')");
+        assertThat(filter).contains(",");
+    }
+
+    @Test
+    void shouldIgnorePrivilegesThatDoNotMatchTheRequestedOperation() {
+        // A WRITE privilege satisfies a READ request, an EXECUTE privilege does not.
+        when(storage.getPerson(1L)).thenReturn(personWithPrivilegeList(
+            "owner",
+            List.of(
+                privilegeForOperation(PrivilegeDirection.NONE, PrivilegeDirection.EXACT, PrivilegeOperation.WRITE),
+                privilegeForOperation(PrivilegeDirection.NONE, PrivilegeDirection.HIERARCHY_DOWN, PrivilegeOperation.EXECUTE)
+            ),
+            "|A|B|"
+        ));
+
+        String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
+
+        assertThat(filter).isEqualTo("(ownerOrg.id==10)");
+    }
+
+    @Test
     void shouldFailClosedForUnsupportedOrgDirection() {
         // ALL is not a valid org/company scope - unrestricted access is expressed by the separate
         // 'all' flag. An unhandled direction must deny; returning an empty clause would have marked
@@ -403,6 +441,41 @@ class RsqlFilterBuilderTest {
             .allowOrg(company, org, person);
     }
 
+    private PrivilegeDef privilegeForOperation(PrivilegeDirection company, PrivilegeDirection org, PrivilegeOperation operation) {
+        return new PrivilegeDef("document_privilege", RESOURCE)
+            .allowOperation(operation)
+            .allowOrg(company, org, false);
+    }
+
+    /**
+     * Builds a role holding several privileges on the same resource, aggregating them the way
+     * {@code RoleDef.addPrivilegeDef} does: every privilege lands in the list, and the read
+     * aggregate is their sum.
+     */
+    private PersonDef personWithPrivilegeList(String businessRole, List<PrivilegeDef> privileges, String parentPath) {
+        PersonDef person = new PersonDef(1L, "Alice");
+        OrganizationDef organization = new OrganizationDef();
+        organization.organizationId = 10L;
+        organization.companyId = 100L;
+        organization.parentPath = parentPath;
+        organization.companyParentPath = parentPath;
+
+        ResourceDef resource = new ResourceDef(RESOURCE);
+        PrivilegeDef aggregate = null;
+        for (PrivilegeDef privilege : privileges) {
+            resource.getPrivilegesList().add(privilege);
+            aggregate = aggregate == null ? privilege : aggregate.add(privilege);
+        }
+        resource.setAggregatedReadPrivilege(aggregate);
+
+        BusinessRoleDef role = new BusinessRoleDef(businessRole);
+        role.resourcesMap.put(RESOURCE, resource);
+        organization.businessRolesMap.put(businessRole, role);
+
+        person.organizationsMap.put(10L, organization);
+        return person;
+    }
+
     private PersonDef personWithPrivilege(String businessRole, PrivilegeDef privilege, String parentPath) {
         return personWithPrivileges(Map.of(businessRole, privilege), parentPath);
     }
@@ -417,7 +490,9 @@ class RsqlFilterBuilderTest {
 
         for (Map.Entry<String, PrivilegeDef> entry : privilegesByRole.entrySet()) {
             ResourceDef resource = new ResourceDef(RESOURCE);
+            // RoleDef.addPrivilegeDef feeds both the aggregate and the list, so the fixture must too.
             resource.setAggregatedReadPrivilege(entry.getValue());
+            resource.getPrivilegesList().add(entry.getValue());
             BusinessRoleDef role = new BusinessRoleDef(entry.getKey());
             role.resourcesMap.put(RESOURCE, resource);
             organization.businessRolesMap.put(entry.getKey(), role);
