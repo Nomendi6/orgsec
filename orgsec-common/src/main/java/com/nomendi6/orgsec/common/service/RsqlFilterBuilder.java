@@ -170,13 +170,53 @@ public class RsqlFilterBuilder {
             return ALL_GRANT_SENTINEL;
         }
 
-        return buildRsqlForOrganizationalPrivilege(
-            currentPerson,
-            organizationDef,
-            resourceAggregatedPrivs,
-            businessRoleName,
-            context.parentField
-        );
+        // The scope is evaluated per privilege and OR-ed, not taken from the aggregate. An aggregate
+        // carries a single direction and cannot express "HIERARCHY_DOWN OR HIERARCHY_UP" (subtree or
+        // ancestors), so a role holding both would be summarized into one direction and lose rows.
+        // This mirrors the per-record check, which also evaluates each privilege separately.
+        String filter = "";
+        for (PrivilegeDef privilege : resourceDef.getPrivilegesList()) {
+            if (!matchesOperation(privilege, context.operation)) {
+                continue;
+            }
+            if (privilege.all) {
+                return ALL_GRANT_SENTINEL;
+            }
+
+            String clause = buildRsqlForOrganizationalPrivilege(
+                currentPerson,
+                organizationDef,
+                privilege,
+                businessRoleName,
+                context.parentField
+            );
+            if (clause == null || clause.isEmpty()) {
+                continue;
+            }
+            filter = orRsql(filter, clause);
+        }
+
+        return filter.isEmpty() ? null : filter;
+    }
+
+    /**
+     * Mirrors {@link PrivilegeChecker#hasRequiredOperation(PrivilegeDef, PrivilegeOperation)}: a
+     * WRITE privilege also satisfies a READ request.
+     */
+    private boolean matchesOperation(PrivilegeDef privilege, PrivilegeOperation requested) {
+        if (privilege == null) {
+            return false;
+        }
+        switch (requested) {
+            case WRITE:
+                return privilege.operation == PrivilegeOperation.WRITE;
+            case READ:
+                return privilege.operation == PrivilegeOperation.WRITE || privilege.operation == PrivilegeOperation.READ;
+            case EXECUTE:
+                return privilege.operation == PrivilegeOperation.EXECUTE;
+            default:
+                return false;
+        }
     }
 
     private PrivilegeDef getPrivilegeDefForOperation(ResourceDef resourceDef, PrivilegeOperation operation) {
