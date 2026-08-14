@@ -213,20 +213,19 @@ public class PrivilegeSecurityService {
                             continue;
                         }
 
-                        PrivilegeDef resourceAggregatedPrivs = privilegeChecker.getResourcePrivileges(resourceDef, operation);
-                        if (resourceAggregatedPrivs == null || !privilegeChecker.hasRequiredOperation(resourceAggregatedPrivs, operation)) {
+                        // The decision is taken from the privileges list alone. The aggregate is a
+                        // single PrivilegeDef and cannot express "HIERARCHY_DOWN OR HIERARCHY_UP"
+                        // (subtree or ancestors), so a role holding both would be summarized into
+                        // one direction and denied on records the other one covers. Consulting it
+                        // first would also make this path disagree with the list filter, which never
+                        // applied the same operation precheck.
+                        List<PrivilegeDef> privileges = resourceDef.getPrivilegesList();
+                        if (privileges == null || privileges.isEmpty()) {
+                            // Fail closed - see RsqlFilterBuilder for the same rule on the list path.
                             continue;
                         }
 
-                        if (resourceAggregatedPrivs.all) {
-                            return true;
-                        }
-
-                        // The scope is checked per privilege and OR-ed, not taken from the aggregate.
-                        // An aggregate carries a single direction and cannot express "HIERARCHY_DOWN
-                        // OR HIERARCHY_UP" (subtree or ancestors), so a role holding both would be
-                        // summarized into one direction and denied on records the other one covers.
-                        for (PrivilegeDef privilege : resourceDef.getPrivilegesList()) {
+                        for (PrivilegeDef privilege : privileges) {
                             if (!privilegeChecker.hasRequiredOperation(privilege, operation)) {
                                 continue;
                             }
