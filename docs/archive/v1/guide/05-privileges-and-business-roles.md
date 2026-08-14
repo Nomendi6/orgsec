@@ -1,5 +1,11 @@
 # Privileges and Business Roles
 
+> **Historical.** This page documents OrgSec 1.0.x as released up to 1.0.3. The `PrivilegeDef.add`
+> direction join, the company `HIERARCHY_UP` predicate and the `HIERARCHY_UP` RSQL filter all changed
+> in 1.0.4 / 2.0.0. See the current
+> [Privilege Model Reference](../../../reference/privilege-model.md) for present behaviour.
+
+
 This page is the working reference for designing the authorization layer of an OrgSec-backed application: how to declare business roles, how to register privileges, how to name them, and how the cascade evaluates them. Read it once when you sit down to model your authorization rules; come back to it when you add a new resource type or a new role category.
 
 ## Defining business roles

@@ -5,7 +5,11 @@ import static com.nomendi6.orgsec.helper.RsqlHelper.addParenthases;
 import static com.nomendi6.orgsec.helper.RsqlHelper.orRsql;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
@@ -71,7 +75,7 @@ public class RsqlFilterBuilder {
             throw new AccessDeniedException("Insufficient privileges for READ operation on resource: " + resourceName);
         }
 
-        RsqlFilterContext context = new RsqlFilterContext(resourceName, parentField, operation);
+        RsqlFilterContext context = new RsqlFilterContext(resourceName, parentField, operation, allowedBusinessRoles);
         return buildFilterForPersonDef(personDef, currentPerson, context);
     }
 
@@ -115,6 +119,14 @@ public class RsqlFilterBuilder {
                 for (Map.Entry<String, BusinessRoleDef> roleEntry : organizationDef.businessRolesMap.entrySet()) {
                     String businessRoleName = roleEntry.getKey();
                     BusinessRoleDef businessRoleDef = roleEntry.getValue();
+
+                    // Honour the caller's restriction. Without this the parameter was accepted and
+                    // ignored, so a query scoped to one business role still evaluated every role the
+                    // principal held - and a broader privilege on an unrelated role produced an
+                    // unfiltered result.
+                    if (!context.allows(businessRoleName)) {
+                        continue;
+                    }
 
                     if (businessRoleDef.resourcesMap != null && !businessRoleDef.resourcesMap.isEmpty()) {
                         String roleFilter = buildFilterForBusinessRole(
@@ -393,10 +405,33 @@ public class RsqlFilterBuilder {
         final String parentField;
         final PrivilegeOperation operation;
 
-        RsqlFilterContext(String resourceName, String parentField, PrivilegeOperation operation) {
+        /**
+         * Business roles the caller restricted the query to, or {@code null} for "no restriction".
+         * An empty list denies: a caller that passes an empty restriction has asked for nothing.
+         */
+        final Set<String> allowedBusinessRoles;
+
+        RsqlFilterContext(
+            String resourceName,
+            String parentField,
+            PrivilegeOperation operation,
+            List<String> allowedBusinessRoles
+        ) {
             this.resourceName = resourceName;
             this.parentField = parentField;
             this.operation = operation;
+            this.allowedBusinessRoles =
+                allowedBusinessRoles == null
+                    ? null
+                    : allowedBusinessRoles.stream().filter(Objects::nonNull).map(role -> role.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+        }
+
+        /** Business roles are matched case-insensitively, as everywhere else in the library. */
+        boolean allows(String businessRoleName) {
+            if (allowedBusinessRoles == null) {
+                return true;
+            }
+            return businessRoleName != null && allowedBusinessRoles.contains(businessRoleName.toLowerCase(Locale.ROOT));
         }
     }
 }

@@ -158,12 +158,23 @@ Two API call patterns dominate application code. Both are described in narrative
 
 ### Programmatic single-entity check
 
+Use the service-level check. It resolves the caller, walks their business roles and evaluates each
+privilege against **this entity's** company, org and person fields:
+
 ```java
-PersonDef person = securityDataStore.getPerson(callerId);
-ResourceDef resource = /* aggregate from person + entity + resourceName */;
-PrivilegeDef granted = privilegeChecker.getResourcePrivileges(resource, PrivilegeOperation.READ);
-boolean ok = privilegeChecker.hasRequiredOperation(granted, PrivilegeOperation.READ);
+boolean ok = privilegeSecurityService.checkCurrentUserPrivilegeOnResource(
+    entityDto, "Document", PrivilegeOperation.READ);
 ```
+
+> **Do not authorize with `getResourcePrivileges` + `hasRequiredOperation`.** Earlier revisions of
+> this page showed that pair as the canonical single-entity check. It only answers *"does the caller
+> hold this operation somewhere?"* - it never looks at the entity, so it grants every record as soon
+> as the caller has the privilege in any organization. `hasRequiredOperation` is an operation test,
+> not an authorization decision.
+>
+> The same applies to `getResourcePrivileges` on its own: it returns the **aggregate**, which is
+> lossy - it cannot express "subtree or ancestors" - and since 1.0.4 / 2.0.0 no authorization path in
+> the library consults it. Decisions are taken from `ResourceDef.getPrivilegesList()`.
 
 ### List-endpoint filtering
 
