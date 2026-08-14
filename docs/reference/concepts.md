@@ -195,7 +195,9 @@ The privilege identifier suffix encodes a single scope choice:
 | `_ORGHU`  | `NONE`           | `HIERARCHY_UP`   | `false`  | `false`|
 | `_EMP`    | `NONE`           | `NONE`           | `true`   | `false`|
 
-When two privileges from different position roles aggregate, `PrivilegeDef.add` joins the per-axis directions with a small, **non-monotonic** rule: equal values stay; `NONE` returns the other side; `HIERARCHY_DOWN + HIERARCHY_UP` becomes `ALL`; **every other unequal combination collapses to `EXACT`**. So `_COMP + _COMPHU` aggregates to `_COMP`, not `_COMPHU` - the result is *narrower*, not wider. The full join table is in [Privilege Model Reference - Direction join](../reference/privilege-model.md#direction-join).
+When two privileges from different position roles aggregate, `PrivilegeDef.add` joins the per-axis directions as a **union of the sets they denote**: equal values stay; `NONE` returns the other side; `EXACT` is a subset of either hierarchical direction so it returns that direction; and `HIERARCHY_DOWN + HIERARCHY_UP` - a subtree plus an ancestor chain, which no single direction can express - falls back to the narrowest safe value, `EXACT`. So `_COMP + _COMPHU` aggregates to `_COMPHU`: the union of "this company" and "this company and its ancestors" is the latter. The full join table is in [Privilege Model Reference - Direction join](../reference/privilege-model.md#direction-join).
+
+The aggregate is lossy by construction, so it is **not** what authorizes a request. Both the per-record check and the RSQL list filter evaluate each privilege in `ResourceDef.getPrivilegesList()` on its own and OR the outcomes.
 
 ## How a check is evaluated
 

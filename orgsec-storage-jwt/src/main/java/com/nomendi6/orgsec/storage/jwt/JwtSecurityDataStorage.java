@@ -1,5 +1,6 @@
 package com.nomendi6.orgsec.storage.jwt;
 
+import com.nomendi6.orgsec.model.BusinessRoleDef;
 import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.model.PrivilegeDef;
@@ -9,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.nomendi6.orgsec.helper.PrivilegeSecurityHelper;
+import org.apache.commons.lang3.SerializationUtils;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -223,8 +225,14 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
                 orgDef.organizationName = fullOrgDef.organizationName;
                 // Copy organization roles
                 orgDef.organizationRolesSet.addAll(fullOrgDef.organizationRolesSet);
-                // Copy business roles map from organization roles
-                orgDef.businessRolesMap.putAll(fullOrgDef.businessRolesMap);
+                // Deep-copy the business roles instead of sharing the delegate's instances. The
+                // loop below merges this request's position roles into these objects, and for a
+                // business role the delegate already carries that merge writes straight into the
+                // delegate's own BusinessRoleDef - so one principal's privileges would end up in
+                // state that every other principal of this organization reads.
+                fullOrgDef.businessRolesMap.forEach((name, businessRole) ->
+                    orgDef.businessRolesMap.put(name, copyBusinessRole(businessRole))
+                );
                 log.debug("Copied {} business roles from organization {}", fullOrgDef.businessRolesMap.size(), orgId);
             } else {
                 log.warn("Organization {} not found in delegate storage", orgId);
@@ -240,6 +248,28 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
         }
 
         return person;
+    }
+
+    /**
+     * Copy a business role so that merging this request's roles into it cannot reach the delegate's
+     * stored organization.
+     * <p>
+     * The copy has to go one level deeper than the map: {@code addResourceDefinition} mutates the
+     * {@link com.nomendi6.orgsec.model.ResourceDef} instances inside {@code resourcesMap}, so
+     * copying only the map would still share those. {@code ResourceDef} is {@link java.io.Serializable}
+     * and is cloned the same way {@code PrivilegeSecurityHelper} clones it when it creates a new
+     * business role.
+     */
+    private static BusinessRoleDef copyBusinessRole(BusinessRoleDef source) {
+        BusinessRoleDef copy = new BusinessRoleDef(source.businessRoleName);
+        copy.filter = source.filter;
+        copy.allowAll = source.allowAll;
+        if (source.resourcesMap != null) {
+            source.resourcesMap.forEach((resourceName, resourceDef) ->
+                copy.resourcesMap.put(resourceName, SerializationUtils.clone(resourceDef))
+            );
+        }
+        return copy;
     }
 
     /**

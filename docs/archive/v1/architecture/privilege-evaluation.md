@@ -1,5 +1,11 @@
 # Privilege Evaluation
 
+> **Historical.** This page documents OrgSec 1.0.x as released up to 1.0.3. The `PrivilegeDef.add`
+> direction join, the company `HIERARCHY_UP` predicate and the `HIERARCHY_UP` RSQL filter all changed
+> in 1.0.4 / 2.0.0. See the current
+> [Privilege Model Reference](../../../reference/privilege-model.md) for present behaviour.
+
+
 This page is the step-by-step reference for OrgSec's privilege evaluator. It walks through `PrivilegeChecker.checkOrganizationPrivilege` - the core method that decides whether a given aggregated privilege grants access - and shows the exact string operations that match hierarchical paths. The audience is contributors and advanced users who want to read the evaluator's behavior off the source rather than off the docs.
 
 The implementation is in [`PrivilegeChecker`](https://github.com/Nomendi6/orgsec/blob/main/orgsec-common/src/main/java/com/nomendi6/orgsec/common/service/PrivilegeChecker.java).

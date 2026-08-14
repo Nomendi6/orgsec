@@ -12,12 +12,25 @@ public class ResourceDef implements Serializable {
     private PrivilegeDef aggregatedReadPrivilege;
     private PrivilegeDef aggregatedExecutePrivilege;
 
-    public ResourceDef(String resourceName) {
-        this.resourceName = resourceName;
+    /**
+     * Required by Jackson. Without it this type has no usable creator - a lone String constructor
+     * registers as a delegating creator, so reading a ResourceDef back from a JSON object fails and
+     * every cached object that reaches one (RoleDef, OrganizationDef, PersonDef) fails with it.
+     * <p>
+     * The body is not empty on purpose: it initialises the same collections as the constructor
+     * below. Leaving {@code privilegesList} null would put a null on the authorization path, where
+     * both consumers iterate it.
+     */
+    public ResourceDef() {
         this.aggregatedWritePrivilege = new PrivilegeDef();
         this.aggregatedReadPrivilege = new PrivilegeDef();
         this.aggregatedExecutePrivilege = new PrivilegeDef();
         this.privilegesList = new ArrayList<>();
+    }
+
+    public ResourceDef(String resourceName) {
+        this();
+        this.resourceName = resourceName;
     }
 
     // Getter methods

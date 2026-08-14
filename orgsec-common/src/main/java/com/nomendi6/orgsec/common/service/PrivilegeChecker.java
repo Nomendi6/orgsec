@@ -238,7 +238,9 @@ public class PrivilegeChecker {
             return businessRoleCompanyPath.startsWith(organizationDef.companyParentPath);
         }
         if (resourceAggregatedPrivs.company == PrivilegeDirection.HIERARCHY_UP) {
-            return businessRoleCompanyPath.endsWith(organizationDef.companyParentPath);
+            // HIERARCHY_UP means "the entity sits on the principal's ancestor chain", i.e. the
+            // entity path is a PREFIX of the principal path. Mirrors checkOrgPrivilege below.
+            return organizationDef.companyParentPath.startsWith(businessRoleCompanyPath);
         }
         return false;
     }

@@ -103,13 +103,8 @@ public class PrivilegeDef implements Serializable {
             newPrivilege.company = add(this.company, other.company);
             if (newPrivilege.company == PrivilegeDirection.NONE) {
                 newPrivilege.org = add(this.org, other.org);
-                if (newPrivilege.org == PrivilegeDirection.ALL) {
-                    newPrivilege.company = PrivilegeDirection.EXACT;
-                    newPrivilege.org = PrivilegeDirection.NONE;
-                } else {
-                    if (newPrivilege.org == PrivilegeDirection.NONE) {
-                        newPrivilege.person = this.person || other.person;
-                    }
+                if (newPrivilege.org == PrivilegeDirection.NONE) {
+                    newPrivilege.person = this.person || other.person;
                 }
             }
         }
@@ -172,7 +167,21 @@ public class PrivilegeDef implements Serializable {
     }
 
     /**
-     * Add two {@link PrivilegeDirection} and get the result {@link PrivilegeDirection}
+     * Add two {@link PrivilegeDirection} and get the result {@link PrivilegeDirection}.
+     * <p>
+     * A direction denotes a <em>set</em> of reachable organizations relative to the principal's
+     * organization X: {@code EXACT(X) = {X}}, {@code HIERARCHY_DOWN(X) = {X and descendants}},
+     * {@code HIERARCHY_UP(X) = {X and ancestors}}, {@code ALL = everything}. The sum of two
+     * directions must therefore be the narrowest direction that still covers both operands, and it
+     * must never be wider than the true union - a wider result grants access that was never
+     * assigned.
+     * <p>
+     * Note that {@code HIERARCHY_DOWN + HIERARCHY_UP} is the subtree plus the ancestor chain, which
+     * excludes sibling and cousin branches. That union is <b>not representable</b> by any single
+     * direction, so it is summarized as the narrowest safe value ({@code EXACT}). Callers that need
+     * the exact semantics must evaluate each privilege of {@link ResourceDef#getPrivilegesList()}
+     * separately and OR the outcomes, instead of relying on the aggregate.
+     *
      * @param a The first {@link PrivilegeDirection} operand
      * @param b The second {@link PrivilegeDirection} operand
      * @return the result of addition
@@ -191,13 +200,22 @@ public class PrivilegeDef implements Serializable {
             return a;
         }
 
-        if (
-            ((a == PrivilegeDirection.HIERARCHY_DOWN) && (b == PrivilegeDirection.HIERARCHY_UP)) ||
-            ((a == PrivilegeDirection.HIERARCHY_UP) && (b == PrivilegeDirection.HIERARCHY_DOWN))
-        ) {
+        // ALL is the top of the lattice and absorbs every other direction.
+        if (a == PrivilegeDirection.ALL || b == PrivilegeDirection.ALL) {
             return PrivilegeDirection.ALL;
         }
 
+        // EXACT is a subset of both HIERARCHY_DOWN and HIERARCHY_UP -> the union is the wider one.
+        if (a == PrivilegeDirection.EXACT) {
+            return b;
+        }
+        if (b == PrivilegeDirection.EXACT) {
+            return a;
+        }
+
+        // Only HIERARCHY_DOWN + HIERARCHY_UP is left: subtree plus ancestors, but NOT sibling or
+        // cousin branches. That is NOT "everything", so returning ALL would over-grant. Fall back to
+        // the narrowest safe summary; see the javadoc above for the per-privilege evaluation.
         return PrivilegeDirection.EXACT;
     }
 

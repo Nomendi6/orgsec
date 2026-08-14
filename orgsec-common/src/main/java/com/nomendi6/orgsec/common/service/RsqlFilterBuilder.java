@@ -5,7 +5,11 @@ import static com.nomendi6.orgsec.helper.RsqlHelper.addParenthases;
 import static com.nomendi6.orgsec.helper.RsqlHelper.orRsql;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
@@ -31,6 +35,9 @@ public class RsqlFilterBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(RsqlFilterBuilder.class);
     private static final String ALL_GRANT_SENTINEL = "__ORGSEC_ALL_GRANT__";
+
+    /** Separator of the materialized organization path, as enforced by {@link PathSanitizer}. */
+    private static final char PATH_SEPARATOR = '|';
 
     private final SecurityDataStore securityDataStore;
     private final BusinessRoleConfiguration businessRoleConfiguration;
@@ -68,7 +75,7 @@ public class RsqlFilterBuilder {
             throw new AccessDeniedException("Insufficient privileges for READ operation on resource: " + resourceName);
         }
 
-        RsqlFilterContext context = new RsqlFilterContext(resourceName, parentField, operation);
+        RsqlFilterContext context = new RsqlFilterContext(resourceName, parentField, operation, allowedBusinessRoles);
         return buildFilterForPersonDef(personDef, currentPerson, context);
     }
 
@@ -112,6 +119,14 @@ public class RsqlFilterBuilder {
                 for (Map.Entry<String, BusinessRoleDef> roleEntry : organizationDef.businessRolesMap.entrySet()) {
                     String businessRoleName = roleEntry.getKey();
                     BusinessRoleDef businessRoleDef = roleEntry.getValue();
+
+                    // Honour the caller's restriction. Without this the parameter was accepted and
+                    // ignored, so a query scoped to one business role still evaluated every role the
+                    // principal held - and a broader privilege on an unrelated role produced an
+                    // unfiltered result.
+                    if (!context.allows(businessRoleName)) {
+                        continue;
+                    }
 
                     if (businessRoleDef.resourcesMap != null && !businessRoleDef.resourcesMap.isEmpty()) {
                         String roleFilter = buildFilterForBusinessRole(
@@ -158,34 +173,62 @@ public class RsqlFilterBuilder {
             return null;
         }
 
-        PrivilegeDef resourceAggregatedPrivs = getPrivilegeDefForOperation(resourceDef, context.operation);
-        if (resourceAggregatedPrivs == null) {
+        // The decision is taken from the privileges list alone. The aggregate is a single PrivilegeDef
+        // and cannot express "HIERARCHY_DOWN OR HIERARCHY_UP" (subtree or ancestors), so a role
+        // holding both would be summarized into one direction and lose rows. Consulting it first
+        // would also reintroduce that loss: it could grant on `all` before the list is read, or - as
+        // the per-record path did - deny on an operation mismatch, so the two authorization paths
+        // could answer differently for the same data.
+        List<PrivilegeDef> privileges = resourceDef.getPrivilegesList();
+        if (privileges == null || privileges.isEmpty()) {
+            // Fail closed. Every path inside the library populates the list; an absent one means the
+            // caller built the ResourceDef by hand and set only the aggregate, which is no longer a
+            // supported way to express a privilege.
             return null;
         }
 
-        if (resourceAggregatedPrivs.all) {
-            return ALL_GRANT_SENTINEL;
+        String filter = "";
+        for (PrivilegeDef privilege : privileges) {
+            if (!matchesOperation(privilege, context.operation)) {
+                continue;
+            }
+            if (privilege.all) {
+                return ALL_GRANT_SENTINEL;
+            }
+
+            String clause = buildRsqlForOrganizationalPrivilege(
+                currentPerson,
+                organizationDef,
+                privilege,
+                businessRoleName,
+                context.parentField
+            );
+            if (clause == null || clause.isEmpty()) {
+                continue;
+            }
+            filter = orRsql(filter, clause);
         }
 
-        return buildRsqlForOrganizationalPrivilege(
-            currentPerson,
-            organizationDef,
-            resourceAggregatedPrivs,
-            businessRoleName,
-            context.parentField
-        );
+        return filter.isEmpty() ? null : filter;
     }
 
-    private PrivilegeDef getPrivilegeDefForOperation(ResourceDef resourceDef, PrivilegeOperation operation) {
-        switch (operation) {
-            case READ:
-                return resourceDef.getAggregatedReadPrivilege();
+    /**
+     * Mirrors {@link PrivilegeChecker#hasRequiredOperation(PrivilegeDef, PrivilegeOperation)}: a
+     * WRITE privilege also satisfies a READ request.
+     */
+    private boolean matchesOperation(PrivilegeDef privilege, PrivilegeOperation requested) {
+        if (privilege == null) {
+            return false;
+        }
+        switch (requested) {
             case WRITE:
-                return resourceDef.getAggregatedWritePrivilege();
+                return privilege.operation == PrivilegeOperation.WRITE;
+            case READ:
+                return privilege.operation == PrivilegeOperation.WRITE || privilege.operation == PrivilegeOperation.READ;
             case EXECUTE:
-                return resourceDef.getAggregatedExecutePrivilege();
+                return privilege.operation == PrivilegeOperation.EXECUTE;
             default:
-                return null;
+                return false;
         }
     }
 
@@ -246,11 +289,23 @@ public class RsqlFilterBuilder {
                         organizationDef.organizationId);
                     return null;
                 }
-                // Validate and escape path before using in RSQL
-                String safeCompanyPathUp = PathSanitizer.escapeForRsql(organizationDef.companyParentPath);
-                return selector(alias, businessRoleName, SecurityFieldType.COMPANY_PATH) + "=*'*" + safeCompanyPathUp + "'";
+                // Ancestors are enumerated as an '=in=' list of path prefixes, not a suffix LIKE.
+                String companyUpClause = buildAncestorInClause(
+                    selector(alias, businessRoleName, SecurityFieldType.COMPANY_PATH),
+                    organizationDef.companyParentPath
+                );
+                if (companyUpClause == null) {
+                    log.warn("Cannot build company hierarchy-up RSQL filter: no ancestor prefixes in path {} for organization {}",
+                        organizationDef.companyParentPath, organizationDef.organizationId);
+                    return null;
+                }
+                return companyUpClause;
             default:
-                return "";
+                // Unhandled direction (e.g. ALL, which is not a valid company/org scope - 'all' is a
+                // separate flag). Returning "" would mark the privilege as present with no filter,
+                // i.e. grant unfiltered access. Fail closed instead.
+                log.warn("Unsupported company privilege direction {} - denying", direction);
+                return null;
         }
     }
 
@@ -273,12 +328,68 @@ public class RsqlFilterBuilder {
                         organizationDef.organizationId);
                     return null;
                 }
-                // Validate and escape path before using in RSQL
-                String safeOrgPathUp = PathSanitizer.escapeForRsql(organizationDef.parentPath);
-                return selector(alias, businessRoleName, SecurityFieldType.ORG_PATH) + "=*'*" + safeOrgPathUp + "'";
+                // Ancestors are enumerated as an '=in=' list of path prefixes, not a suffix LIKE.
+                String orgUpClause = buildAncestorInClause(
+                    selector(alias, businessRoleName, SecurityFieldType.ORG_PATH),
+                    organizationDef.parentPath
+                );
+                if (orgUpClause == null) {
+                    log.warn("Cannot build organization hierarchy-up RSQL filter: no ancestor prefixes in path {} for organization {}",
+                        organizationDef.parentPath, organizationDef.organizationId);
+                    return null;
+                }
+                return orgUpClause;
             default:
-                return "";
+                // See buildCompanyFilter: an unhandled direction must deny, not grant unfiltered.
+                log.warn("Unsupported organization privilege direction {} - denying", direction);
+                return null;
         }
+    }
+
+    /**
+     * Builds the RSQL clause for HIERARCHY_UP (ancestors): the entity path must be a PREFIX of the
+     * principal path, i.e. the entity is an ancestor of the principal or the principal itself.
+     * <p>
+     * This cannot be expressed with the RSQL LIKE operator {@code =*}. LIKE always makes the
+     * <em>column</em> the target of the match ({@code col LIKE 'pattern'}), whereas ancestors need
+     * the column on the pattern side ({@code 'principalPath' LIKE col || '%'}). The previous
+     * {@code =*'*path'} form compiled to {@code col LIKE '%path'} - "ends with path" - and on rooted
+     * paths with unique segment ids the only path ending in {@code |A|B|C|} is {@code |A|B|C|}
+     * itself. The filter therefore matched the principal's own organization and no ancestor at all,
+     * silently hiding rows that {@link PrivilegeChecker#checkOrgPrivilege} does grant on a
+     * single-record read.
+     * <p>
+     * Ancestors are instead enumerated as every prefix of the path, each ending with the separator
+     * so that {@code |A|} cannot match {@code |AX|}: {@code |A|B|C|} yields
+     * {@code =in=('|A|','|A|B|','|A|B|C|')}, the principal itself included. RSQL {@code =in=} is an
+     * exact, case-sensitive comparison, consistent with the EXACT direction.
+     * <p>
+     * The opposite direction needs no such treatment: a subtree IS expressible as a prefix pattern,
+     * so HIERARCHY_DOWN keeps using {@code =*'path*'}.
+     *
+     * @param selectorExpr the already-built selector (alias plus field), e.g. {@code "doc.orgPath"}
+     * @param parentPath the materialized organization path ({@code |seg|seg|})
+     * @return {@code "selector=in=('p1','p2',...)"}, or {@code null} when the path holds no prefix
+     */
+    private String buildAncestorInClause(String selectorExpr, String parentPath) {
+        // Validates the path format and escapes RSQL special characters. A valid path holds only
+        // separators, alphanumerics and underscores, so escaping is a no-op on it and the separator
+        // positions in safePath match the original - substring(0, i + 1) is a valid prefix path.
+        String safePath = PathSanitizer.escapeForRsql(parentPath);
+
+        StringBuilder elements = new StringBuilder();
+        for (int i = 1; i < safePath.length(); i++) {
+            if (safePath.charAt(i) == PATH_SEPARATOR) {
+                if (elements.length() > 0) {
+                    elements.append(',');
+                }
+                elements.append('\'').append(safePath, 0, i + 1).append('\'');
+            }
+        }
+        if (elements.length() == 0) {
+            return null;
+        }
+        return selectorExpr + "=in=(" + elements + ")";
     }
 
     private String selector(String alias, String businessRoleName, SecurityFieldType fieldType) {
@@ -294,10 +405,33 @@ public class RsqlFilterBuilder {
         final String parentField;
         final PrivilegeOperation operation;
 
-        RsqlFilterContext(String resourceName, String parentField, PrivilegeOperation operation) {
+        /**
+         * Business roles the caller restricted the query to, or {@code null} for "no restriction".
+         * An empty list denies: a caller that passes an empty restriction has asked for nothing.
+         */
+        final Set<String> allowedBusinessRoles;
+
+        RsqlFilterContext(
+            String resourceName,
+            String parentField,
+            PrivilegeOperation operation,
+            List<String> allowedBusinessRoles
+        ) {
             this.resourceName = resourceName;
             this.parentField = parentField;
             this.operation = operation;
+            this.allowedBusinessRoles =
+                allowedBusinessRoles == null
+                    ? null
+                    : allowedBusinessRoles.stream().filter(Objects::nonNull).map(role -> role.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+        }
+
+        /** Business roles are matched case-insensitively, as everywhere else in the library. */
+        boolean allows(String businessRoleName) {
+            if (allowedBusinessRoles == null) {
+                return true;
+            }
+            return businessRoleName != null && allowedBusinessRoles.contains(businessRoleName.toLowerCase(Locale.ROOT));
         }
     }
 }
