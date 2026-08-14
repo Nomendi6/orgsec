@@ -161,21 +161,43 @@ public class RsqlFilterBuilder {
             return null;
         }
 
-        PrivilegeDef resourceAggregatedPrivs = getPrivilegeDefForOperation(resourceDef, context.operation);
-        if (resourceAggregatedPrivs == null) {
-            return null;
+        // The decision is taken from the privileges list alone. The aggregate is a single PrivilegeDef
+        // and cannot express "HIERARCHY_DOWN OR HIERARCHY_UP" (subtree or ancestors), so a role
+        // holding both would be summarized into one direction and lose rows. Consulting it first
+        // would also reintroduce that loss: it could grant on `all` before the list is read, or - as
+        // the per-record path did - deny on an operation mismatch, so the two authorization paths
+        // could answer differently for the same data.
+        List<PrivilegeDef> privileges = resourceDef.getPrivilegesList();
+        if (privileges == null || privileges.isEmpty()) {
+            // Compatibility fallback for the 1.0.x line. Every path inside the library populates the
+            // list, so an absent one means the caller built the ResourceDef by hand and set only the
+            // aggregate - which was a supported way to express a privilege before 1.0.4. Falling back
+            // keeps that code working on a patch release; the aggregate is lossy, so a role holding
+            // two hierarchy directions still cannot be expressed this way. Removed in 2.x, where the
+            // empty-list case denies.
+            PrivilegeDef aggregate = getPrivilegeDefForOperation(resourceDef, context.operation);
+            if (aggregate == null || !matchesOperation(aggregate, context.operation)) {
+                return null;
+            }
+            log.warn(
+                "Resource '{}' has an empty privilegesList; falling back to the aggregated privilege. " +
+                "Populate ResourceDef.privilegesList - this fallback is removed in 2.x.",
+                context.resourceName
+            );
+            if (aggregate.all) {
+                return ALL_GRANT_SENTINEL;
+            }
+            return buildRsqlForOrganizationalPrivilege(
+                currentPerson,
+                organizationDef,
+                aggregate,
+                businessRoleName,
+                context.parentField
+            );
         }
 
-        if (resourceAggregatedPrivs.all) {
-            return ALL_GRANT_SENTINEL;
-        }
-
-        // The scope is evaluated per privilege and OR-ed, not taken from the aggregate. An aggregate
-        // carries a single direction and cannot express "HIERARCHY_DOWN OR HIERARCHY_UP" (subtree or
-        // ancestors), so a role holding both would be summarized into one direction and lose rows.
-        // This mirrors the per-record check, which also evaluates each privilege separately.
         String filter = "";
-        for (PrivilegeDef privilege : resourceDef.getPrivilegesList()) {
+        for (PrivilegeDef privilege : privileges) {
             if (!matchesOperation(privilege, context.operation)) {
                 continue;
             }
@@ -219,6 +241,10 @@ public class RsqlFilterBuilder {
         }
     }
 
+    /**
+     * Aggregated privilege for an operation. Used only by the 1.0.x compatibility fallback above -
+     * the authorization decision itself is taken from the privileges list.
+     */
     private PrivilegeDef getPrivilegeDefForOperation(ResourceDef resourceDef, PrivilegeOperation operation) {
         switch (operation) {
             case READ:
