@@ -1,5 +1,11 @@
 # Privilege Model Reference
 
+> **Historical.** This page documents OrgSec 1.0.x as released up to 1.0.3. The `PrivilegeDef.add`
+> direction join, the company `HIERARCHY_UP` predicate and the `HIERARCHY_UP` RSQL filter all changed
+> in 1.0.4 / 2.0.0. See the current
+> [Privilege Model Reference](../../../reference/privilege-model.md) for present behaviour.
+
+
 This page is the tabular reference for OrgSec's privilege model. Read [Privileges and Business Roles](../guide/05-privileges-and-business-roles.md) for the narrative; come here when you need the truth tables.
 
 ## Operation enum

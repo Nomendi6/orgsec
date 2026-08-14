@@ -1,5 +1,11 @@
 # RSQL Filtering
 
+> **Historical.** This page documents OrgSec 1.0.x as released up to 1.0.3. The `PrivilegeDef.add`
+> direction join, the company `HIERARCHY_UP` predicate and the `HIERARCHY_UP` RSQL filter all changed
+> in 1.0.4 / 2.0.0. See the current
+> [Privilege Model Reference](../../../reference/privilege-model.md) for present behaviour.
+
+
 A privilege check on a single entity is one method call. A privilege check on a list of 10 000 entities is 10 000 method calls - that does not scale. The fix is to push the check into the database query: select only the rows the caller is allowed to see, instead of selecting everything and filtering in Java.
 
 `RsqlFilterBuilder` produces an [RSQL](https://github.com/jirutka/rsql-parser) expression that encodes the caller's aggregated privileges. You combine that expression with whatever else your list endpoint filters by, parse the result through an RSQL-aware library (such as `rsql-jpa-specification`), and let the database do the work.

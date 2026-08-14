@@ -84,6 +84,8 @@ Thrown by `RsqlFilterBuilder` when:
 - The current `PersonData` is `null`. Caller is unauthenticated or otherwise has no person identity.
 - The cached `PersonDef` is `null` for the supplied person id. Either the cache misses (Redis cold cache without preload / loaders) or the person genuinely does not exist.
 - A hierarchical privilege has a null parent path. This is the fail-closed behavior added in 1.0.1 - a `_COMPHD` privilege evaluated against a null `companyParentPath` is rejected rather than silently accepted.
+- The privilege direction is not one the filter supports - in practice `PrivilegeDirection.ALL`, which is not a valid axis value. Added in 1.0.4 / 2.0.0: this branch previously returned an empty clause, which the caller read as "no filtering" and which therefore returned every row.
+- `ResourceDef.getPrivilegesList()` is empty, absent, or contains no entry matching the requested operation. Added in 1.0.4 / 2.0.0, when the decision moved off the aggregate onto the list. A `ResourceDef` built by hand with only an aggregated privilege set reaches this case.
 
 **Handling.** Spring Security's default `ExceptionTranslationFilter` already maps this to a 403. If you have a custom filter chain, ensure `AccessDeniedException` is treated as 403 there too.
 

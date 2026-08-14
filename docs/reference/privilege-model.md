@@ -37,7 +37,9 @@ Note: `PrivilegeDef.add(...)` does **not** call `PrivilegeOperation.combine(...)
 | `EXECUTE`   | `EXECUTE`| `READ`   | `EXECUTE` | `WRITE` |
 | `WRITE`     | `WRITE`  | `WRITE`  | `WRITE`   | `WRITE` |
 
-The notable cell is `READ + EXECUTE = READ`. When two position roles grant `_R` and `_E` for the same resource, the aggregated `PrivilegeDef.operation` ends up as `READ`, **not** `EXECUTE`. This is the rule the privilege evaluator sees, since it always operates on the aggregated `PrivilegeDef`.
+The notable cell is `READ + EXECUTE = READ`. When two position roles grant `_R` and `_E` for the same resource, the aggregated `PrivilegeDef.operation` ends up as `READ`, **not** `EXECUTE`.
+
+This loss is why the aggregate no longer authorizes anything. Since 1.0.4 / 2.0.0 both evaluators match the requested operation against **each** entry of `ResourceDef.getPrivilegesList()`, so a role holding `_R` and `_E` satisfies an `EXECUTE` request through its own privilege. The aggregated `operation` remains as derived data.
 
 ### Operation truth table for `hasRequiredOperation`
 
@@ -78,10 +80,10 @@ The hierarchical directions (`HIERARCHY_DOWN`, `HIERARCHY_UP`) compare *pipe-del
 
 | Scope    | `HIERARCHY_DOWN`                                              | `HIERARCHY_UP`                                                |
 | -------- | ------------------------------------------------------------- | ------------------------------------------------------------- |
-| Company  | `entityCompanyPath.startsWith(callerCompanyParentPath)`        | `entityCompanyPath.endsWith(callerCompanyParentPath)`         |
+| Company  | `entityCompanyPath.startsWith(callerCompanyParentPath)`        | `callerCompanyParentPath.startsWith(entityCompanyPath)`       |
 | Org      | `entityOrgPath.startsWith(callerOrgParentPath)`                | `callerOrgParentPath.startsWith(entityOrgParentPath)`         |
 
-Both encode the "ancestor / descendant" relationship; the company-scope `HIERARCHY_UP` uses `endsWith` while the org-scope variant reverses the operands of `startsWith`. Custom backends should preserve the conventions the implementation uses; see the architecture document for the source-level reference.
+Both encode the "ancestor / descendant" relationship the same way: `HIERARCHY_UP` means the *entity* sits on the caller's ancestor chain, so the caller's path must start with the entity's path. Company scope used to express this with `endsWith`, which both rejected genuine ancestors and accepted unrelated organizations whose path merely ended with the caller's; that was corrected in 1.0.4 / 2.0.0. Custom backends should mirror these predicates exactly - both scopes now use the same operand order.
 
 ### `applies(isTarget, isDescendant, isAncestor)`
 
@@ -107,7 +109,7 @@ NONE < EXACT < HIERARCHY_DOWN
               HIERARCHY_UP
 ```
 
-`HIERARCHY_DOWN` and `HIERARCHY_UP` are not directly comparable; they are both more permissive than `EXACT` and both subsumed by `ALL`. Aggregation (`PrivilegeDef.add`) joins `HIERARCHY_DOWN + HIERARCHY_UP` -> `ALL`.
+`HIERARCHY_DOWN` and `HIERARCHY_UP` are not directly comparable; they are both more permissive than `EXACT`. Their union is the subtree plus the ancestor chain - a vertical spine that excludes sibling and cousin branches - so it is **not** `ALL`, and no single direction can represent it. Aggregation (`PrivilegeDef.add`) therefore summarizes `HIERARCHY_DOWN + HIERARCHY_UP` as the narrowest safe value, `EXACT`, and the real semantics come from evaluating each privilege of `ResourceDef.getPrivilegesList()` separately and OR-ing the outcomes.
 
 ## Scope enum
 
@@ -141,11 +143,13 @@ Each scope expands into specific values of the underlying axes:
 
 ## Cascade evaluation
 
-The evaluation order is **company -> org -> person**, with the `all` shortcut on top:
+The cascade below describes how **one** `PrivilegeDef` is evaluated. Since 1.0.4 / 2.0.0 the evaluators run it once per entry of `ResourceDef.getPrivilegesList()` and OR the results, rather than once over the aggregate - so a role holding privileges on two different scope axes, or in two different hierarchy directions, has each of them evaluated on its own.
+
+The evaluation order within one privilege is **company -> org -> person**, with the `all` shortcut on top:
 
 ```mermaid
 flowchart TB
-    Start([Aggregated PrivilegeDef]) --> AllShort{all == true?}
+    Start([One PrivilegeDef from privilegesList]) --> AllShort{all == true?}
     AllShort -- Yes --> Allow([allow])
     AllShort -- No --> CompCheck{company != NONE?}
     CompCheck -- Yes --> CompMatch[Match company direction<br/>against caller path]
@@ -185,12 +189,21 @@ For two `PrivilegeDirection` values:
 | `a` \\ `b`         | `NONE`           | `EXACT`           | `HIERARCHY_DOWN`  | `HIERARCHY_UP`    | `ALL`  |
 | ------------------ | ---------------- | ----------------- | ----------------- | ----------------- | ------ |
 | `NONE`             | `NONE`           | `EXACT`           | `HIERARCHY_DOWN`  | `HIERARCHY_UP`    | `ALL`  |
-| `EXACT`            | `EXACT`          | `EXACT`           | `EXACT`           | `EXACT`           | `ALL`  |
-| `HIERARCHY_DOWN`   | `HIERARCHY_DOWN` | `EXACT`           | `HIERARCHY_DOWN`  | `ALL`             | `ALL`  |
-| `HIERARCHY_UP`     | `HIERARCHY_UP`   | `EXACT`           | `ALL`             | `HIERARCHY_UP`    | `ALL`  |
+| `EXACT`            | `EXACT`          | `EXACT`           | `HIERARCHY_DOWN`  | `HIERARCHY_UP`    | `ALL`  |
+| `HIERARCHY_DOWN`   | `HIERARCHY_DOWN` | `HIERARCHY_DOWN`  | `HIERARCHY_DOWN`  | `EXACT`           | `ALL`  |
+| `HIERARCHY_UP`     | `HIERARCHY_UP`   | `HIERARCHY_UP`    | `EXACT`           | `HIERARCHY_UP`    | `ALL`  |
 | `ALL`              | `ALL`            | `ALL`             | `ALL`             | `ALL`             | `ALL`  |
 
-The diagonal `EXACT + EXACT = EXACT` and the down-up combination `HIERARCHY_DOWN + HIERARCHY_UP = ALL` are the load-bearing entries. The `EXACT + HIERARCHY_DOWN = EXACT` row is intentional - combining a strictly-exact direction with a hierarchical one collapses to exact (the join is read as "values that match both"). This is consistent with the source implementation in `PrivilegeDef.add`.
+A direction denotes a *set* of reachable organizations: `EXACT(X) = {X}`, `HIERARCHY_DOWN(X) = {X and its descendants}`, `HIERARCHY_UP(X) = {X and its ancestors}`. The join is therefore a **union**, and the result must be the narrowest direction that still covers both operands - never wider than the true union, because a wider result grants access that was never assigned.
+
+Two entries carry the weight:
+
+- **`EXACT + HIERARCHY_DOWN = HIERARCHY_DOWN`** (and the same for `HIERARCHY_UP`). `EXACT` is a subset of both hierarchical directions, so the union is the hierarchical one. Before 1.0.4 / 2.0.0 this collapsed to `EXACT`, which silently dropped the subtree or the ancestor chain.
+- **`HIERARCHY_DOWN + HIERARCHY_UP = EXACT`.** Their union is the subtree plus the ancestor chain, which excludes sibling and cousin branches - so it is *not* `ALL`. No single direction can express it, so the aggregate falls back to the narrowest safe value. Before 1.0.4 / 2.0.0 this produced `ALL`, which over-granted, and an aggregated `org` of `ALL` was then rewritten to `company = EXACT`, moving the privilege onto a different scope axis entirely.
+
+Because the aggregate cannot express "subtree **or** ancestors", callers that need the exact semantics must evaluate each privilege in `ResourceDef.getPrivilegesList()` separately and OR the outcomes. Both consumers in the library - the per-record check and the RSQL list filter - do exactly that; the aggregate is retained only as derived, legacy data and no longer takes part in an authorization decision.
+
+`ALL` is the top of the lattice and absorbs everything, but it is not a valid axis value in practice: see the note on `PrivilegeDirection.ALL` above.
 
 ## Identifier shape recap
 
