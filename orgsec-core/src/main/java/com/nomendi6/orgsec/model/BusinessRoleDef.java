@@ -17,9 +17,18 @@ public class BusinessRoleDef {
     public String filter;
     public boolean allowAll = false;
 
+    /**
+     * Required by Jackson - see {@link ResourceDef#ResourceDef()} for why a lone String constructor
+     * is not enough. Initialises {@code resourcesMap} so a deserialized instance is never left with
+     * a null map.
+     */
+    public BusinessRoleDef() {
+        this.resourcesMap = new HashMap<>();
+    }
+
     public BusinessRoleDef(String businessRoleName) {
+        this();
         this.businessRoleName = businessRoleName;
-        resourcesMap = new HashMap<>();
     }
 
     public void addResourceDefinition(ResourceDef otherResource) {
@@ -68,8 +77,13 @@ public class BusinessRoleDef {
             // Create new resource definition
             ResourceDef resourceDef = new ResourceDef(otherResource.getResourceName());
 
-            // Copy privileges list
-            resourceDef.setPrivilegesList(otherResource.getPrivilegesList());
+            // Copy the privileges into this resource's own list. Assigning the source list by
+            // reference would alias it: the source ResourceDef belongs to a RoleDef that the role
+            // store hands out uncopied, so the addAll in the branch above would later write the
+            // privileges of one role into another role's list, and every principal holding that
+            // role would inherit them. A shallow copy is sufficient because a PrivilegeDef is never
+            // mutated after the loader constructs it.
+            resourceDef.getPrivilegesList().addAll(otherResource.getPrivilegesList());
             resourceDef.setAggregatedWritePrivilege(otherResource.getAggregatedWritePrivilege());
             resourceDef.setAggregatedReadPrivilege(otherResource.getAggregatedReadPrivilege());
             resourceDef.setAggregatedExecutePrivilege(otherResource.getAggregatedExecutePrivilege());

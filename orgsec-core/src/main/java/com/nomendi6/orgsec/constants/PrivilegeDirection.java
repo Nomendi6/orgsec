@@ -28,7 +28,16 @@ public enum PrivilegeDirection {
     HIERARCHY_UP("HIERARCHY_UP", "Current level and above"),
 
     /**
-     * Unrestricted access across all organizational levels.
+     * Not a valid {@code company} or {@code org} scope.
+     * <p>
+     * Unrestricted access is expressed by the separate {@link com.nomendi6.orgsec.model.PrivilegeDef#all}
+     * flag, which the privilege loader sets for the {@code ALL} scope code - it never assigns this
+     * value to an axis. No evaluator implements it either: {@code PrivilegeChecker} and
+     * {@code RsqlFilterBuilder} both deny a privilege whose axis is {@code ALL}.
+     * <p>
+     * The value is retained because it is part of the published API and because
+     * {@link PrivilegeScope#toDirection()} maps the {@code ALL} scope onto it. Do not set it on a
+     * {@code PrivilegeDef}: the result is a privilege that grants nothing.
      */
     ALL("ALL", "All levels");
 
@@ -98,7 +107,11 @@ public enum PrivilegeDirection {
      * Checks if this direction includes downward hierarchy.
      *
      * @return true if this is HIERARCHY_DOWN or ALL
+     * @deprecated Unused by the library and misleading: it reports {@code true} for {@code ALL},
+     *     which no evaluator treats as a grant. Compare against {@link #HIERARCHY_DOWN} directly.
+     *     Scheduled for removal in 2.1.
      */
+    @Deprecated(since = "1.0.4", forRemoval = true)
     public boolean includesDown() {
         return this == HIERARCHY_DOWN || this == ALL;
     }
@@ -107,7 +120,11 @@ public enum PrivilegeDirection {
      * Checks if this direction includes upward hierarchy.
      *
      * @return true if this is HIERARCHY_UP or ALL
+     * @deprecated Unused by the library and misleading: it reports {@code true} for {@code ALL},
+     *     which no evaluator treats as a grant. Compare against {@link #HIERARCHY_UP} directly.
+     *     Scheduled for removal in 2.1.
      */
+    @Deprecated(since = "1.0.4", forRemoval = true)
     public boolean includesUp() {
         return this == HIERARCHY_UP || this == ALL;
     }

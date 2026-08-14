@@ -4,16 +4,23 @@ This page is the step-by-step reference for OrgSec's privilege evaluator. It wal
 
 The implementation is in [`PrivilegeChecker`](https://github.com/Nomendi6/orgsec/blob/main/orgsec-common/src/main/java/com/nomendi6/orgsec/common/service/PrivilegeChecker.java).
 
-## The two-step API contract
-
-Application code performs a privilege check in two calls:
+## What application code should call
 
 ```java
-PrivilegeDef granted = privilegeChecker.getResourcePrivileges(resource, PrivilegeOperation.READ);
-boolean ok = privilegeChecker.hasRequiredOperation(granted, PrivilegeOperation.READ);
+boolean ok = privilegeSecurityService.checkCurrentUserPrivilegeOnResource(
+    entityDto, "Document", PrivilegeOperation.READ);
 ```
 
-The first call returns the *aggregated* privilege the caller holds for the resource (or `null` if none). The second checks the operation. The two calls are split so that callers can inspect or log `granted` between them.
+> **`getResourcePrivileges` + `hasRequiredOperation` is not an authorization check.** Earlier
+> revisions of this page presented that pair as the API contract. It answers only *"does the caller
+> hold this operation somewhere?"* - it never looks at the entity, so it grants every record as soon
+> as the caller holds the privilege in any organization. Both methods remain part of the public API
+> for inspection and logging, but neither authorizes anything on its own.
+
+`getResourcePrivileges` returns the *aggregated* privilege for the resource. Since 1.0.4 / 2.0.0 the
+aggregate no longer takes part in any decision: it is a single `PrivilegeDef` and cannot express
+"subtree **or** ancestors", so both the per-record check and the RSQL filter evaluate each entry of
+`ResourceDef.getPrivilegesList()` separately and OR the outcomes.
 
 The deeper `checkOrganizationPrivilege` and `checkBusinessRolePrivilege` methods are used internally and by `RsqlFilterBuilder`. They take richer context (an `OrganizationDef` and a `BusinessRoleContext`) and return the boolean answer in one call.
 
@@ -103,13 +110,15 @@ Each scope has its own match function. They all reduce to string operations on p
 | ------------------- | ---------------------------------------------------------------- |
 | `EXACT`             | `organizationDef.companyId.equals(businessRoleCompanyId)`        |
 | `HIERARCHY_DOWN`    | `businessRoleCompanyPath.startsWith(organizationDef.companyParentPath)` |
-| `HIERARCHY_UP`      | `businessRoleCompanyPath.endsWith(organizationDef.companyParentPath)` |
+| `HIERARCHY_UP`      | `organizationDef.companyParentPath.startsWith(businessRoleCompanyPath)` |
 | `NONE` / other      | `false`                                                          |
 
 A note on parameter names before reading the table: `businessRoleCompanyPath` is the **entity's** path (read out of the entity through `extractSecurityContext`), while `organizationDef.companyParentPath` is the **caller's** company-parent-path (the org the caller's position role is anchored at). The naming is unintuitive but consistent with how `extractSecurityContext` populates the `BusinessRoleContext`. With those names in mind:
 
 - For `HIERARCHY_DOWN`: `entity.companyPath.startsWith(caller.companyParentPath)`. The caller's company-parent-path is a prefix of the entity's path - meaning the **entity sits at or below the caller** in the company hierarchy. That matches the intent of `_COMPHD_R` ("read everything in my company sub-tree").
-- For `HIERARCHY_UP`: `entity.companyPath.endsWith(caller.companyParentPath)`. The caller's path appears at the end of the entity's path. This encodes "caller is an ancestor of the entity" using `endsWith` rather than the more usual `startsWith` - an asymmetry with the org-scope convention. Custom backends should preserve the operations as written; do not reorder the operands when porting.
+- For `HIERARCHY_UP`: `caller.companyParentPath.startsWith(entity.companyPath)`. The entity's path is a prefix of the caller's - meaning the **entity is an ancestor of the caller**, which is what `_COMPHU_R` grants. This mirrors the org scope exactly.
+
+  Before 1.0.4 / 2.0.0 this branch used `entity.companyPath.endsWith(caller.companyParentPath)`. In a rooted materialized path that both rejected genuine ancestors (`|A|B|` does not end with `|A|B|C|`) and accepted unrelated organizations whose path merely ended with the caller's (`|X|A|B|C|` ends with `|A|B|C|`). Custom backends must use the predicates as written above; the two scopes now share the same operand order.
 
 ### Org scope - `checkOrgPrivilege`
 
@@ -120,7 +129,7 @@ A note on parameter names before reading the table: `businessRoleCompanyPath` is
 | `HIERARCHY_UP`      | `organizationDef.parentPath.startsWith(businessRoleOrgPath)`     |
 | `NONE` / other      | `false`                                                          |
 
-For org scope, the operand convention is the same as for company on `HIERARCHY_DOWN` (`businessRoleOrgPath.startsWith(organizationDef.parentPath)` - the entity's org path begins with the caller's org-parent-path, i.e. the entity sits at or below the caller in the org tree). For `HIERARCHY_UP` the org-scope test is `organizationDef.parentPath.startsWith(businessRoleOrgPath)` - the **caller's** org-parent-path begins with the **entity's** org path, meaning the caller is at or below the entity. Encoded that way, the relation reads "the entity is an ancestor of the caller," which is the inverse of the down case as expected for `HIERARCHY_UP`. The operand order differs from company-scope `HIERARCHY_UP` (which uses `endsWith` rather than reversed `startsWith`); custom backends should preserve the operations as written.
+For org scope, the operand convention is the same as for company on `HIERARCHY_DOWN` (`businessRoleOrgPath.startsWith(organizationDef.parentPath)` - the entity's org path begins with the caller's org-parent-path, i.e. the entity sits at or below the caller in the org tree). For `HIERARCHY_UP` the org-scope test is `organizationDef.parentPath.startsWith(businessRoleOrgPath)` - the **caller's** org-parent-path begins with the **entity's** org path, meaning the caller is at or below the entity. Encoded that way, the relation reads "the entity is an ancestor of the caller," which is the inverse of the down case as expected for `HIERARCHY_UP`. Since 1.0.4 / 2.0.0 the company scope uses the identical operand order, so the two are no longer asymmetric.
 
 ### Person scope - `checkPersonPrivilege`
 

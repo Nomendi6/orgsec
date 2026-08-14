@@ -1,5 +1,11 @@
 # Core Concepts
 
+> **Historical.** This page documents OrgSec 1.0.x as released up to 1.0.3. The `PrivilegeDef.add`
+> direction join, the company `HIERARCHY_UP` predicate and the `HIERARCHY_UP` RSQL filter all changed
+> in 1.0.4 / 2.0.0. See the current
+> [Privilege Model Reference](../../../reference/privilege-model.md) for present behaviour.
+
+
 This page is the conceptual reference for the OrgSec model. Read it once before you start writing privilege definitions or wiring storage backends; come back to it whenever a check produces a surprising result. The model is small - six domain objects, three orthogonal axes on a privilege, and one cascade rule - but each piece does specific work.
 
 ## The domain model

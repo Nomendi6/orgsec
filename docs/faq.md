@@ -104,7 +104,9 @@ A *business role* (`owner`, `customer`, `contractor`) is a category of relations
 
 ## Why does the privilege model have three direction values for *each* scope?
 
-Real organizational structures have three meaningful relationships: at this exact node, at this node and any descendant, at this node and any ancestor. Most authorization decisions reduce to one of those three. Adding an "all" shortcut covers super-users; `NONE` covers "this scope does not apply." Five values per scope - `NONE`, `EXACT`, `HIERARCHY_DOWN`, `HIERARCHY_UP`, `ALL` - cover every case we found in real applications without making the model larger than needed.
+Real organizational structures have three meaningful relationships: at this exact node, at this node and any descendant, at this node and any ancestor. Most authorization decisions reduce to one of those three, and `NONE` covers "this scope does not apply" - so four values per scope carry the model.
+
+The enum also declares `ALL`, but it is **not** a usable per-scope value: the privilege loader never assigns it to an axis, and no evaluator treats it as a grant. Unrestricted access is expressed by the separate `PrivilegeDef.all` flag, which the `_ALL` scope code sets. Setting `company` or `org` to `ALL` by hand produces a privilege that grants nothing.
 
 ## Does OrgSec write to my database?
 

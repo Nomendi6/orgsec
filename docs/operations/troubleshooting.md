@@ -69,9 +69,17 @@ Most common causes, in order:
 
 ### `AccessDeniedException` from `RsqlFilterBuilder` on a list endpoint
 
-**Cause.** The fail-closed behavior added in 1.0.1: a caller with no read privileges on the resource can no longer get an empty / over-permissive filter.
+**Cause 1 - the caller genuinely has no privilege.** The fail-closed behavior added in 1.0.1: a caller with no read privileges on the resource can no longer get an empty / over-permissive filter.
 
-**Fix.** This is intentional - the user genuinely has no privileges. Check the privilege definitions and role assignments. If you see this on a known-good user, look for a stale `PersonDef` in the cache (see "Stale auth data" below).
+**Fix.** This is intentional. Check the privilege definitions and role assignments. If you see it on a known-good user, look for a stale `PersonDef` in the cache (see "Stale auth data" below).
+
+**Cause 2 - the `ResourceDef` has an aggregate but no privileges list.** Since 1.0.4 / 2.0.0 the filter is built from `ResourceDef.getPrivilegesList()`; an empty or absent list fails closed even when an aggregated privilege is set. Every path inside the library populates both, so this only appears when application code constructs a `ResourceDef` itself.
+
+**Fix.** Populate the list, not just the aggregate - see the Migration Notes for 1.0.4 / 2.0.0. On the 1.0.x line a compatibility fallback still honours an aggregate-only object and logs a warning naming the resource; that fallback is gone in 2.x.
+
+**Cause 3 - the query was restricted to business roles the caller does not hold.** `buildRsqlFilterForPrivileges` honours its `allowedBusinessRoles` argument since 1.0.4 / 2.0.0; it was previously accepted and ignored. `buildRsqlFilterForBasicPrivileges` restricts to `owner`, so a caller whose privilege sits on another business role is now correctly denied.
+
+**Fix.** Confirm the caller holds the privilege on one of the allowed roles, or call `buildRsqlFilterForPrivileges` with a wider list (`null` means "any business role").
 
 ### `_COMPHD` privilege grants too much
 
