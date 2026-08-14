@@ -29,7 +29,7 @@ Redis-based storage implementation for OrgSec Security Library providing high-pe
 ## Requirements
 
 - Java 17 or higher
-- Spring Boot 3.4.5+
+- Spring Boot 3.5.x
 - Redis 6.0+ (tested with Redis 8.4.0)
 - Maven 3.8+
 
@@ -41,7 +41,7 @@ Add the dependency to your `pom.xml`:
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-storage-redis</artifactId>
-    <version>1.0.3</version>
+    <version>1.0.4</version>
 </dependency>
 ```
 
