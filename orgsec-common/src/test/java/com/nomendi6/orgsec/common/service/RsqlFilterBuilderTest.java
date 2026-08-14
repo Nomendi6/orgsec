@@ -62,7 +62,7 @@ class RsqlFilterBuilderTest {
 
         String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
-        assertThat(filter).isEqualTo("(ownerCompanyPath=*'|1|10|*')");
+        assertThat(filter).isEqualTo("(ownerCompanyPath=^*'|1|10|*')");
     }
 
     @Test
@@ -102,7 +102,7 @@ class RsqlFilterBuilderTest {
 
         String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
-        assertThat(filter).isEqualTo("(ownerOrgPath=*'|1|10|*')");
+        assertThat(filter).isEqualTo("(ownerOrgPath=^*'|1|10|*')");
     }
 
     @Test
@@ -159,7 +159,7 @@ class RsqlFilterBuilderTest {
         String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
         // A subtree IS expressible as a prefix pattern, so HIERARCHY_DOWN is unchanged.
-        assertThat(filter).isEqualTo("(ownerOrgPath=*'|A|B|C|*')");
+        assertThat(filter).isEqualTo("(ownerOrgPath=^*'|A|B|C|*')");
     }
 
     @Test
@@ -237,7 +237,7 @@ class RsqlFilterBuilderTest {
         String orgFilter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
         assertThat(companyFilter).isEqualTo("(ownerCompanyHierarchy=in=('|1|','|1|10|'))");
-        assertThat(orgFilter).isEqualTo("(ownerOrganizationHierarchy=*'|1|10|*')");
+        assertThat(orgFilter).isEqualTo("(ownerOrganizationHierarchy=^*'|1|10|*')");
     }
 
     @Test
@@ -286,9 +286,46 @@ class RsqlFilterBuilderTest {
 
         String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
-        assertThat(filter).contains("ownerOrgPath=*'|A|B|*'");
+        assertThat(filter).contains("ownerOrgPath=^*'|A|B|*'");
         assertThat(filter).contains("ownerOrgPath=in=('|A|','|A|B|')");
         assertThat(filter).contains(",");
+    }
+
+    @Test
+    void shouldOrBothClausesWhenRoleHoldsCompanyDownAndUpForSameResource() {
+        // The company axis is the mirror of the org axis and C6 does not distinguish them, but it is
+        // the side a fork with companyParentPath = null never exercises - so it is pinned separately.
+        when(storage.getPerson(1L)).thenReturn(personWithPrivilegeList(
+            "owner",
+            List.of(
+                privilege(PrivilegeDirection.HIERARCHY_DOWN, PrivilegeDirection.NONE, false),
+                privilege(PrivilegeDirection.HIERARCHY_UP, PrivilegeDirection.NONE, false)
+            ),
+            "|A|B|"
+        ));
+
+        String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
+
+        assertThat(filter).contains("ownerCompanyPath=^*'|A|B|*'");
+        assertThat(filter).contains("ownerCompanyPath=in=('|A|','|A|B|')");
+    }
+
+    @Test
+    void shouldNotFallBackToTheAggregateWhenCompanyDirectionsAreCombined() {
+        // add(HIERARCHY_DOWN, HIERARCHY_UP) summarizes to EXACT. Deciding from that aggregate would
+        // emit a company-id equality and silently drop both the subtree and the ancestors.
+        when(storage.getPerson(1L)).thenReturn(personWithPrivilegeList(
+            "owner",
+            List.of(
+                privilege(PrivilegeDirection.HIERARCHY_DOWN, PrivilegeDirection.NONE, false),
+                privilege(PrivilegeDirection.HIERARCHY_UP, PrivilegeDirection.NONE, false)
+            ),
+            "|A|B|"
+        ));
+
+        String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
+
+        assertThat(filter).doesNotContain("ownerCompany.id==");
     }
 
     @Test

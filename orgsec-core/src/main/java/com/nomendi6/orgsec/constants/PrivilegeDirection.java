@@ -104,32 +104,6 @@ public enum PrivilegeDirection {
     }
 
     /**
-     * Checks if this direction includes downward hierarchy.
-     *
-     * @return true if this is HIERARCHY_DOWN or ALL
-     * @deprecated Unused by the library and misleading: it reports {@code true} for {@code ALL},
-     *     which no evaluator treats as a grant. Compare against {@link #HIERARCHY_DOWN} directly.
-     *     Scheduled for removal in 2.1.
-     */
-    @Deprecated(since = "1.0.4", forRemoval = true)
-    public boolean includesDown() {
-        return this == HIERARCHY_DOWN || this == ALL;
-    }
-
-    /**
-     * Checks if this direction includes upward hierarchy.
-     *
-     * @return true if this is HIERARCHY_UP or ALL
-     * @deprecated Unused by the library and misleading: it reports {@code true} for {@code ALL},
-     *     which no evaluator treats as a grant. Compare against {@link #HIERARCHY_UP} directly.
-     *     Scheduled for removal in 2.1.
-     */
-    @Deprecated(since = "1.0.4", forRemoval = true)
-    public boolean includesUp() {
-        return this == HIERARCHY_UP || this == ALL;
-    }
-
-    /**
      * Checks if this direction is more permissive than another.
      *
      * @param other the direction to compare with

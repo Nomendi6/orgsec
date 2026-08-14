@@ -119,6 +119,114 @@ class PrivilegeSecurityServiceScopeTest {
         assertThat(allowed).isFalse();
     }
 
+    // --- company axis ---------------------------------------------------------------------------
+    //
+    // The company branch mirrors the org branch and the per-privilege loop does not distinguish them,
+    // but it is the side a deployment with companyParentPath = null never exercises - so the same
+    // three outcomes are pinned here explicitly.
+
+    @Test
+    void shouldAllowDescendantRecordCoveredByTheCompanyHierarchyDownPrivilege() {
+        givenRoleWithCompanyDownAndUpPrivileges();
+
+        boolean allowed = service.checkCurrentUserPrivilegeOnResource(
+            companyEntity(300L, "|A|B|C|"),
+            RESOURCE,
+            PrivilegeOperation.READ
+        );
+
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
+    void shouldAllowAncestorRecordCoveredByTheCompanyHierarchyUpPrivilege() {
+        givenRoleWithCompanyDownAndUpPrivileges();
+
+        boolean allowed = service.checkCurrentUserPrivilegeOnResource(companyEntity(50L, "|A|"), RESOURCE, PrivilegeOperation.READ);
+
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
+    void shouldDenyCompanySiblingBranchCoveredByNeitherPrivilege() {
+        givenRoleWithCompanyDownAndUpPrivileges();
+
+        boolean allowed = service.checkCurrentUserPrivilegeOnResource(companyEntity(400L, "|A|X|"), RESOURCE, PrivilegeOperation.READ);
+
+        assertThat(allowed).isFalse();
+    }
+
+    /**
+     * A cross-tree suffix collision must not be accepted. Before 1.0.4 the company branch compared
+     * with {@code endsWith}, which let an unrelated company whose path merely ended with the
+     * principal's path through.
+     */
+    @Test
+    void shouldDenyCompanyCrossTreeSuffixCollision() {
+        givenRoleWithCompanyDownAndUpPrivileges();
+
+        boolean allowed = service.checkCurrentUserPrivilegeOnResource(
+            companyEntity(500L, "|X|A|B|"),
+            RESOURCE,
+            PrivilegeOperation.READ
+        );
+
+        assertThat(allowed).isFalse();
+    }
+
+    private void givenRoleWithCompanyDownAndUpPrivileges() {
+        PrivilegeDef down = companyPrivilege(PrivilegeDirection.HIERARCHY_DOWN);
+        PrivilegeDef up = companyPrivilege(PrivilegeDirection.HIERARCHY_UP);
+
+        ResourceDef resource = new ResourceDef(RESOURCE);
+        resource.getPrivilegesList().add(down);
+        resource.getPrivilegesList().add(up);
+        resource.setAggregatedReadPrivilege(down.add(up));
+
+        BusinessRoleDef role = new BusinessRoleDef(ROLE);
+        role.resourcesMap.put(RESOURCE, resource);
+
+        OrganizationDef organization = new OrganizationDef();
+        organization.organizationId = PRINCIPAL_ORG_ID;
+        organization.parentPath = PRINCIPAL_PATH;
+        organization.companyId = 100L;
+        organization.companyParentPath = PRINCIPAL_PATH;
+        organization.businessRolesMap.put(ROLE, role);
+
+        PersonDef person = new PersonDef(PERSON_ID, "Alice");
+        person.organizationsMap.put(PRINCIPAL_ORG_ID, organization);
+
+        when(storage.getPerson(PERSON_ID)).thenReturn(person);
+    }
+
+    private PrivilegeDef companyPrivilege(PrivilegeDirection company) {
+        return new PrivilegeDef(RESOURCE + "_probe", RESOURCE)
+            .allowOperation(PrivilegeOperation.READ)
+            .allowOrg(company, PrivilegeDirection.NONE, false);
+    }
+
+    private SecurityEnabledDTO companyEntity(Long companyId, String companyPath) {
+        Map<SecurityFieldType, Object> fields = new HashMap<>();
+        OrganizationData company = new OrganizationData();
+        company.setId(companyId);
+        fields.put(SecurityFieldType.COMPANY, company);
+        fields.put(SecurityFieldType.COMPANY_PATH, companyPath);
+
+        return new SecurityEnabledDTO() {
+            @Override
+            public Object getSecurityField(String businessRole, SecurityFieldType fieldType) {
+                return ROLE.equalsIgnoreCase(businessRole) ? fields.get(fieldType) : null;
+            }
+
+            @Override
+            public void setSecurityField(String businessRole, SecurityFieldType fieldType, Object value) {
+                if (ROLE.equalsIgnoreCase(businessRole)) {
+                    fields.put(fieldType, value);
+                }
+            }
+        };
+    }
+
     private void givenRoleWithDownAndUpPrivileges() {
         PrivilegeDef down = orgPrivilege(PrivilegeDirection.HIERARCHY_DOWN);
         PrivilegeDef up = orgPrivilege(PrivilegeDirection.HIERARCHY_UP);

@@ -4,6 +4,9 @@ import static java.util.Arrays.asList;
 import static com.nomendi6.orgsec.helper.RsqlHelper.addParenthases;
 import static com.nomendi6.orgsec.helper.RsqlHelper.orRsql;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -109,7 +112,10 @@ public class RsqlFilterBuilder {
 
     private String buildFilterForPersonDef(PersonDef personDef, PersonData currentPerson, RsqlFilterContext context)
         throws AccessDeniedException {
-        String filter = "";
+        // Atomic clauses are collected rather than OR-ed as they are produced, so that identical
+        // clauses coming from different organizations or business roles are emitted once and a
+        // subtree clause can absorb the narrower subtrees it already covers.
+        Set<String> clauses = new LinkedHashSet<>();
         boolean hasPrivilege = false;
 
         for (Map.Entry<Long, OrganizationDef> entry : personDef.organizationsMap.entrySet()) {
@@ -134,7 +140,8 @@ public class RsqlFilterBuilder {
                             businessRoleDef,
                             currentPerson,
                             organizationDef,
-                            context
+                            context,
+                            clauses
                         );
 
                         if (roleFilter != null) {
@@ -142,9 +149,6 @@ public class RsqlFilterBuilder {
                             if (ALL_GRANT_SENTINEL.equals(roleFilter)) {
                                 // Empty filter means 'all' privilege - no filtering needed
                                 return "";
-                            }
-                            if (!roleFilter.isEmpty()) {
-                                filter = orRsql(filter, roleFilter);
                             }
                         }
                     }
@@ -158,15 +162,103 @@ public class RsqlFilterBuilder {
             );
         }
 
+        String filter = "";
+        for (String clause : removeSubsumedSubtrees(clauses)) {
+            filter = orRsql(filter, clause);
+        }
         return filter;
     }
 
+    /**
+     * Drops every subtree clause already covered by a broader subtree clause on the same selector.
+     * <p>
+     * A principal assigned at {@code |A|} and again at {@code |A|B|} produces
+     * {@code orgPath=^*'|A|*'} and {@code orgPath=^*'|A|B|*'}; the first matches everything the
+     * second does, so keeping both only widens the query plan. Paths are rooted and every segment
+     * ends with the separator, so "covers" is plain prefix containment and {@code |A|} cannot
+     * absorb {@code |AX|}.
+     * <p>
+     * Only the subtree form is folded. EXACT, ancestor ({@code =in=}) and person clauses are left
+     * untouched: their sets are not nested in a way a string prefix can decide.
+     */
+    private static Collection<String> removeSubsumedSubtrees(Collection<String> clauses) {
+        List<SubtreeClause> subtrees = new ArrayList<>();
+        for (String clause : clauses) {
+            SubtreeClause parsed = SubtreeClause.parse(clause);
+            if (parsed != null) {
+                subtrees.add(parsed);
+            }
+        }
+        if (subtrees.size() < 2) {
+            return clauses;
+        }
+
+        List<String> kept = new ArrayList<>(clauses.size());
+        for (String clause : clauses) {
+            SubtreeClause parsed = SubtreeClause.parse(clause);
+            if (parsed == null || !parsed.isCoveredByAnyOf(subtrees)) {
+                kept.add(clause);
+            }
+        }
+        return kept;
+    }
+
+    /** A {@code selector=^*'path*'} clause, split so subtree containment can be decided on the path. */
+    private static final class SubtreeClause {
+
+        private static final String OPERATOR = "=^*'";
+
+        final String selector;
+        final String path;
+
+        private SubtreeClause(String selector, String path) {
+            this.selector = selector;
+            this.path = path;
+        }
+
+        static SubtreeClause parse(String clause) {
+            if (clause == null) {
+                return null;
+            }
+            int operatorAt = clause.indexOf(OPERATOR);
+            if (operatorAt < 0 || !clause.endsWith("*'")) {
+                return null;
+            }
+            String path = clause.substring(operatorAt + OPERATOR.length(), clause.length() - 2);
+            if (path.isEmpty() || path.indexOf('\'') >= 0) {
+                return null;
+            }
+            return new SubtreeClause(clause.substring(0, operatorAt), path);
+        }
+
+        boolean isCoveredByAnyOf(Collection<SubtreeClause> others) {
+            for (SubtreeClause other : others) {
+                if (other != this && other.covers(this)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /** True when this clause matches everything {@code narrower} matches, and more. */
+        private boolean covers(SubtreeClause narrower) {
+            return selector.equals(narrower.selector) && narrower.path.length() > path.length() && narrower.path.startsWith(path);
+        }
+    }
+
+    /**
+     * Evaluates one business role and appends its atomic clauses to {@code sink}.
+     *
+     * @return {@code null} when the role grants nothing, {@link #ALL_GRANT_SENTINEL} when it grants
+     *     everything, or the empty string when it granted something and the clauses were appended.
+     */
     private String buildFilterForBusinessRole(
         String businessRoleName,
         BusinessRoleDef businessRoleDef,
         PersonData currentPerson,
         OrganizationDef organizationDef,
-        RsqlFilterContext context
+        RsqlFilterContext context,
+        Collection<String> sink
     ) {
         ResourceDef resourceDef = businessRoleDef.resourcesMap.get(context.resourceName);
         if (resourceDef == null) {
@@ -187,7 +279,7 @@ public class RsqlFilterBuilder {
             return null;
         }
 
-        String filter = "";
+        boolean granted = false;
         for (PrivilegeDef privilege : privileges) {
             if (!matchesOperation(privilege, context.operation)) {
                 continue;
@@ -206,10 +298,11 @@ public class RsqlFilterBuilder {
             if (clause == null || clause.isEmpty()) {
                 continue;
             }
-            filter = orRsql(filter, clause);
+            sink.add(clause);
+            granted = true;
         }
 
-        return filter.isEmpty() ? null : filter;
+        return granted ? "" : null;
     }
 
     /**
@@ -282,7 +375,7 @@ public class RsqlFilterBuilder {
                 }
                 // Validate and escape path before using in RSQL
                 String safeCompanyPath = PathSanitizer.escapeForRsql(organizationDef.companyParentPath);
-                return selector(alias, businessRoleName, SecurityFieldType.COMPANY_PATH) + "=*'" + safeCompanyPath + "*'";
+                return selector(alias, businessRoleName, SecurityFieldType.COMPANY_PATH) + "=^*'" + safeCompanyPath + "*'";
             case HIERARCHY_UP:
                 if (organizationDef.companyParentPath == null) {
                     log.warn("Cannot build company hierarchy-up RSQL filter: companyParentPath is null for organization {}",
@@ -321,7 +414,7 @@ public class RsqlFilterBuilder {
                 }
                 // Validate and escape path before using in RSQL
                 String safeOrgPath = PathSanitizer.escapeForRsql(organizationDef.parentPath);
-                return selector(alias, businessRoleName, SecurityFieldType.ORG_PATH) + "=*'" + safeOrgPath + "*'";
+                return selector(alias, businessRoleName, SecurityFieldType.ORG_PATH) + "=^*'" + safeOrgPath + "*'";
             case HIERARCHY_UP:
                 if (organizationDef.parentPath == null) {
                     log.warn("Cannot build organization hierarchy-up RSQL filter: parentPath is null for organization {}",
@@ -365,7 +458,11 @@ public class RsqlFilterBuilder {
      * exact, case-sensitive comparison, consistent with the EXACT direction.
      * <p>
      * The opposite direction needs no such treatment: a subtree IS expressible as a prefix pattern,
-     * so HIERARCHY_DOWN keeps using {@code =*'path*'}.
+     * so HIERARCHY_DOWN uses {@code =^*'path*'} - the case-sensitive LIKE. The case-insensitive
+     * {@code =*} compiles to {@code lower(col) LIKE ...}, which no index on the path column can
+     * serve; {@code =^*} drops the {@code lower()} and makes the branch sargable. Paths are emitted
+     * by the same encoder as the ids they contain, so the comparison is case-consistent with
+     * {@code ==} and {@code =in=}.
      *
      * @param selectorExpr the already-built selector (alias plus field), e.g. {@code "doc.orgPath"}
      * @param parentPath the materialized organization path ({@code |seg|seg|})

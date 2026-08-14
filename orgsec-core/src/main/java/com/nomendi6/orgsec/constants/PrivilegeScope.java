@@ -128,30 +128,6 @@ public enum PrivilegeScope {
     }
 
     /**
-     * Checks if this scope includes downward hierarchy.
-     *
-     * @return true if scope includes downward hierarchy (HD suffix)
-     * @deprecated Unused by the library; the direction-level counterpart is deprecated for the same
-     *     reason. See {@link PrivilegeDirection#includesDown()}. Scheduled for removal in 2.1.
-     */
-    @Deprecated(since = "1.0.4", forRemoval = true)
-    public boolean includesDown() {
-        return this == COMPHD || this == ORGHD || this == ALL;
-    }
-
-    /**
-     * Checks if this scope includes upward hierarchy.
-     *
-     * @return true if scope includes upward hierarchy (HU suffix)
-     * @deprecated Unused by the library; the direction-level counterpart is deprecated for the same
-     *     reason. See {@link PrivilegeDirection#includesUp()}. Scheduled for removal in 2.1.
-     */
-    @Deprecated(since = "1.0.4", forRemoval = true)
-    public boolean includesUp() {
-        return this == COMPHU || this == ORGHU || this == ALL;
-    }
-
-    /**
      * Gets the corresponding PrivilegeDirection for this scope.
      *
      * @return the corresponding PrivilegeDirection
