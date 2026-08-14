@@ -17,9 +17,18 @@ public class BusinessRoleDef {
     public String filter;
     public boolean allowAll = false;
 
+    /**
+     * Required by Jackson - see {@link ResourceDef#ResourceDef()} for why a lone String constructor
+     * is not enough. Initialises {@code resourcesMap} so a deserialized instance is never left with
+     * a null map.
+     */
+    public BusinessRoleDef() {
+        this.resourcesMap = new HashMap<>();
+    }
+
     public BusinessRoleDef(String businessRoleName) {
+        this();
         this.businessRoleName = businessRoleName;
-        resourcesMap = new HashMap<>();
     }
 
     public void addResourceDefinition(ResourceDef otherResource) {
