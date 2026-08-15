@@ -8,6 +8,7 @@ import com.nomendi6.orgsec.constants.PrivilegeOperation;
 import com.nomendi6.orgsec.constants.SecurityFieldType;
 import com.nomendi6.orgsec.dto.OrganizationData;
 import com.nomendi6.orgsec.dto.PersonData;
+import com.nomendi6.orgsec.helper.PathSanitizer;
 import com.nomendi6.orgsec.interfaces.SecurityEnabledDTO;
 import com.nomendi6.orgsec.model.BusinessRoleContext;
 import com.nomendi6.orgsec.model.BusinessRoleDefinition;
@@ -189,8 +190,19 @@ public class PrivilegeChecker {
         return false;
     }
 
+    /**
+     * The record's path is required, not merely non-null. A path that no hierarchy comparison can use -
+     * empty, or a bare separator - was passing this gate and then matching every record, because
+     * {@code startsWith} is unconditionally true against both. Treating those the same as a missing path
+     * keeps one rule: an axis whose path is unusable is not evaluated, and the business role denies.
+     */
     private boolean shouldCheckCompany(Boolean checkCompany, Long businessRoleCompanyId, String businessRoleCompanyPath) {
-        return checkCompany != null && checkCompany && businessRoleCompanyId != null && businessRoleCompanyPath != null;
+        return (
+            checkCompany != null &&
+            checkCompany &&
+            businessRoleCompanyId != null &&
+            PathSanitizer.isUsableHierarchyAnchor(businessRoleCompanyPath)
+        );
     }
 
     private boolean shouldCheckOrg(
@@ -204,7 +216,7 @@ public class PrivilegeChecker {
             checkOrg != null &&
             checkOrg &&
             businessRoleOrgId != null &&
-            businessRoleOrgPath != null &&
+            PathSanitizer.isUsableHierarchyAnchor(businessRoleOrgPath) &&
             ((resourceAggregatedPrivs.company == PrivilegeDirection.NONE) || (checkCompany != null && !checkCompany))
         );
     }
@@ -232,7 +244,10 @@ public class PrivilegeChecker {
         String businessRoleCompanyPath
     ) {
         if (resourceAggregatedPrivs.company == PrivilegeDirection.EXACT) {
-            return organizationDef.companyId.equals(businessRoleCompanyId);
+            return organizationDef.companyId != null && organizationDef.companyId.equals(businessRoleCompanyId);
+        }
+        if (!hasPrincipalAnchor(resourceAggregatedPrivs.company, organizationDef.companyParentPath, "companyParentPath", organizationDef)) {
+            return false;
         }
         if (resourceAggregatedPrivs.company == PrivilegeDirection.HIERARCHY_DOWN) {
             return businessRoleCompanyPath.startsWith(organizationDef.companyParentPath);
@@ -252,7 +267,10 @@ public class PrivilegeChecker {
         String businessRoleOrgPath
     ) {
         if (resourceAggregatedPrivs.org == PrivilegeDirection.EXACT) {
-            return organizationDef.organizationId.equals(businessRoleOrgId);
+            return organizationDef.organizationId != null && organizationDef.organizationId.equals(businessRoleOrgId);
+        }
+        if (!hasPrincipalAnchor(resourceAggregatedPrivs.org, organizationDef.parentPath, "parentPath", organizationDef)) {
+            return false;
         }
         if (resourceAggregatedPrivs.org == PrivilegeDirection.HIERARCHY_DOWN) {
             return businessRoleOrgPath.startsWith(organizationDef.parentPath);
@@ -260,6 +278,46 @@ public class PrivilegeChecker {
         if (resourceAggregatedPrivs.org == PrivilegeDirection.HIERARCHY_UP) {
             return organizationDef.parentPath.startsWith(businessRoleOrgPath);
         }
+        return false;
+    }
+
+    /**
+     * Whether a hierarchical comparison has the principal's own anchor path to compare against.
+     * <p>
+     * Both hierarchy directions dereference this value, so without the guard a missing anchor raises a
+     * {@link NullPointerException} rather than refusing the privilege - and
+     * {@code checkBusinessRolePrivilege} catches only {@link IllegalArgumentException}, so the exception
+     * escapes to the caller and the request fails instead of the record being denied.
+     * <p>
+     * The anchor is missing whenever the backend could not supply one: a JWT principal whose organization
+     * is absent from the delegate storage, or an application that never populated
+     * {@code companyParentPath}. Denying is the answer the list filter already gives for the same
+     * condition, so this keeps the two authorization paths in agreement.
+     * <p>
+     * A present but unusable anchor is refused for the opposite reason: an empty path or a bare separator
+     * makes {@code startsWith} unconditionally true, so the comparison would grant on every record rather
+     * than throw. See {@link PathSanitizer#isUsableHierarchyAnchor}.
+     * <p>
+     * Logged at debug, not warn: this runs once per record, so a warn would flood a page of results. The
+     * backend that failed to supply the anchor logs it once, which is where the misconfiguration belongs.
+     */
+    private boolean hasPrincipalAnchor(
+        PrivilegeDirection direction,
+        String anchorPath,
+        String anchorName,
+        OrganizationDef organizationDef
+    ) {
+        boolean hierarchical = direction == PrivilegeDirection.HIERARCHY_DOWN || direction == PrivilegeDirection.HIERARCHY_UP;
+        if (!hierarchical || PathSanitizer.isUsableHierarchyAnchor(anchorPath)) {
+            return true;
+        }
+        log.debug(
+            "Denying {} privilege: {} is not a usable hierarchy anchor ({}) for organization {}",
+            direction,
+            anchorName,
+            anchorPath,
+            organizationDef.organizationId
+        );
         return false;
     }
 

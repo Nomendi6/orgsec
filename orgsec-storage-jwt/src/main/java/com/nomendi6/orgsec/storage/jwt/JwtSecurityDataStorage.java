@@ -223,6 +223,19 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
             if (fullOrgDef != null) {
                 // Copy organization name
                 orgDef.organizationName = fullOrgDef.organizationName;
+                // Take the hierarchy anchors from the delegate, not from the token. The claim carries only
+                // pathId, so JwtClaimsParser has to derive parentPath from it - and derives the STRICT
+                // parent, one level above the full-path-of-this-node that every other backend stores. A
+                // principal at |1|10|15| ended up anchored at |1|10|, so HIERARCHY_DOWN granted every
+                // sibling subtree under org 10; for a root-level membership the derived anchor is "|",
+                // which matches every path in the system. companyParentPath has no claim at all and stayed
+                // null, so the company hierarchy comparisons dereferenced null.
+                //
+                // The delegate holds whatever path convention the application maintains, so copying keeps
+                // JWT principals deciding the same way InMemory and Redis do for the same organization,
+                // without this class having to know which convention that is.
+                orgDef.parentPath = fullOrgDef.parentPath;
+                orgDef.companyParentPath = fullOrgDef.companyParentPath;
                 // Copy organization roles
                 orgDef.organizationRolesSet.addAll(fullOrgDef.organizationRolesSet);
                 // Deep-copy the business roles instead of sharing the delegate's instances. The
@@ -235,7 +248,16 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
                 );
                 log.debug("Copied {} business roles from organization {}", fullOrgDef.businessRolesMap.size(), orgId);
             } else {
-                log.warn("Organization {} not found in delegate storage", orgId);
+                // Fail closed. The only hierarchy anchor available here is the one derived from the token,
+                // and the comment above says why it cannot be trusted. Clearing it makes PrivilegeChecker
+                // deny hierarchical privileges for this organization instead of granting on a path this
+                // class knows to be wrong by one level.
+                orgDef.parentPath = null;
+                orgDef.companyParentPath = null;
+                log.warn(
+                    "Organization {} not found in delegate storage - hierarchical privileges will be denied for it",
+                    orgId
+                );
             }
 
             // Build business roles from position roles (user's specific privileges)
