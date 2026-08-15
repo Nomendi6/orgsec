@@ -22,6 +22,37 @@ public class PathSanitizer {
     // Maximum path ID length (increased to handle longer encoded IDs)
     private static final int MAX_PATH_ID_LENGTH = 30;
 
+    // A path holding no segment at all. Well-formed by VALID_PATH_PATTERN, but unusable - see
+    // isUsableHierarchyAnchor.
+    private static final String BARE_SEPARATOR = "|";
+
+    /**
+     * Whether a path can anchor a hierarchy comparison.
+     * <p>
+     * {@link #validatePath} answers whether a path is well-formed. This answers a narrower question: can a
+     * hierarchy comparison use it without matching everything? Three values fail that test.
+     * <p>
+     * {@code null} means the backend never supplied an anchor. The empty string is what an application
+     * that stores an absent path as {@code ""} rather than {@code null} produces, and every string starts
+     * with it, so {@code startsWith} against it is unconditionally true. A bare {@code "|"} is the subtle
+     * one: {@link #validatePath} accepts it, because the pattern allows zero segments - yet every
+     * well-formed path starts with it, so it matches everything just the same. No node carries it, since
+     * the root of a tree is {@code "|ow|"} rather than {@code "|"}, so refusing it costs no legitimate
+     * access.
+     * <p>
+     * Emptiness is decided after trimming, the same way {@link #sanitizePath} decides it.
+     *
+     * @param path The path to check, may be null
+     * @return true when a hierarchy comparison may be anchored on this path
+     */
+    public static boolean isUsableHierarchyAnchor(String path) {
+        if (path == null) {
+            return false;
+        }
+        String trimmed = path.trim();
+        return !trimmed.isEmpty() && !BARE_SEPARATOR.equals(trimmed);
+    }
+
     /**
      * Validates and sanitizes an organization path.
      *

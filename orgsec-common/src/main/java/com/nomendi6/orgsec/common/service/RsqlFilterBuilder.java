@@ -368,18 +368,18 @@ public class RsqlFilterBuilder {
             case EXACT:
                 return selector(alias, businessRoleName, SecurityFieldType.COMPANY) + "==" + organizationDef.companyId;
             case HIERARCHY_DOWN:
-                if (organizationDef.companyParentPath == null) {
-                    log.warn("Cannot build company hierarchy-down RSQL filter: companyParentPath is null for organization {}",
-                        organizationDef.organizationId);
+                if (!PathSanitizer.isUsableHierarchyAnchor(organizationDef.companyParentPath)) {
+                    log.warn("Cannot build company hierarchy-down RSQL filter: companyParentPath is not a usable hierarchy anchor ({}) for organization {}",
+                        organizationDef.companyParentPath, organizationDef.organizationId);
                     return null;
                 }
                 // Validate and escape path before using in RSQL
                 String safeCompanyPath = PathSanitizer.escapeForRsql(organizationDef.companyParentPath);
                 return selector(alias, businessRoleName, SecurityFieldType.COMPANY_PATH) + "=^*'" + safeCompanyPath + "*'";
             case HIERARCHY_UP:
-                if (organizationDef.companyParentPath == null) {
-                    log.warn("Cannot build company hierarchy-up RSQL filter: companyParentPath is null for organization {}",
-                        organizationDef.organizationId);
+                if (!PathSanitizer.isUsableHierarchyAnchor(organizationDef.companyParentPath)) {
+                    log.warn("Cannot build company hierarchy-up RSQL filter: companyParentPath is not a usable hierarchy anchor ({}) for organization {}",
+                        organizationDef.companyParentPath, organizationDef.organizationId);
                     return null;
                 }
                 // Ancestors are enumerated as an '=in=' list of path prefixes, not a suffix LIKE.
@@ -407,18 +407,18 @@ public class RsqlFilterBuilder {
             case EXACT:
                 return selector(alias, businessRoleName, SecurityFieldType.ORG) + "==" + organizationDef.organizationId;
             case HIERARCHY_DOWN:
-                if (organizationDef.parentPath == null) {
-                    log.warn("Cannot build organization hierarchy-down RSQL filter: parentPath is null for organization {}",
-                        organizationDef.organizationId);
+                if (!PathSanitizer.isUsableHierarchyAnchor(organizationDef.parentPath)) {
+                    log.warn("Cannot build organization hierarchy-down RSQL filter: parentPath is not a usable hierarchy anchor ({}) for organization {}",
+                        organizationDef.parentPath, organizationDef.organizationId);
                     return null;
                 }
                 // Validate and escape path before using in RSQL
                 String safeOrgPath = PathSanitizer.escapeForRsql(organizationDef.parentPath);
                 return selector(alias, businessRoleName, SecurityFieldType.ORG_PATH) + "=^*'" + safeOrgPath + "*'";
             case HIERARCHY_UP:
-                if (organizationDef.parentPath == null) {
-                    log.warn("Cannot build organization hierarchy-up RSQL filter: parentPath is null for organization {}",
-                        organizationDef.organizationId);
+                if (!PathSanitizer.isUsableHierarchyAnchor(organizationDef.parentPath)) {
+                    log.warn("Cannot build organization hierarchy-up RSQL filter: parentPath is not a usable hierarchy anchor ({}) for organization {}",
+                        organizationDef.parentPath, organizationDef.organizationId);
                     return null;
                 }
                 // Ancestors are enumerated as an '=in=' list of path prefixes, not a suffix LIKE.
