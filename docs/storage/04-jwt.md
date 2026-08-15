@@ -98,10 +98,14 @@ orgsec:
       token-header: Authorization
       token-prefix: "Bearer "
       cache-parsed-person: true
-      cache-ttl-seconds: 60                  # reserved; not enforced in 1.0.x
+      cache-ttl-seconds: 60                  # 0 or less disables expiry
 ```
 
-`cache-parsed-person: true` parses the token once per request and reuses the resulting `PersonDef` for all OrgSec calls in the same request. This is almost always what you want.
+`cache-parsed-person: true` reuses an enriched `PersonDef` **across requests**, keyed by the token it came from, so a token that stays the same is parsed and enriched once rather than on every call. Set it to `false` to re-enrich on every read.
+
+The cached principal carries more than the token does: enrichment copies the organization name, both hierarchy anchors, the organization roles and the business roles out of the delegate storage. OrgSec invalidates the cache whenever an organization, party role or position role change is notified, so those copies do not outlive a change it is told about.
+
+`cache-ttl-seconds` bounds the changes it is *not* told about - a Redis delegate updated by another instance, or an application that never publishes the notifications. Set it to `0` or less to disable expiry and rely on notifications alone.
 
 ## The `orgsec` claim
 

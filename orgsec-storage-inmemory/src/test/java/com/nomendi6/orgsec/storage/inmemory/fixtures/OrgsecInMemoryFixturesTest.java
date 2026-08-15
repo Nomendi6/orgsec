@@ -155,7 +155,7 @@ class OrgsecInMemoryFixturesTest {
         PersonLoader personLoader = new PersonLoader(loaderRoles, loaderPersons);
         personLoader.loadPersonsFromQueryResults(
             List.of(personTuple(1L, "Alice", 1L, 22L)),
-            List.of(personPartyTuple(1L, 22L, "Shop-22", null, "|1|10|22|", "|1|10|", 1L, "|1|")),
+            List.of(personPartyTuple(1L, 22L, "Shop-22", null, "22", "|1|10|22|", 1L, "|1|")),
             List.of(),
             List.of(personPositionRoleTuple(1L, 22L, 1L))
         );

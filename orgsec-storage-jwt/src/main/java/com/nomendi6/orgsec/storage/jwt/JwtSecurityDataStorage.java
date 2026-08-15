@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
 
 /**
  * JWT-based SecurityDataStorage implementation.
@@ -36,23 +37,75 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
 
     private static final int MAX_TOKEN_CACHE_SIZE = 1024;
 
-    // Bounded cache for enriched PersonDef keyed by full token value.
-    private final Map<String, PersonDef> personCache = Collections.synchronizedMap(
-        new LinkedHashMap<String, PersonDef>(256, 0.75f, true) {
+    /**
+     * Bounded cache for enriched PersonDef keyed by full token value.
+     * <p>
+     * The cached value is the <em>enriched</em> principal: {@code enrichPersonWithRoles} copies the
+     * organization name, both hierarchy anchors, the organization roles and the business roles out of the
+     * delegate storage into it. None of that comes from the token, so every one of those values goes stale
+     * when the delegate changes - and the anchors decide hierarchy privileges directly.
+     * <p>
+     * Nothing evicts an entry on its own: the key is the whole token, which in an OIDC session flow is
+     * stable for the life of the session, and the LRU bound is only reached by a thousand other principals
+     * being seen more recently. So every {@code notifyXxxChanged} that can alter copied state has to clear
+     * this map, or a cached principal keeps deciding on the state the delegate has already left behind.
+     */
+    private final Map<String, CachedPrincipal> personCache = Collections.synchronizedMap(
+        new LinkedHashMap<String, CachedPrincipal>(256, 0.75f, true) {
             @Override
-            protected boolean removeEldestEntry(Map.Entry<String, PersonDef> eldest) {
+            protected boolean removeEldestEntry(Map.Entry<String, CachedPrincipal> eldest) {
                 return size() > MAX_TOKEN_CACHE_SIZE;
             }
         }
     );
 
+    private final boolean cacheParsedPerson;
+    private final long cacheTtlMillis;
+    private final LongSupplier clock;
+
+    /** An enriched principal together with the moment it was enriched, so {@code cacheTtlSeconds} can expire it. */
+    private record CachedPrincipal(PersonDef person, long enrichedAtMillis) {}
+
+    /**
+     * Creates a storage whose cached principals never expire on their own.
+     * <p>
+     * Kept for callers that construct this class directly; the Spring path uses the constructor below so
+     * that {@code orgsec.storage.jwt.cache-parsed-person} and {@code cache-ttl-seconds} take effect.
+     */
     public JwtSecurityDataStorage(
             JwtClaimsParser claimsParser,
             JwtTokenContextHolder tokenContextHolder,
             SecurityDataStorage delegateStorage) {
+        this(claimsParser, tokenContextHolder, delegateStorage, true, 0);
+    }
+
+    /**
+     * @param cacheParsedPerson when false, every read re-parses and re-enriches; nothing is cached
+     * @param cacheTtlSeconds how long an enriched principal may be reused; zero or less means no expiry, so
+     *                        only the {@code notifyXxxChanged} methods invalidate it
+     */
+    public JwtSecurityDataStorage(
+            JwtClaimsParser claimsParser,
+            JwtTokenContextHolder tokenContextHolder,
+            SecurityDataStorage delegateStorage,
+            boolean cacheParsedPerson,
+            int cacheTtlSeconds) {
+        this(claimsParser, tokenContextHolder, delegateStorage, cacheParsedPerson, cacheTtlSeconds, System::currentTimeMillis);
+    }
+
+    JwtSecurityDataStorage(
+            JwtClaimsParser claimsParser,
+            JwtTokenContextHolder tokenContextHolder,
+            SecurityDataStorage delegateStorage,
+            boolean cacheParsedPerson,
+            int cacheTtlSeconds,
+            LongSupplier clock) {
         this.claimsParser = claimsParser;
         this.tokenContextHolder = tokenContextHolder;
         this.delegateStorage = delegateStorage;
+        this.cacheParsedPerson = cacheParsedPerson;
+        this.cacheTtlMillis = cacheTtlSeconds > 0 ? cacheTtlSeconds * 1000L : 0L;
+        this.clock = clock;
     }
 
     // ========== GET OPERATIONS ==========
@@ -147,19 +200,28 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
 
     @Override
     public void notifyPartyRoleChanged(Long roleId) {
-        log.debug("JWT storage notified: party role {} changed - delegating to delegate storage", roleId);
+        log.debug("JWT storage notified: party role {} changed - clearing enriched principals and delegating", roleId);
+        // Clear before delegating: enrichment copies the delegate's organization roles and rebuilds business roles from them,
+        // so a cached principal would keep the pre-change copy indefinitely. See the personCache javadoc.
+        personCache.clear();
         delegateStorage.notifyPartyRoleChanged(roleId);
     }
 
     @Override
     public void notifyPositionRoleChanged(Long roleId) {
-        log.debug("JWT storage notified: position role {} changed - delegating to delegate storage", roleId);
+        log.debug("JWT storage notified: position role {} changed - clearing enriched principals and delegating", roleId);
+        // Clear before delegating: enrichment resolves position roles through the delegate and merges them into the business roles,
+        // so a cached principal would keep the pre-change copy indefinitely. See the personCache javadoc.
+        personCache.clear();
         delegateStorage.notifyPositionRoleChanged(roleId);
     }
 
     @Override
     public void notifyOrganizationChanged(Long orgId) {
-        log.debug("JWT storage notified: organization {} changed - delegating to delegate storage", orgId);
+        log.debug("JWT storage notified: organization {} changed - clearing enriched principals and delegating", orgId);
+        // Clear before delegating: enrichment copies the delegate's name, both hierarchy anchors and business roles,
+        // so a cached principal would keep the pre-change copy indefinitely. See the personCache javadoc.
+        personCache.clear();
         delegateStorage.notifyOrganizationChanged(orgId);
     }
 
@@ -176,14 +238,38 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
      * The cache stores the already-enriched person (with roles loaded from delegate storage).
      */
     private PersonDef getEnrichedPersonFromToken(String token) {
-        return personCache.computeIfAbsent(token, currentToken -> {
-            log.debug("Parsing and enriching PersonDef from JWT token");
-            PersonDef person = claimsParser.parsePersonFromToken(currentToken);
-            if (person != null) {
-                return enrichPersonWithRoles(person, currentToken);
-            }
-            return null;
-        });
+        if (!cacheParsedPerson) {
+            return parseAndEnrich(token);
+        }
+        CachedPrincipal cached = personCache.get(token);
+        if (cached != null && !hasExpired(cached)) {
+            return cached.person();
+        }
+        PersonDef person = parseAndEnrich(token);
+        if (person != null) {
+            personCache.put(token, new CachedPrincipal(person, clock.getAsLong()));
+        } else {
+            // Nothing to reuse, and leaving a stale entry behind would outlive the token that produced it.
+            personCache.remove(token);
+        }
+        return person;
+    }
+
+    /**
+     * Whether an entry is too old to reuse.
+     * <p>
+     * The TTL is a backstop, not the primary mechanism: the {@code notifyXxxChanged} methods invalidate on
+     * the events the library knows about. It matters for the changes it does not see - a Redis delegate
+     * whose data another instance updated, or an application that never publishes the notifications.
+     */
+    private boolean hasExpired(CachedPrincipal cached) {
+        return cacheTtlMillis > 0 && clock.getAsLong() - cached.enrichedAtMillis() >= cacheTtlMillis;
+    }
+
+    private PersonDef parseAndEnrich(String token) {
+        log.debug("Parsing and enriching PersonDef from JWT token");
+        PersonDef person = claimsParser.parsePersonFromToken(token);
+        return person != null ? enrichPersonWithRoles(person, token) : null;
     }
 
     /**

@@ -72,10 +72,16 @@ public class JwtStorageAutoConfiguration {
     public SecurityDataStorage jwtSecurityDataStorage(
             JwtClaimsParser claimsParser,
             JwtTokenContextHolder tokenContextHolder,
-            @Qualifier("delegateSecurityDataStorage") SecurityDataStorage delegateStorage) {
-        log.info("Creating JwtSecurityDataStorage as primary SecurityDataStorage with delegate: {}",
-                delegateStorage.getProviderType());
-        return new JwtSecurityDataStorage(claimsParser, tokenContextHolder, delegateStorage);
+            @Qualifier("delegateSecurityDataStorage") SecurityDataStorage delegateStorage,
+            JwtStorageProperties properties) {
+        log.info("Creating JwtSecurityDataStorage as primary SecurityDataStorage with delegate: {} (cache: {}, ttl: {}s)",
+                delegateStorage.getProviderType(), properties.isCacheParsedPerson(), properties.getCacheTtlSeconds());
+        return new JwtSecurityDataStorage(
+                claimsParser,
+                tokenContextHolder,
+                delegateStorage,
+                properties.isCacheParsedPerson(),
+                properties.getCacheTtlSeconds());
     }
 
     @Bean

@@ -144,16 +144,20 @@ public class OrgsecInMemoryFixtures {
 
         /**
          * Registers an organization with an explicit path.
+         * <p>
+         * The path is the node's own full path from the root, the same value a party query returns in the
+         * {@code parentPath} column - {@code |ow|o1|} for a node whose local segment is {@code o1}. The
+         * built {@link OrganizationDef} carries it as {@code parentPath}, and its {@code pathId} becomes
+         * the last segment.
          *
          * @param id organization id
          * @param name organization name
-         * @param pathId complete organization path in {@code |1|10|} form
+         * @param fullPath the node's own full path, e.g. {@code |ow|o1|}
          * @return this builder
          * @throws com.nomendi6.orgsec.exceptions.OrgsecSecurityException when the path is invalid
          */
-        public FixtureBuilder organization(long id, String name, String pathId) {
-            OrganizationDraft draft = new OrganizationDraft(id, name, PathSanitizer.validatePath(pathId));
-            draft.parentPath = parentPath(pathId);
+        public FixtureBuilder organization(long id, String name, String fullPath) {
+            OrganizationDraft draft = new OrganizationDraft(id, name, PathSanitizer.validatePath(fullPath));
             organizations.put(id, draft);
             currentOrganization = draft;
             currentRole = null;
@@ -173,10 +177,11 @@ public class OrgsecInMemoryFixtures {
          */
         public FixtureBuilder organizationUnder(long id, String name, long parentOrgId) {
             OrganizationDraft parent = organizations.get(parentOrgId);
-            String path = parent != null ? PathSanitizer.buildPath(parent.pathId, Long.toString(id)) : PathSanitizer.buildPath(null, Long.toString(id));
+            String path = parent != null
+                ? PathSanitizer.buildPath(parent.fullPath, Long.toString(id))
+                : PathSanitizer.buildPath(null, Long.toString(id));
             OrganizationDraft draft = new OrganizationDraft(id, name, path);
             draft.parentId = parentOrgId;
-            draft.parentPath = parent != null ? parent.pathId : null;
             draft.companyId = parent != null ? parent.companyId : null;
             organizations.put(id, draft);
             currentOrganization = draft;
@@ -429,12 +434,18 @@ public class OrgsecInMemoryFixtures {
         }
 
         private OrganizationDef toOrganizationDef(OrganizationDraft draft) {
+            // The canonical contract, as the loaders receive it from a real party query: pathId is the local
+            // segment and no evaluator reads it, parentPath is the full path INCLUDING this node and is the
+            // only hierarchy anchor. This used to be inverted - the full path went into pathId and parentPath
+            // held the STRICT parent - which made HIERARCHY_DOWN grant the parent's whole subtree including
+            // every sibling, made HIERARCHY_UP drop the principal's own organization, and left every root
+            // without an anchor at all.
             OrganizationDef organization = new OrganizationDef(
                 draft.name,
                 draft.id,
                 null,
-                draft.pathId,
-                draft.parentPath,
+                lastSegment(draft.fullPath),
+                draft.fullPath,
                 draft.companyId,
                 companyPath(draft)
             );
@@ -446,17 +457,13 @@ public class OrgsecInMemoryFixtures {
                 return null;
             }
             OrganizationDraft company = organizations.get(draft.companyId);
-            return company != null ? company.pathId : null;
+            return company != null ? company.fullPath : null;
         }
 
-        private String parentPath(String path) {
-            String sanitized = PathSanitizer.validatePath(path);
-            String withoutTrailing = sanitized.substring(0, sanitized.length() - 1);
-            int previousSeparator = withoutTrailing.lastIndexOf('|');
-            if (previousSeparator <= 0) {
-                return null;
-            }
-            return sanitized.substring(0, previousSeparator + 1);
+        /** Local segment of a full path: {@code |ow|o1|} yields {@code o1}, {@code |ow|} yields {@code ow}. */
+        private String lastSegment(String fullPath) {
+            String withoutTrailing = fullPath.substring(0, fullPath.length() - 1);
+            return withoutTrailing.substring(withoutTrailing.lastIndexOf('|') + 1);
         }
 
         private String normalizedRoleName(String name) {
@@ -489,15 +496,19 @@ public class OrgsecInMemoryFixtures {
 
         private final long id;
         private final String name;
-        private final String pathId;
+        /**
+         * The node's own full path, e.g. {@code |ow|o1|}. Named for what it holds: the builder takes a full
+         * path from the caller, and {@code OrganizationDef.parentPath} is where it belongs - that field is
+         * the hierarchy anchor and the contract says it carries the full path INCLUDING this node.
+         */
+        private final String fullPath;
         private Long parentId;
-        private String parentPath;
         private Long companyId;
 
-        private OrganizationDraft(long id, String name, String pathId) {
+        private OrganizationDraft(long id, String name, String fullPath) {
             this.id = id;
             this.name = name;
-            this.pathId = pathId;
+            this.fullPath = fullPath;
         }
     }
 
