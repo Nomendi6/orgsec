@@ -127,9 +127,9 @@ String filter = rsqlFilterBuilder.buildRsqlFilterForReadPrivileges(
     new PersonData(1L, "Alice")
 );
 
-assertThat(filter).isEqualTo("(ownerOrgPath=*'|1|10|*')");
+assertThat(filter).isEqualTo("(ownerOrgPath=^*'|1|10|22|*')");
 ```
 
-For `DOCUMENT_ORGHD_R`, the generated filter targets `ownerOrgPath` with the `|1|10|` hierarchy anchor from the loaded organization data.
+For `DOCUMENT_ORGHD_R`, the generated filter targets `ownerOrgPath` with `|1|10|22|` - Alice's own organization, which is the hierarchy anchor `parentPath` holds. `=^*` is the case-sensitive prefix operator; the subtree branch uses it so the comparison stays sargable.
 
 Next: [Security-enabled entity](../usage/01-security-enabled-entity.md).

@@ -29,12 +29,18 @@ public class JwtStorageProperties {
     private String tokenPrefix = "Bearer ";
 
     /**
-     * Whether to cache parsed PersonDef per request.
+     * Whether an enriched PersonDef may be reused across requests, keyed by the token it came from.
+     * <p>
+     * When false every read re-parses the token and re-enriches from the delegate storage.
      */
     private boolean cacheParsedPerson = true;
 
     /**
-     * Cache TTL in seconds (for future use with cross-request caching).
+     * How long an enriched PersonDef may be reused, in seconds. Zero or less means no expiry.
+     * <p>
+     * A backstop rather than the primary mechanism: the {@code notifyXxxChanged} methods already invalidate
+     * on the events the library sees. This bounds the ones it does not - a Redis delegate updated by another
+     * instance, or an application that never publishes the notifications.
      */
     private int cacheTtlSeconds = 60;
 
