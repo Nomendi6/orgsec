@@ -440,9 +440,13 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
      */
     @Override
     public void notifyPartyRoleChanged(Long roleId) {
-        log.debug("InMemory storage notified: party role {} changed - syncing from database", roleId);
-        syncPartyRole(roleId);
-        refresh(); // Refresh to ensure all related data is updated
+        log.debug("InMemory storage notified: party role {} changed - reloading from database", roleId);
+        // No targeted sync here. It writes into the stores that refresh() clears one line later,
+        // so its two queries were paid for and thrown away. The reload is what makes the change
+        // visible: a targeted sync updates AllOrganizationsStore, while authorization reads the
+        // OrganizationDef copies each person carries in personDef.organizationsMap, and those are
+        // rebuilt only by a full load. See ai/22.notify-puni-reload/01.nalaz.md.
+        refresh();
     }
 
     /**
@@ -450,9 +454,13 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
      */
     @Override
     public void notifyPositionRoleChanged(Long roleId) {
-        log.debug("InMemory storage notified: position role {} changed - syncing from database", roleId);
-        syncPositionRole(roleId);
-        refresh(); // Refresh to ensure all related data is updated
+        log.debug("InMemory storage notified: position role {} changed - reloading from database", roleId);
+        // No targeted sync here. It writes into the stores that refresh() clears one line later,
+        // so its two queries were paid for and thrown away. The reload is what makes the change
+        // visible: a targeted sync updates AllOrganizationsStore, while authorization reads the
+        // OrganizationDef copies each person carries in personDef.organizationsMap, and those are
+        // rebuilt only by a full load. See ai/22.notify-puni-reload/01.nalaz.md.
+        refresh();
     }
 
     /**
@@ -460,9 +468,13 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
      */
     @Override
     public void notifyOrganizationChanged(Long orgId) {
-        log.debug("InMemory storage notified: organization {} changed - syncing from database", orgId);
-        syncOrganization(orgId);
-        refresh(); // Refresh to ensure all related data is updated
+        log.debug("InMemory storage notified: organization {} changed - reloading from database", orgId);
+        // No targeted sync here. It writes into the stores that refresh() clears one line later,
+        // so its two queries were paid for and thrown away. The reload is what makes the change
+        // visible: a targeted sync updates AllOrganizationsStore, while authorization reads the
+        // OrganizationDef copies each person carries in personDef.organizationsMap, and those are
+        // rebuilt only by a full load. See ai/22.notify-puni-reload/01.nalaz.md.
+        refresh();
     }
 
     /**
@@ -517,7 +529,12 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
     }
 
     /**
-     * Sync specific organization by ID (used by SecurityEventPublisher)
+     * Sync specific organization by ID.
+     * <p>
+     * Refreshes {@code AllOrganizationsStore} only. Authorization reads the {@code OrganizationDef} copies
+     * each person carries in {@code personDef.organizationsMap}, and those are rebuilt only by
+     * {@link #refresh()} - so this alone does not make an organization change visible to an already loaded
+     * principal. {@code notifyOrganizationChanged} reloads for that reason.
      */
     public void syncOrganization(Long orgId) {
         cacheLock.writeLock().lock();
@@ -534,7 +551,10 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
     }
 
     /**
-     * Sync specific party role by ID (used by SecurityEventPublisher)
+     * Sync specific party role by ID.
+     * <p>
+     * Targeted counterpart to {@link #refresh()}, kept for callers that know a single role is enough.
+     * {@code notifyPartyRoleChanged} reloads instead.
      */
     public void syncPartyRole(Long roleId) {
         cacheLock.writeLock().lock();
@@ -551,7 +571,10 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
     }
 
     /**
-     * Sync specific position role by ID (used by SecurityEventPublisher)
+     * Sync specific position role by ID.
+     * <p>
+     * Targeted counterpart to {@link #refresh()}, kept for callers that know a single role is enough.
+     * {@code notifyPositionRoleChanged} reloads instead.
      */
     public void syncPositionRole(Long roleId) {
         cacheLock.writeLock().lock();
