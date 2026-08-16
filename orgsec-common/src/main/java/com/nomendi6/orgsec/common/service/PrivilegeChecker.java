@@ -8,6 +8,7 @@ import com.nomendi6.orgsec.constants.PrivilegeOperation;
 import com.nomendi6.orgsec.constants.SecurityFieldType;
 import com.nomendi6.orgsec.dto.OrganizationData;
 import com.nomendi6.orgsec.dto.PersonData;
+import com.nomendi6.orgsec.exceptions.OrgsecSecurityException;
 import com.nomendi6.orgsec.helper.PathSanitizer;
 import com.nomendi6.orgsec.interfaces.SecurityEnabledDTO;
 import com.nomendi6.orgsec.model.BusinessRoleContext;
@@ -147,6 +148,20 @@ public class PrivilegeChecker {
         } catch (IllegalArgumentException e) {
             // Unknown business role, skip it
             return false;
+        } catch (ClassCastException e) {
+            // The entity returned something other than a String for a *_PATH field. That is an
+            // application-side mapping error, but surfacing it as HTTP 500 while a list endpoint over
+            // the same rows answers normally is worse than denying: the two authorization paths must
+            // agree, and the list filter has no record to fail on.
+            log.warn(
+                "Business role '{}' on {} returned a non-String value for a path field - denying",
+                businessRoleName, entityDTO.getClass().getName(), e
+            );
+            return false;
+        } catch (OrgsecSecurityException e) {
+            log.warn("Business role '{}' on {} supplied an invalid path - denying: {}",
+                businessRoleName, entityDTO.getClass().getName(), e.getMessage());
+            return false;
         }
     }
 
@@ -167,7 +182,7 @@ public class PrivilegeChecker {
         Boolean checkPerson
     ) {
         // Check company level privilege - only if company checks are enabled
-        if (shouldCheckCompany(checkCompany, businessRoleCompanyId, businessRoleCompanyPath)) {
+        if (shouldCheckCompany(checkCompany, businessRoleCompanyId, businessRoleCompanyPath, resourceAggregatedPrivs)) {
             if (checkCompanyPrivilege(organizationDef, resourceAggregatedPrivs, businessRoleCompanyId, businessRoleCompanyPath)) {
                 return true;
             }
@@ -191,18 +206,36 @@ public class PrivilegeChecker {
     }
 
     /**
-     * The record's path is required, not merely non-null. A path that no hierarchy comparison can use -
-     * empty, or a bare separator - was passing this gate and then matching every record, because
-     * {@code startsWith} is unconditionally true against both. Treating those the same as a missing path
-     * keeps one rule: an axis whose path is unusable is not evaluated, and the business role denies.
+     * Which operand an axis actually needs depends on the direction it is evaluated in.
+     *
+     * <p>Requiring both an id and a usable path for every direction denied cases the list filter
+     * grants, and the two paths must agree per record. {@code EXACT} compares ids and never looks at
+     * a path, so a record with no path is still decidable; the hierarchy directions compare paths and
+     * never look at the record's id.
+     *
+     * <p>{@code NONE} and {@code ALL} are not evaluated at all. {@code ALL} is an abstract top of the
+     * direction lattice used by the union algebra, not a grant an evaluator can act on - {@code all}
+     * is a separate flag on {@link PrivilegeDef} - so treating it as a scope here would grant on an
+     * axis nobody configured.
      */
-    private boolean shouldCheckCompany(Boolean checkCompany, Long businessRoleCompanyId, String businessRoleCompanyPath) {
-        return (
-            checkCompany != null &&
-            checkCompany &&
-            businessRoleCompanyId != null &&
-            PathSanitizer.isUsableHierarchyAnchor(businessRoleCompanyPath)
-        );
+    private boolean shouldCheckCompany(
+        Boolean checkCompany,
+        Long businessRoleCompanyId,
+        String businessRoleCompanyPath,
+        PrivilegeDef resourceAggregatedPrivs
+    ) {
+        if (checkCompany == null || !checkCompany) {
+            return false;
+        }
+        switch (resourceAggregatedPrivs.company) {
+            case EXACT:
+                return businessRoleCompanyId != null;
+            case HIERARCHY_DOWN:
+            case HIERARCHY_UP:
+                return PathSanitizer.isUsableHierarchyAnchor(businessRoleCompanyPath);
+            default:
+                return false;
+        }
     }
 
     private boolean shouldCheckOrg(
@@ -212,13 +245,23 @@ public class PrivilegeChecker {
         PrivilegeDef resourceAggregatedPrivs,
         Boolean checkCompany
     ) {
-        return (
-            checkOrg != null &&
-            checkOrg &&
-            businessRoleOrgId != null &&
-            PathSanitizer.isUsableHierarchyAnchor(businessRoleOrgPath) &&
-            ((resourceAggregatedPrivs.company == PrivilegeDirection.NONE) || (checkCompany != null && !checkCompany))
-        );
+        if (checkOrg == null || !checkOrg) {
+            return false;
+        }
+        boolean companyDidNotApply =
+            (resourceAggregatedPrivs.company == PrivilegeDirection.NONE) || (checkCompany != null && !checkCompany);
+        if (!companyDidNotApply) {
+            return false;
+        }
+        switch (resourceAggregatedPrivs.org) {
+            case EXACT:
+                return businessRoleOrgId != null;
+            case HIERARCHY_DOWN:
+            case HIERARCHY_UP:
+                return PathSanitizer.isUsableHierarchyAnchor(businessRoleOrgPath);
+            default:
+                return false;
+        }
     }
 
     private boolean shouldCheckPerson(
@@ -246,18 +289,13 @@ public class PrivilegeChecker {
         if (resourceAggregatedPrivs.company == PrivilegeDirection.EXACT) {
             return organizationDef.companyId != null && organizationDef.companyId.equals(businessRoleCompanyId);
         }
-        if (!hasPrincipalAnchor(resourceAggregatedPrivs.company, organizationDef.companyParentPath, "companyParentPath", organizationDef)) {
-            return false;
-        }
-        if (resourceAggregatedPrivs.company == PrivilegeDirection.HIERARCHY_DOWN) {
-            return businessRoleCompanyPath.startsWith(organizationDef.companyParentPath);
-        }
-        if (resourceAggregatedPrivs.company == PrivilegeDirection.HIERARCHY_UP) {
-            // HIERARCHY_UP means "the entity sits on the principal's ancestor chain", i.e. the
-            // entity path is a PREFIX of the principal path. Mirrors checkOrgPrivilege below.
-            return organizationDef.companyParentPath.startsWith(businessRoleCompanyPath);
-        }
-        return false;
+        return matchesHierarchy(
+            resourceAggregatedPrivs.company,
+            organizationDef.companyParentPath,
+            businessRoleCompanyPath,
+            "companyParentPath",
+            organizationDef
+        );
     }
 
     private boolean checkOrgPrivilege(
@@ -269,56 +307,69 @@ public class PrivilegeChecker {
         if (resourceAggregatedPrivs.org == PrivilegeDirection.EXACT) {
             return organizationDef.organizationId != null && organizationDef.organizationId.equals(businessRoleOrgId);
         }
-        if (!hasPrincipalAnchor(resourceAggregatedPrivs.org, organizationDef.parentPath, "parentPath", organizationDef)) {
-            return false;
-        }
-        if (resourceAggregatedPrivs.org == PrivilegeDirection.HIERARCHY_DOWN) {
-            return businessRoleOrgPath.startsWith(organizationDef.parentPath);
-        }
-        if (resourceAggregatedPrivs.org == PrivilegeDirection.HIERARCHY_UP) {
-            return organizationDef.parentPath.startsWith(businessRoleOrgPath);
-        }
-        return false;
+        return matchesHierarchy(
+            resourceAggregatedPrivs.org,
+            organizationDef.parentPath,
+            businessRoleOrgPath,
+            "parentPath",
+            organizationDef
+        );
     }
 
     /**
-     * Whether a hierarchical comparison has the principal's own anchor path to compare against.
-     * <p>
-     * Both hierarchy directions dereference this value, so without the guard a missing anchor raises a
-     * {@link NullPointerException} rather than refusing the privilege - and
-     * {@code checkBusinessRolePrivilege} catches only {@link IllegalArgumentException}, so the exception
-     * escapes to the caller and the request fails instead of the record being denied.
-     * <p>
-     * The anchor is missing whenever the backend could not supply one: a JWT principal whose organization
-     * is absent from the delegate storage, or an application that never populated
-     * {@code companyParentPath}. Denying is the answer the list filter already gives for the same
-     * condition, so this keeps the two authorization paths in agreement.
-     * <p>
-     * A present but unusable anchor is refused for the opposite reason: an empty path or a bare separator
-     * makes {@code startsWith} unconditionally true, so the comparison would grant on every record rather
-     * than throw. See {@link PathSanitizer#isUsableHierarchyAnchor}.
-     * <p>
-     * Logged at debug, not warn: this runs once per record, so a warn would flood a page of results. The
-     * backend that failed to supply the anchor logs it once, which is where the misconfiguration belongs.
+     * Compares the principal's anchor with the record's path for a hierarchy direction.
+     *
+     * <p>Both operands are validated, not merely null-checked, and a failure denies. Three distinct
+     * failures are covered by the one rule:
+     *
+     * <ul>
+     *   <li>A missing anchor - a JWT principal whose organization the delegate does not know, or an
+     *       application that never populated {@code companyParentPath} - would otherwise raise a
+     *       {@link NullPointerException}. {@code checkBusinessRolePrivilege} catches only
+     *       {@link IllegalArgumentException}, so that escaped to the caller and failed the request
+     *       instead of denying the record.</li>
+     *   <li>An empty path or a bare {@code "|"} makes {@code startsWith} unconditionally true, so the
+     *       comparison would match every record rather than throw.</li>
+     *   <li>A path that does not end in the separator, such as {@code |A|B}, makes {@code startsWith}
+     *       match {@code |A|BX|C|} - a sibling branch whose name merely begins with the same
+     *       characters. Requiring the canonical form is what makes prefix comparison equivalent to
+     *       "is a descendant of".</li>
+     * </ul>
+     *
+     * <p>Logged at debug, not warn: this runs once per record, so a warn would flood a page of
+     * results. The backend that failed to supply the anchor logs it once, which is where the
+     * misconfiguration belongs.
      */
-    private boolean hasPrincipalAnchor(
+    private boolean matchesHierarchy(
         PrivilegeDirection direction,
-        String anchorPath,
+        String principalAnchor,
+        String recordPath,
         String anchorName,
         OrganizationDef organizationDef
     ) {
-        boolean hierarchical = direction == PrivilegeDirection.HIERARCHY_DOWN || direction == PrivilegeDirection.HIERARCHY_UP;
-        if (!hierarchical || PathSanitizer.isUsableHierarchyAnchor(anchorPath)) {
-            return true;
+        if (direction != PrivilegeDirection.HIERARCHY_DOWN && direction != PrivilegeDirection.HIERARCHY_UP) {
+            return false;
         }
-        log.debug(
-            "Denying {} privilege: {} is not a usable hierarchy anchor ({}) for organization {}",
-            direction,
-            anchorName,
-            anchorPath,
-            organizationDef.organizationId
-        );
-        return false;
+        String principal;
+        String record;
+        try {
+            principal = PathSanitizer.validateHierarchyAnchor(principalAnchor);
+            record = PathSanitizer.validateHierarchyAnchor(recordPath);
+        } catch (OrgsecSecurityException e) {
+            log.debug(
+                "Denying {} privilege for organization {}: {}={} / record path={} - {}",
+                direction, organizationDef.organizationId, anchorName, principalAnchor, recordPath, e.getMessage()
+            );
+            return false;
+        }
+
+        if (direction == PrivilegeDirection.HIERARCHY_DOWN) {
+            // The record sits inside the principal's subtree.
+            return record.startsWith(principal);
+        }
+        // HIERARCHY_UP: the record sits on the principal's ancestor chain, i.e. the record path is a
+        // prefix of the principal path.
+        return principal.startsWith(record);
     }
 
     private boolean checkPersonPrivilege(PersonData currentPerson, PrivilegeDef resourceAggregatedPrivs, Long businessRolePersonId) {
