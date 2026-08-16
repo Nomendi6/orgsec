@@ -21,6 +21,7 @@ import com.nomendi6.orgsec.constants.PrivilegeDirection;
 import com.nomendi6.orgsec.constants.PrivilegeOperation;
 import com.nomendi6.orgsec.constants.SecurityFieldType;
 import com.nomendi6.orgsec.dto.PersonData;
+import com.nomendi6.orgsec.exceptions.OrgsecSecurityException;
 import com.nomendi6.orgsec.helper.PathSanitizer;
 import com.nomendi6.orgsec.model.BusinessRoleDef;
 import com.nomendi6.orgsec.model.OrganizationDef;
@@ -366,26 +367,32 @@ public class RsqlFilterBuilder {
     ) {
         switch (direction) {
             case EXACT:
+                if (organizationDef.companyId == null) {
+                    // "selector==null" is not a deny - depending on the RSQL dialect it is either a
+                    // parse error or a clause that matches every row whose column is null.
+                    log.warn("Cannot build company EXACT RSQL filter: the principal has no companyId for organization {}",
+                        organizationDef.organizationId);
+                    return null;
+                }
                 return selector(alias, businessRoleName, SecurityFieldType.COMPANY) + "==" + organizationDef.companyId;
-            case HIERARCHY_DOWN:
-                if (!PathSanitizer.isUsableHierarchyAnchor(organizationDef.companyParentPath)) {
-                    log.warn("Cannot build company hierarchy-down RSQL filter: companyParentPath is not a usable hierarchy anchor ({}) for organization {}",
-                        organizationDef.companyParentPath, organizationDef.organizationId);
+            case HIERARCHY_DOWN: {
+                String anchor = anchorOrNull(organizationDef.companyParentPath, "companyParentPath", organizationDef, direction);
+                if (anchor == null) {
                     return null;
                 }
                 // Validate and escape path before using in RSQL
-                String safeCompanyPath = PathSanitizer.escapeForRsql(organizationDef.companyParentPath);
+                String safeCompanyPath = PathSanitizer.escapeForRsql(anchor);
                 return selector(alias, businessRoleName, SecurityFieldType.COMPANY_PATH) + "=^*'" + safeCompanyPath + "*'";
-            case HIERARCHY_UP:
-                if (!PathSanitizer.isUsableHierarchyAnchor(organizationDef.companyParentPath)) {
-                    log.warn("Cannot build company hierarchy-up RSQL filter: companyParentPath is not a usable hierarchy anchor ({}) for organization {}",
-                        organizationDef.companyParentPath, organizationDef.organizationId);
+            }
+            case HIERARCHY_UP: {
+                String anchor = anchorOrNull(organizationDef.companyParentPath, "companyParentPath", organizationDef, direction);
+                if (anchor == null) {
                     return null;
                 }
                 // Ancestors are enumerated as an '=in=' list of path prefixes, not a suffix LIKE.
                 String companyUpClause = buildAncestorInClause(
                     selector(alias, businessRoleName, SecurityFieldType.COMPANY_PATH),
-                    organizationDef.companyParentPath
+                    anchor
                 );
                 if (companyUpClause == null) {
                     log.warn("Cannot build company hierarchy-up RSQL filter: no ancestor prefixes in path {} for organization {}",
@@ -393,6 +400,7 @@ public class RsqlFilterBuilder {
                     return null;
                 }
                 return companyUpClause;
+            }
             default:
                 // Unhandled direction (e.g. ALL, which is not a valid company/org scope - 'all' is a
                 // separate flag). Returning "" would mark the privilege as present with no filter,
@@ -402,29 +410,61 @@ public class RsqlFilterBuilder {
         }
     }
 
+    /**
+     * The principal's anchor for a hierarchical clause, or {@code null} when it cannot be used.
+     *
+     * <p>Validation is stricter than "is it non-empty": a path that does not end in the separator,
+     * such as {@code |A|B}, produces the prefix pattern {@code |A|B*}, which also matches
+     * {@code |A|BX|C|} - a different branch entirely. {@link PathSanitizer#validateHierarchyAnchor}
+     * rejects that shape, and everything else the segment grammar forbids.
+     *
+     * <p>Failure is reported as a {@code null} clause, never as an empty string. An empty string is
+     * how this builder spells "no filter needed" for an {@code all} grant, so returning it from a
+     * validation failure would turn a deny into unfiltered access to the whole table.
+     */
+    private String anchorOrNull(
+        String anchorPath,
+        String anchorName,
+        OrganizationDef organizationDef,
+        PrivilegeDirection direction
+    ) {
+        try {
+            return PathSanitizer.validateHierarchyAnchor(anchorPath);
+        } catch (OrgsecSecurityException e) {
+            log.warn(
+                "Cannot build {} RSQL filter: {} is not a usable hierarchy anchor ({}) for organization {} - {}",
+                direction, anchorName, anchorPath, organizationDef.organizationId, e.getMessage()
+            );
+            return null;
+        }
+    }
+
     private String buildOrgFilter(String alias, String businessRoleName, OrganizationDef organizationDef, PrivilegeDirection direction) {
         switch (direction) {
             case EXACT:
+                if (organizationDef.organizationId == null) {
+                    log.warn("Cannot build organization EXACT RSQL filter: the principal has no organizationId");
+                    return null;
+                }
                 return selector(alias, businessRoleName, SecurityFieldType.ORG) + "==" + organizationDef.organizationId;
-            case HIERARCHY_DOWN:
-                if (!PathSanitizer.isUsableHierarchyAnchor(organizationDef.parentPath)) {
-                    log.warn("Cannot build organization hierarchy-down RSQL filter: parentPath is not a usable hierarchy anchor ({}) for organization {}",
-                        organizationDef.parentPath, organizationDef.organizationId);
+            case HIERARCHY_DOWN: {
+                String anchor = anchorOrNull(organizationDef.parentPath, "parentPath", organizationDef, direction);
+                if (anchor == null) {
                     return null;
                 }
                 // Validate and escape path before using in RSQL
-                String safeOrgPath = PathSanitizer.escapeForRsql(organizationDef.parentPath);
+                String safeOrgPath = PathSanitizer.escapeForRsql(anchor);
                 return selector(alias, businessRoleName, SecurityFieldType.ORG_PATH) + "=^*'" + safeOrgPath + "*'";
-            case HIERARCHY_UP:
-                if (!PathSanitizer.isUsableHierarchyAnchor(organizationDef.parentPath)) {
-                    log.warn("Cannot build organization hierarchy-up RSQL filter: parentPath is not a usable hierarchy anchor ({}) for organization {}",
-                        organizationDef.parentPath, organizationDef.organizationId);
+            }
+            case HIERARCHY_UP: {
+                String anchor = anchorOrNull(organizationDef.parentPath, "parentPath", organizationDef, direction);
+                if (anchor == null) {
                     return null;
                 }
                 // Ancestors are enumerated as an '=in=' list of path prefixes, not a suffix LIKE.
                 String orgUpClause = buildAncestorInClause(
                     selector(alias, businessRoleName, SecurityFieldType.ORG_PATH),
-                    organizationDef.parentPath
+                    anchor
                 );
                 if (orgUpClause == null) {
                     log.warn("Cannot build organization hierarchy-up RSQL filter: no ancestor prefixes in path {} for organization {}",
@@ -432,6 +472,7 @@ public class RsqlFilterBuilder {
                     return null;
                 }
                 return orgUpClause;
+            }
             default:
                 // See buildCompanyFilter: an unhandled direction must deny, not grant unfiltered.
                 log.warn("Unsupported organization privilege direction {} - denying", direction);

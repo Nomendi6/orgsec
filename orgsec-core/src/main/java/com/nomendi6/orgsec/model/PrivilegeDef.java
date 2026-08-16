@@ -88,7 +88,31 @@ public class PrivilegeDef implements Serializable {
     }
 
     /**
-     * Add the other privilege to the current one
+     * Combines two privileges into a single summary privilege.
+     *
+     * <p><strong>The result is a display and bookkeeping aggregate, not an authorization
+     * source.</strong> Access decisions are made per privilege: {@code PrivilegeChecker} and
+     * {@code RsqlFilterBuilder} evaluate each of the principal's privileges on its own and grant if
+     * any one of them matches. Evaluating the aggregate instead would grant combinations that no
+     * single privilege confers - a principal holding {@code READ} on company A and {@code WRITE} on
+     * company B would appear to hold {@code WRITE} on both.
+     *
+     * <p>Per-axis, the direction union is exact wherever the enum can represent it:
+     *
+     * <ul>
+     *   <li>{@code NONE} is the identity: {@code NONE + x = x}.</li>
+     *   <li>{@code EXACT} is a subset of either hierarchy direction, so the union is the wider one:
+     *       {@code EXACT + HIERARCHY_DOWN = HIERARCHY_DOWN}.</li>
+     *   <li>{@code ALL} absorbs everything.</li>
+     *   <li>{@code HIERARCHY_DOWN + HIERARCHY_UP} is <em>not</em> representable: the true union is
+     *       the subtree plus the ancestor chain, which excludes sibling and cousin branches, while
+     *       {@code ALL} would include them. It therefore collapses to {@code EXACT} - the narrowest
+     *       safe summary - and the two original privileges keep granting their own scopes when
+     *       evaluated individually.</li>
+     * </ul>
+     *
+     * <p>The scope cascade mirrors the evaluator: an org direction is only carried over when the
+     * combined company direction is {@code NONE}, and the person flag only when both are.
      *
      * @param other is the other privilege {@link PrivilegeDef}
      * @return the sum of two privileges

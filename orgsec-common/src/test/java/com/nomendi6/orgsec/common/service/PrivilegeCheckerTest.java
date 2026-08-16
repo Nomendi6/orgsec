@@ -200,7 +200,7 @@ class PrivilegeCheckerTest {
         @BeforeEach
         void setUp() {
             currentPerson = createPersonData(1L);
-            organizationDef = createOrganizationDef(100L, "/1/100/", 10L, "/1/10/");
+            organizationDef = createOrganizationDef(100L, "|1|100|", 10L, "|1|10|");
         }
 
         @Test
@@ -211,7 +211,7 @@ class PrivilegeCheckerTest {
             // When
             boolean result = privilegeChecker.checkOrganizationPrivilege(
                     currentPerson, organizationDef, privilege,
-                    10L, "/1/10/",     // company match
+                    10L, "|1|10|",     // company match
                     null, null,        // no org check
                     null,              // no person check
                     true, false, false
@@ -229,7 +229,7 @@ class PrivilegeCheckerTest {
             // When
             boolean result = privilegeChecker.checkOrganizationPrivilege(
                     currentPerson, organizationDef, privilege,
-                    999L, "/1/999/",   // wrong company
+                    999L, "|1|999|",   // wrong company
                     null, null,
                     null,
                     true, false, false
@@ -248,7 +248,7 @@ class PrivilegeCheckerTest {
             boolean result = privilegeChecker.checkOrganizationPrivilege(
                     currentPerson, organizationDef, privilege,
                     null, null,        // no company check
-                    100L, "/1/100/",   // org match
+                    100L, "|1|100|",   // org match
                     null,
                     false, true, false
             );
@@ -319,7 +319,7 @@ class PrivilegeCheckerTest {
             // When - business role company path starts with org company parent path
             boolean result = privilegeChecker.checkOrganizationPrivilege(
                     currentPerson, organizationDef, privilege,
-                    10L, "/1/10/20/",  // child in hierarchy
+                    10L, "|1|10|20|",  // child in hierarchy
                     null, null,
                     null,
                     true, false, false
@@ -338,7 +338,7 @@ class PrivilegeCheckerTest {
             boolean result = privilegeChecker.checkOrganizationPrivilege(
                     currentPerson, organizationDef, privilege,
                     null, null,
-                    100L, "/1/100/200/",  // child org in hierarchy
+                    100L, "|1|100|200|",  // child org in hierarchy
                     null,
                     false, true, false
             );
