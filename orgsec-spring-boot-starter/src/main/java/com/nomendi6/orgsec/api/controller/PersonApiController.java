@@ -34,8 +34,10 @@ public class PersonApiController {
      * @param userId Keycloak user UUID
      * @return PersonApiDTO or 404 if not found
      */
+    // Path variables are named explicitly: this class ships compiled inside the starter jar, so
+    // it must not depend on the consuming application's compiler settings to resolve them.
     @GetMapping("/by-user/{userId}")
-    public ResponseEntity<PersonApiDTO> getPersonByUserId(@PathVariable String userId) {
+    public ResponseEntity<PersonApiDTO> getPersonByUserId(@PathVariable("userId") String userId) {
         long startTime = System.currentTimeMillis();
         log.debug("GET /api/orgsec/person/by-user/{}", userId);
 
@@ -65,7 +67,7 @@ public class PersonApiController {
      * @return PersonApiDTO or 404 if not found
      */
     @GetMapping("/{personId}")
-    public ResponseEntity<PersonApiDTO> getPersonById(@PathVariable Long personId) {
+    public ResponseEntity<PersonApiDTO> getPersonById(@PathVariable("personId") Long personId) {
         long startTime = System.currentTimeMillis();
         log.debug("GET /api/orgsec/person/{}", personId);
 

@@ -51,6 +51,17 @@
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
+        <!-- Bearer-token authentication for the Person API chain.
+             Optional: applications that leave orgsec.api.person.enabled=false (the default)
+             never touch it, and the chain is conditional on JwtDecoder being both on the
+             classpath and present as a bean. Applications that enable the Person API must
+             bring a resource server themselves (directly, or via another starter). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Spring Web (for Person API) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

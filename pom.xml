@@ -73,6 +73,10 @@
         <maven-gpg-plugin.version>3.2.4</maven-gpg-plugin.version>
         <central-publishing-maven-plugin.version>0.10.0</central-publishing-maven-plugin.version>
         <jacoco-maven-plugin.version>0.8.12</jacoco-maven-plugin.version>
+        <japicmp-maven-plugin.version>0.25.6</japicmp-maven-plugin.version>
+
+        <!-- Baseline the 1.x line is compared against at `verify`. Bump on every release. -->
+        <binary.compat.old.version>1.0.4</binary.compat.old.version>
     </properties>
 
     <dependencyManagement>
@@ -97,6 +101,13 @@
                     <configuration>
                         <source>${java.version}</source>
                         <target>${java.version}</target>
+                        <!--
+                            spring-boot-starter-parent sets this; we only import the BOM, so it
+                            has to be set here. Without it the published jars carry no
+                            MethodParameters attribute and Spring MVC cannot resolve
+                            @PathVariable/@RequestParam names in PersonApiController.
+                        -->
+                        <parameters>true</parameters>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -162,8 +173,88 @@
                     <artifactId>jacoco-maven-plugin</artifactId>
                     <version>${jacoco-maven-plugin.version}</version>
                 </plugin>
+                <plugin>
+                    <groupId>com.github.siom79.japicmp</groupId>
+                    <artifactId>japicmp-maven-plugin</artifactId>
+                    <version>${japicmp-maven-plugin.version}</version>
+                    <configuration>
+                        <skipPomModules>true</skipPomModules>
+                        <oldVersion>
+                            <dependency>
+                                <groupId>${project.groupId}</groupId>
+                                <artifactId>${project.artifactId}</artifactId>
+                                <version>${binary.compat.old.version}</version>
+                                <type>jar</type>
+                            </dependency>
+                        </oldVersion>
+                        <newVersion>
+                            <file>
+                                <path>${project.build.directory}/${project.build.finalName}.jar</path>
+                            </file>
+                        </newVersion>
+                        <parameter>
+                            <onlyModified>true</onlyModified>
+                            <breakBuildOnModifications>false</breakBuildOnModifications>
+                            <breakBuildOnBinaryIncompatibleModifications>false</breakBuildOnBinaryIncompatibleModifications>
+                            <breakBuildOnSourceIncompatibleModifications>false</breakBuildOnSourceIncompatibleModifications>
+                            <includeSynthetic>false</includeSynthetic>
+                            <ignoreMissingClasses>true</ignoreMissingClasses>
+                        </parameter>
+                    </configuration>
+                </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>com.github.siom79.japicmp</groupId>
+                <artifactId>japicmp-maven-plugin</artifactId>
+                <executions>
+                    <!--
+                        Informational: always produce the full API diff against the previous
+                        release. 1.0.5 is a patch, so the diff is expected to be additive only -
+                        but it must be visible and signed off before deploy (Faza D k.5).
+                    -->
+                    <execution>
+                        <id>api-diff-report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>cmp</goal>
+                        </goals>
+                    </execution>
+                    <!--
+                        Enforcing: the types below are the contract the Applipress generator
+                        scaffolds against. Any incompatible change here fails the build.
+                    -->
+                    <execution>
+                        <id>enforce-stable-public-api</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>cmp</goal>
+                        </goals>
+                        <configuration>
+                            <parameter>
+                                <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
+                                <breakBuildOnSourceIncompatibleModifications>true</breakBuildOnSourceIncompatibleModifications>
+                                <includes>
+                                    <include>com.nomendi6.orgsec.storage.SecurityDataStorage</include>
+                                    <include>com.nomendi6.orgsec.interfaces.SecurityEnabledEntity</include>
+                                    <include>com.nomendi6.orgsec.api.PrivilegeRegistry</include>
+                                    <include>com.nomendi6.orgsec.api.PrivilegeDefinitionProvider</include>
+                                    <include>com.nomendi6.orgsec.provider.SecurityContextProvider</include>
+                                    <include>com.nomendi6.orgsec.common.service.SecurityEventPublisher</include>
+                                    <include>com.nomendi6.orgsec.model.PersonDef</include>
+                                    <include>com.nomendi6.orgsec.model.RoleDef</include>
+                                    <include>com.nomendi6.orgsec.model.PrivilegeDef</include>
+                                    <include>com.nomendi6.orgsec.model.OrganizationDef</include>
+                                    <include>com.nomendi6.orgsec.model.BusinessRoleDef</include>
+                                    <include>com.nomendi6.orgsec.model.ResourceDef</include>
+                                </includes>
+                            </parameter>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 
     <profiles>
