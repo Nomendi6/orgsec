@@ -1,5 +1,6 @@
 package com.nomendi6.orgsec.common.service;
 
+import java.math.BigInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -401,8 +402,8 @@ public class PrivilegeChecker {
         // Handle PartyDTO from domain - use reflection to avoid direct dependency
         try {
             var getIdMethod = partyObject.getClass().getMethod("getId");
-            return (Long) getIdMethod.invoke(partyObject);
-        } catch (Exception e) {
+            return toIdentifier(getIdMethod.invoke(partyObject), "party", partyObject);
+        } catch (ReflectiveOperationException | RuntimeException e) {
             log.warn("Could not extract party ID from object of type: {}", partyObject.getClass().getName());
             return null;
         }
@@ -422,10 +423,49 @@ public class PrivilegeChecker {
         // Handle PersonDTO from domain - use reflection to avoid direct dependency
         try {
             var getIdMethod = personObject.getClass().getMethod("getId");
-            return (Long) getIdMethod.invoke(personObject);
-        } catch (Exception e) {
+            return toIdentifier(getIdMethod.invoke(personObject), "person", personObject);
+        } catch (ReflectiveOperationException | RuntimeException e) {
             log.warn("Could not extract person ID from object of type: {}", personObject.getClass().getName());
             return null;
         }
+    }
+
+    /**
+     * Narrows whatever {@code getId()} returned to a {@code Long}.
+     *
+     * <p>The value used to be cast straight to {@code Long}, so an entity exposing an
+     * {@code Integer} id - which JPA and MapStruct both produce for an {@code int} column - raised a
+     * {@link ClassCastException} that was swallowed into a {@code null}, and the record was denied.
+     * An id that is genuinely a whole number is now accepted whatever integral box it arrives in.
+     *
+     * <p>Non-integral types are still refused rather than rounded: a decimal id is a mapping error,
+     * and quietly truncating it would compare against a different row. A {@code BigInteger} outside
+     * {@code long} range is refused for the same reason - it cannot round-trip.
+     *
+     * @return the id, or {@code null} when the value is absent or not a whole number in range
+     */
+    private Long toIdentifier(Object id, String kind, Object source) {
+        if (id == null) {
+            return null;
+        }
+        if (id instanceof Long value) {
+            return value;
+        }
+        if (id instanceof Integer || id instanceof Short || id instanceof Byte) {
+            return ((Number) id).longValue();
+        }
+        if (id instanceof BigInteger value) {
+            try {
+                return value.longValueExact();
+            } catch (ArithmeticException e) {
+                log.warn("{} id {} from {} does not fit in a long - denying", kind, value, source.getClass().getName());
+                return null;
+            }
+        }
+        log.warn(
+            "Could not extract {} ID from {}: getId() returned {}, which is not an integral identifier",
+            kind, source.getClass().getName(), id.getClass().getName()
+        );
+        return null;
     }
 }

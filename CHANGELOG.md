@@ -85,6 +85,15 @@ an advisory exists for an entry above, its GHSA id is named in that entry.
   overriding depending on Spring Boot configuration. This is a new capability, not a fix.
 - **The starter declares `spring-boot-starter-oauth2-resource-server` as `optional`.** Applications
   that leave `orgsec.api.person.enabled` at its default of `false` are unaffected.
+- **Widened: an entity id no longer has to be a `Long`.** The reflective extraction cast straight to
+  `Long`, so an entity exposing an `Integer` id - which both JPA and MapStruct produce for an `int`
+  column - raised a `ClassCastException` that was swallowed into `null`, and the record was denied.
+  `Integer`, `Short`, `Byte` and an in-range `BigInteger` are now accepted. Decimal types and a
+  `BigInteger` outside `long` range are still refused rather than rounded.
+- **`ResourceDef.setPrivilegesList` copies the argument** instead of storing it by reference, and
+  `null` clears the list rather than installing one. Both evaluators iterate this list, so an aliased
+  collection let a caller change what a shared `ResourceDef` grants, and a `null` raised a
+  `NullPointerException` on the authorization path.
 - **`JwtClaimsParser.getPositionRoleIds` is deprecated** and removed in 2.0.0. Use
   `parsePrincipalFromToken`, which returns the memberships and their role ids as one value.
 - **Placeholder storage beans are no longer registered.** `StorageConfiguration` used to register
@@ -145,6 +154,9 @@ an advisory exists for an entry above, its GHSA id is named in that entry.
   unusable. Previously it denied, while a list query over the same rows returned them.
 - A per-record hierarchy check now grants on a matching path even when the record carries no
   organization or company id.
+- Records whose entity exposes a non-`Long` integral id are now evaluated instead of being denied.
+  If your application relied on that denial - for example because a DTO exposes an unrelated
+  `getId()` - the records it was hiding become visible.
 
 **Configuration:**
 

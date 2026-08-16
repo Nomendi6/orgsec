@@ -59,8 +59,18 @@ public class ResourceDef implements Serializable {
         this.resourceName = resourceName;
     }
 
+    /**
+     * Replaces the privilege list with a copy of the given one.
+     *
+     * <p>Both the per-record checker and the list-filter builder iterate this list to make their
+     * decisions, so it must not be an alias of a collection the caller still holds: a later
+     * {@code add} on that collection would silently change what a stored, shared {@code ResourceDef}
+     * grants. {@code null} clears the list rather than installing one - the two consumers iterate
+     * it unconditionally, and a null there is a {@link NullPointerException} on the authorization
+     * path.
+     */
     public void setPrivilegesList(List<PrivilegeDef> privilegesList) {
-        this.privilegesList = privilegesList;
+        this.privilegesList = (privilegesList == null) ? new ArrayList<>() : new ArrayList<>(privilegesList);
     }
 
     public void setAggregatedWritePrivilege(PrivilegeDef aggregatedWritePrivilege) {
