@@ -66,13 +66,22 @@ public class JwtStorageAutoConfiguration {
         );
     }
 
+    /**
+     * The JWT storage and the store it forwards everything except {@code Person} to.
+     *
+     * <p>Bound to {@code jwtDelegateStorage} rather than {@code delegateSecurityDataStorage} so the
+     * delegate can be chosen independently of the in-memory alias. The default
+     * {@code jwtDelegateStorage} bean resolves to that alias, so nothing changes unless an
+     * application declares its own - which is the supported way to put Redis, or its own store,
+     * behind JWT.
+     */
     @Bean
     @Primary
     @ConditionalOnMissingBean(name = "jwtSecurityDataStorage")
     public SecurityDataStorage jwtSecurityDataStorage(
             JwtClaimsParser claimsParser,
             JwtTokenContextHolder tokenContextHolder,
-            @Qualifier("delegateSecurityDataStorage") SecurityDataStorage delegateStorage,
+            @Qualifier("jwtDelegateStorage") SecurityDataStorage delegateStorage,
             JwtStorageProperties properties) {
         log.info("Creating JwtSecurityDataStorage as primary SecurityDataStorage with delegate: {} (cache: {}, ttl: {}s)",
                 delegateStorage.getProviderType(), properties.isCacheParsedPerson(), properties.getCacheTtlSeconds());

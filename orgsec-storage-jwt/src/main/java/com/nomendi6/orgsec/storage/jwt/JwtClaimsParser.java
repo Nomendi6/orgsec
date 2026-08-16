@@ -15,6 +15,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -63,6 +64,33 @@ public class JwtClaimsParser {
      * @return PersonDef, or null if the claim is absent, unsupported or not fully valid
      */
     public PersonDef parsePersonFromToken(String jwtToken) {
+        ParsedPrincipal principal = parsePrincipalFromToken(jwtToken);
+        return principal != null ? principal.person() : null;
+    }
+
+    /**
+     * A principal and the position-role ids that came with it, in one indivisible value.
+     *
+     * <p>The two used to be read from the token separately - the person here, the role ids again
+     * later, per organization. Reading twice means the pairing can differ between the two reads, and
+     * the second read had no idea which organizations the first one had accepted. Parsing once and
+     * carrying the result together removes the question.
+     *
+     * @param person the principal, with one entry in {@code organizationsMap} per accepted membership
+     * @param positionRoleIdsByOrganization role ids per organization id, matching that map exactly
+     */
+    public record ParsedPrincipal(PersonDef person, Map<Long, List<Long>> positionRoleIdsByOrganization) {}
+
+    /**
+     * Parse the principal and its position-role ids from a JWT token string.
+     *
+     * <p>Same fail-closed contract as {@link #parsePersonFromToken(String)}: any problem yields
+     * {@code null} rather than an exception or a partially trusted claim.
+     *
+     * @param jwtToken the JWT token string (without Bearer prefix)
+     * @return the parsed principal, or null if the claim is absent, unsupported or not fully valid
+     */
+    public ParsedPrincipal parsePrincipalFromToken(String jwtToken) {
         if (jwtToken == null || jwtToken.isEmpty()) {
             log.debug("JWT token is null or empty");
             return null;
@@ -92,7 +120,7 @@ public class JwtClaimsParser {
             }
 
             // Map to PersonDef
-            return mapToPersonDef(claimsDTO);
+            return mapToPrincipal(claimsDTO);
 
         } catch (RuntimeException e) {
             log.warn("Rejecting OrgSec claim: {}", e.getMessage());
@@ -126,12 +154,11 @@ public class JwtClaimsParser {
     }
 
     /**
-     * Map OrgSecClaimsDTO to PersonDef.
+     * Map OrgSecClaimsDTO to a principal plus its position-role ids.
      */
-    private PersonDef mapToPersonDef(OrgSecClaimsDTO claimsDTO) {
+    private ParsedPrincipal mapToPrincipal(OrgSecClaimsDTO claimsDTO) {
         PersonClaimDTO personClaim = claimsDTO.getPerson();
         if (personClaim == null || personClaim.getId() == null) {
-            log.error("Missing required person data in claims");
             throw new IllegalArgumentException("Missing required person data in claims");
         }
 
@@ -141,19 +168,39 @@ public class JwtClaimsParser {
         personDef.setDefaultCompanyId(personClaim.getDefaultCompanyId());
         personDef.setDefaultOrgunitId(personClaim.getDefaultOrgunitId());
 
+        Map<Long, List<Long>> positionRoleIds = new HashMap<>();
+
         // Map memberships to organizations
         List<MembershipClaimDTO> memberships = claimsDTO.getMemberships();
         if (memberships != null) {
             for (MembershipClaimDTO membership : memberships) {
                 OrganizationDef orgDef = mapMembershipToOrganization(membership);
+
+                if (orgDef.organizationId == null) {
+                    throw new IllegalArgumentException("Membership without an organizationId");
+                }
+                // Two entries for one organization are not mergeable: they can disagree on
+                // companyId and on which roles apply, and whichever wins is decided by claim
+                // ordering. A token shaped that way is either a mapper bug or an attempt to smuggle
+                // a privileged first entry past a plausible second one, so the whole claim goes.
+                if (personDef.organizationsMap.containsKey(orgDef.organizationId)) {
+                    throw new IllegalArgumentException(
+                        "Duplicate organizationId " + orgDef.organizationId + " in claim memberships"
+                    );
+                }
+
                 personDef.organizationsMap.put(orgDef.organizationId, orgDef);
+                positionRoleIds.put(
+                    orgDef.organizationId,
+                    membership.getPositionRoleIds() != null ? List.copyOf(membership.getPositionRoleIds()) : List.of()
+                );
             }
         }
 
         log.debug("Parsed PersonDef from JWT: personId={}, login={}",
                 personDef.personId, personDef.relatedUserLogin);
 
-        return personDef;
+        return new ParsedPrincipal(personDef, Map.copyOf(positionRoleIds));
     }
 
     /**
@@ -213,8 +260,16 @@ public class JwtClaimsParser {
 
     /**
      * Get position role IDs from membership.
-     * Used by JwtSecurityDataStorage to resolve roles from delegate storage.
+     *
+     * @deprecated Since 1.0.5, and removed in 2.0.0. Re-reading the token per organization decouples
+     *     the role ids from the memberships they belong to: this method answers for an organization
+     *     the caller has not checked, from a second independent parse, and swallows every failure as
+     *     an empty list - so a claim rejected by {@link #parsePrincipalFromToken(String)} could still
+     *     yield roles here. Use {@link #parsePrincipalFromToken(String)}, which returns the
+     *     memberships and their role ids as one value. Kept only so the 1.0.5 patch removes no public
+     *     method.
      */
+    @Deprecated(since = "1.0.5", forRemoval = true)
     public List<Long> getPositionRoleIds(String jwtToken, Long organizationId) {
         if (jwtToken == null || organizationId == null) {
             return List.of();

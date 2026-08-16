@@ -8,6 +8,7 @@ import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.storage.SecurityDataStorage;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,8 +48,9 @@ class JwtCacheSettingsTest {
         delegateOrganization.parentPath = ANCHOR_BEFORE;
         when(delegateStorage.getOrganization(ORG_ID)).thenReturn(delegateOrganization);
 
-        when(claimsParser.parsePersonFromToken(TOKEN)).thenAnswer(invocation -> membershipOnlyPrincipal());
-        when(claimsParser.getPositionRoleIds(TOKEN, ORG_ID)).thenReturn(List.of());
+        when(claimsParser.parsePrincipalFromToken(TOKEN)).thenAnswer(invocation ->
+            new JwtClaimsParser.ParsedPrincipal(membershipOnlyPrincipal(), Map.of(ORG_ID, List.of()))
+        );
         tokenContextHolder.setToken(TOKEN);
     }
 

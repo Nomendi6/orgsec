@@ -161,6 +161,31 @@ silently lost one membership looks legitimately smaller than it is, which is the
 failure. `parsePersonFromToken` returns `null` in all these cases and never throws, so a malformed
 token surfaces as 401/403 rather than 500.
 
+### What the delegate decides, not the claim
+
+The claim asserts *which* organizations the person belongs to. It is not evidence that those
+organizations exist, that they belong to the company it names, or where they sit in the hierarchy -
+a token is issued once and then carried around while the organization graph keeps changing. Every
+membership is therefore confirmed against the delegate before it grants anything:
+
+| Situation | Result |
+| --- | --- |
+| The delegate does not know `organizationId` | The membership is **removed** from the principal |
+| The delegate records a different `companyId` than the claim | The membership is **removed** |
+| The claim carries no `companyId` | The membership is **removed** |
+| Confirmed | Name and both hierarchy anchors are taken from the delegate |
+
+Removal rather than a weakened entry is deliberate: an id-only membership still lets `EXACT`
+privileges match, which is the same unverified assertion in a quieter form.
+
+Only the position roles the claim names are resolved, through the delegate, into privileges. The
+delegate organization's own `organizationRolesSet` and business roles are **not** copied onto the
+principal - those are the roles the organization confers on its *party members*, which the token
+holder may well not be. **Person-party grants are consequently not available in JWT mode**; a
+deployment that relies on them needs the in-memory or Redis backend as primary. This is a documented
+fail-closed limitation: before 1.0.5 those roles were copied, which handed every token-authenticated
+principal the union of everyone's privileges in the organization.
+
 The JWT parser is permissive about unknown JSON fields (`@JsonIgnoreProperties(ignoreUnknown = true)` is set on the DTOs) so older or richer claim schemas can flow through without breaking deserialization - only fields OrgSec recognizes are used.
 
 ## Issuing the claim from Keycloak

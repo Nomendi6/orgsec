@@ -2,6 +2,7 @@ package com.nomendi6.orgsec.storage.jwt;
 
 import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.storage.SecurityDataStorage;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,8 +24,10 @@ class JwtSecurityDataStorageTest {
 
         PersonDef firstPerson = new PersonDef(1L, "First");
         PersonDef secondPerson = new PersonDef(2L, "Second");
-        when(claimsParser.parsePersonFromToken(firstToken)).thenReturn(firstPerson);
-        when(claimsParser.parsePersonFromToken(secondToken)).thenReturn(secondPerson);
+        when(claimsParser.parsePrincipalFromToken(firstToken))
+            .thenReturn(new JwtClaimsParser.ParsedPrincipal(firstPerson, Map.of()));
+        when(claimsParser.parsePrincipalFromToken(secondToken))
+            .thenReturn(new JwtClaimsParser.ParsedPrincipal(secondPerson, Map.of()));
 
         JwtSecurityDataStorage storage = new JwtSecurityDataStorage(claimsParser, tokenContextHolder, delegateStorage);
 
