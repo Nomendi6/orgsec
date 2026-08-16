@@ -23,17 +23,17 @@ import org.springframework.security.access.AccessDeniedException;
 
 /**
  * A role holding privileges on two different axes - company plus organization-subtree, or person
- * plus organization-subtree - and what each authorization path does with it.
+ * plus organization-subtree - must grant on <em>either</em> axis, on both authorization paths.
  *
- * <p>These are the shapes where GET and LIST are built differently. LIST iterates the privileges and
- * ORs a clause per privilege, so both axes contribute. GET is handed the <em>aggregate</em>
- * {@link PrivilegeDef} and walks the company -> org -> person cascade, which stops after the first
- * axis that is configured: an org privilege is only consulted when the aggregate's company direction
- * is {@code NONE}, and a person privilege only when both company and org are.
+ * <p>This is the shape a single {@link PrivilegeDef} cannot express. Its cascade evaluates company,
+ * then org only if company is {@code NONE}, then person only if both are - so summarising the two
+ * privileges into one aggregate loses whichever axis comes second. Both paths therefore evaluate the
+ * privileges <em>individually</em> and OR the outcomes: {@code PrivilegeSecurityService} iterates
+ * {@code ResourceDef.privilegesList} per record, {@code RsqlFilterBuilder} iterates the same list and
+ * ORs a clause per privilege.
  *
- * <p>The result is a documented divergence on this line, characterised below: a record that matches
- * only on the second axis is returned by a list endpoint and refused by a direct read of the same
- * row. Each branch is asserted on its own so the boundary is explicit rather than implied.
+ * <p>Each branch is asserted on its own, because a test that only exercises a record matching both
+ * axes passes even when the second one is being dropped.
  */
 class PrivilegeCheckerMixedAxisTest {
 
@@ -74,20 +74,24 @@ class PrivilegeCheckerMixedAxisTest {
     }
 
     @Test
-    void companyPlusOrgSubtreeOnTheOrgBranchIsWhereGetAndListDiverge() {
+    void companyPlusOrgSubtreeGrantsOnTheOrgBranchToo() {
         ResourceDef resource = resourceWith(companyExact(), orgHierarchyDown());
 
-        // LIST returns the row: the org clause is ORed in.
         assertThat(buildFilter(resource))
             .as("the list filter carries both selectors")
             .contains("ownerOrgPath")
             .contains("ownerCompany.id");
 
-        // GET refuses it: the aggregate's company direction is EXACT, not NONE, so the cascade
-        // never reaches the org axis. Characterised, not endorsed - see the divergence note above.
         assertThat(checkGet(resource, 999L, "|Z|", ORG_ID, INSIDE_SUBTREE))
-            .as("a record inside the org subtree but in another company")
-            .isFalse();
+            .as("a record inside the org subtree, in another company - the org privilege alone must grant it")
+            .isTrue();
+    }
+
+    @Test
+    void companyPlusOrgSubtreeStillDeniesARecordOnNeitherAxis() {
+        ResourceDef resource = resourceWith(companyExact(), orgHierarchyDown());
+
+        assertThat(checkGet(resource, 999L, "|Z|", 77L, OUTSIDE_SUBTREE)).isFalse();
     }
 
     // -------------------------------------------------------------------- person + org subtree
@@ -100,7 +104,7 @@ class PrivilegeCheckerMixedAxisTest {
     }
 
     @Test
-    void personPlusOrgSubtreeOnThePersonBranchIsWhereGetAndListDiverge() {
+    void personPlusOrgSubtreeGrantsOnThePersonBranchToo() {
         ResourceDef resource = resourceWith(personPrivilege(), orgHierarchyDown());
 
         assertThat(buildFilter(resource))
@@ -108,9 +112,23 @@ class PrivilegeCheckerMixedAxisTest {
             .contains("ownerOrgPath")
             .contains("ownerPerson.id");
 
-        // The record names the principal as its person but sits outside the subtree. The aggregate's
-        // org direction is HIERARCHY_DOWN, not NONE, so the person axis is never reached.
-        assertThat(checkGet(resource, null, null, null, OUTSIDE_SUBTREE)).isFalse();
+        assertThat(checkGet(resource, null, null, 77L, OUTSIDE_SUBTREE))
+            .as("the record names the principal as its person but sits outside the subtree")
+            .isTrue();
+    }
+
+    @Test
+    void personPlusOrgSubtreeStillDeniesSomeoneElsesRecordOutsideTheSubtree() {
+        ResourceDef resource = resourceWith(personPrivilege(), orgHierarchyDown());
+        PersonData someoneElse = new PersonData(999L, "Bob");
+
+        boolean granted = privilegeChecker.checkOrganizationPrivilege(
+            someoneElse, principalOrganization(), personPrivilege(),
+            null, null, 77L, OUTSIDE_SUBTREE, PERSON_ID,
+            true, true, true
+        );
+
+        assertThat(granted).isFalse();
     }
 
     // ------------------------------------------------------------------- single axis, unchanged
@@ -126,6 +144,12 @@ class PrivilegeCheckerMixedAxisTest {
 
     // --- fixture ------------------------------------------------------------------------------
 
+    /**
+     * Mirrors the per-record loop in {@code PrivilegeSecurityService}: every privilege in the list is
+     * evaluated on its own and the outcomes are ORed. Deliberately not
+     * {@code getResourcePrivileges(...)} - that returns the aggregate, which exists only as the
+     * empty-list compatibility fallback and would collapse exactly the axis under test.
+     */
     private boolean checkGet(
         ResourceDef resource,
         Long recordCompanyId,
@@ -133,20 +157,28 @@ class PrivilegeCheckerMixedAxisTest {
         Long recordOrgId,
         String recordOrgPath
     ) {
-        PrivilegeDef aggregate = privilegeChecker.getResourcePrivileges(resource, PrivilegeOperation.READ);
-        return privilegeChecker.checkOrganizationPrivilege(
-            currentPerson,
-            principalOrganization(),
-            aggregate,
-            recordCompanyId,
-            recordCompanyPath,
-            recordOrgId,
-            recordOrgPath,
-            PERSON_ID,
-            true,
-            true,
-            true
-        );
+        for (PrivilegeDef privilege : resource.getPrivilegesList()) {
+            if (!privilegeChecker.hasRequiredOperation(privilege, PrivilegeOperation.READ)) {
+                continue;
+            }
+            boolean granted = privilegeChecker.checkOrganizationPrivilege(
+                currentPerson,
+                principalOrganization(),
+                privilege,
+                recordCompanyId,
+                recordCompanyPath,
+                recordOrgId,
+                recordOrgPath,
+                PERSON_ID,
+                true,
+                true,
+                true
+            );
+            if (granted) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String buildFilter(ResourceDef resource) {

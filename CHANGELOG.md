@@ -5,6 +5,156 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - Unreleased
+
+This is a patch release: it is source- and binary-compatible with 1.0.4. It is **not** behaviour-
+compatible. Authorization changes in both directions - most entries narrow it, two widen it
+deliberately to bring per-record checks back in line with list queries. Read the Migration Notes
+before upgrading.
+
+### Security
+
+These entries describe defects that granted **more** access than was assigned, or let a token assert
+facts nothing verified. All 1.0.x deployments before 1.0.5 are affected unless stated otherwise.
+
+- **Paths that match everything were accepted as hierarchy anchors.** An empty path, a bare `"|"`, or
+  a missing anchor passed the gate and then compared true against every record, because
+  `startsWith` is unconditionally true against all three. `PrivilegeChecker` and `RsqlFilterBuilder`
+  now refuse them and deny. A missing anchor previously raised a `NullPointerException` that escaped
+  to the caller instead of denying the record.
+- **Sibling branches matched as descendants.** A non-canonical anchor such as `|A|B` - one that does
+  not end in the separator - made a prefix comparison match `|A|BX|C|`, a different branch whose
+  first segment merely begins with the same characters. Both evaluators now validate that each path
+  is canonical before comparing, so a prefix match means "is a descendant of" and nothing else.
+- **JWT: the token decided its own hierarchy.** The claim carries only `pathId`, from which the
+  parser derived `parentPath` - and derived the *strict* parent, one level above what every other
+  backend stores. A principal at `|1|10|15|` was anchored at `|1|10|`, so `HIERARCHY_DOWN` granted
+  every sibling subtree under organization 10; for a root-level membership the derived anchor
+  collapsed to `"|"`, which matches everything. `companyParentPath` had no claim at all and stayed
+  null. Anchors now come from the delegate storage, which is the authority for the hierarchy.
+- **JWT: token principals received the organization's own roles.** Enrichment copied the delegate
+  organization's `organizationRolesSet` and `businessRolesMap` onto the principal. Those are the
+  roles the organization confers on its *party members*, so every token-authenticated principal
+  received the union of everyone's privileges in that organization. Nothing role-shaped is copied
+  any more; a principal's privileges come only from the position roles its own claim names.
+- **JWT: unverified memberships granted access.** A membership naming an organization the delegate
+  does not know, or naming a different company than the delegate records, was still evaluated. Such
+  memberships are now removed from the principal entirely. Clearing only their anchors was not
+  enough - an id-only membership still satisfies an `EXACT` privilege.
+- **JWT: a duplicate `organizationId` silently overwrote a membership.** Memberships are keyed by
+  organization id, so a second entry replaced the first and claim ordering decided which survived -
+  while the two can disagree on exactly the fields authorization reads. A duplicate now rejects the
+  whole claim.
+- **JWT: a malformed `pathId` was accepted or crashed the request.** Values that are neither a valid
+  local segment nor a valid full path now reject the whole claim, fail-closed, and
+  `parsePersonFromToken` returns `null` rather than letting an exception reach the caller as HTTP
+  500.
+- **JWT: a stale cached principal outlived the change it was told about.** Fixed in this release
+  together with the cache TTL - see *Fixed*.
+- **The Person API was authorized but not authenticated.** `orgsecApiSecurityFilterChain` applied
+  `hasRole(...)` without installing any authentication mechanism, so whether `/api/orgsec/person/**`
+  was protected at all depended entirely on what the surrounding application happened to configure.
+  The chain now authenticates the caller with a bearer token, validated by the application's own
+  `JwtDecoder`, and refuses to start if the Person API is enabled without one.
+
+No GitHub Security Advisory is published for the 1.0.4 entries listed in the previous section. Where
+an advisory exists for an entry above, its GHSA id is named in that entry.
+
+### Changed
+
+- **Redis activation is decided by one property.** `orgsec.storage.redis.enabled` activates the
+  backend; `orgsec.storage.features.redis-enabled` only decides whether the in-memory storage keeps
+  `@Primary`. Setting them to different values produces a broken context, so the pair is now checked
+  before the application context is built, by an `EnvironmentPostProcessor`. New property
+  `orgsec.storage.strict-activation` (default `false` on 1.0.x, `true` in 2.0.0) turns the warning
+  into a refusal to start. `orgsec.storage.features.jwt-enabled=true` without `orgsec-storage-jwt` on
+  the classpath is always fatal.
+- **Widened: `EXACT` no longer requires a path.** The gate demanded both an id and a usable path for
+  every direction. `EXACT` compares ids and never reads a path, so a record with no path was denied
+  by a per-record check while the list query returned it. Records whose path is absent or unusable
+  are now granted when the ids match.
+- **Widened: hierarchy directions no longer require the record's id.** For the same reason, in the
+  other direction: a hierarchy comparison reads paths and never the record's id.
+- **The JWT delegate is configured separately.** `JwtSecurityDataStorage` now injects
+  `jwtDelegateStorage`, which defaults to the in-memory storage. Activating Redis alongside JWT does
+  **not** make Redis the delegate; that requires declaring the bean explicitly, and carries an
+  availability risk documented in [Hybrid storage](docs/storage/05-hybrid.md).
+- **Bean-name overrides now work.** `primaryInMemoryStorage` and `delegateSecurityDataStorage` carry
+  `@ConditionalOnMissingBean(name = ...)`, so an application-declared bean of either name replaces
+  the library's. It previously collided, raising `BeanDefinitionOverrideException` or silently
+  overriding depending on Spring Boot configuration. This is a new capability, not a fix.
+- **The starter declares `spring-boot-starter-oauth2-resource-server` as `optional`.** Applications
+  that leave `orgsec.api.person.enabled` at its default of `false` are unaffected.
+- **`JwtClaimsParser.getPositionRoleIds` is deprecated** and removed in 2.0.0. Use
+  `parsePrincipalFromToken`, which returns the memberships and their role ids as one value.
+- **Placeholder storage beans are no longer registered.** `StorageConfiguration` used to register
+  beans named `jwtSecurityDataStorage` and `redisSecurityDataStorage` - the same names the real
+  modules use - whenever a feature flag was set without the corresponding module. The types remain,
+  deprecated and inert, and are removed in 2.0.0.
+- **Documented as inert:** `orgsec.storage.primary`, `fallback`, `hybrid-mode-enabled`,
+  `memory-enabled` and everything under `data-sources.*` bind but are read by nothing. There is no
+  per-data-type router on this line. The documentation previously described them as working.
+- On the 1.0.x line the list filter still uses RSQL `=*`, which most JPA/RSQL stacks translate to a
+  case-insensitive `LIKE`, while `PrivilegeChecker` compares paths case-sensitively. 2.0.0 uses the
+  case-sensitive `=^*`.
+
+### Fixed
+
+- **The Person API returned HTTP 500 for every request.** The published jars were compiled without
+  `-parameters`, so `@PathVariable` had no parameter name to bind to and Spring MVC refused the
+  request - in any application, regardless of its own compiler settings, because the controller ships
+  inside the starter jar. The reactor now compiles with `-parameters` and the path variables are
+  named explicitly. The Keycloak mapper could not have worked against a released artifact before
+  this.
+- **JWT principal cache honours its settings and is invalidated on change.**
+  `orgsec.storage.jwt.cache-parsed-person` and `cache-ttl-seconds` were read from configuration and
+  then ignored, so an enriched principal lived as long as the process. The cache is now cleared by
+  every `notifyXxxChanged` that can alter what enrichment copied, and `cache-ttl-seconds` bounds the
+  changes the library is never told about.
+- **`OrgsecInMemoryFixtures` built organizations with `pathId` and `parentPath` inverted**, so
+  fixture-based tests exercised a graph the real loaders never produce.
+- A `ClassCastException` from an entity's `getSecurityField` - a non-`String` value for a path field -
+  now denies rather than failing the request with HTTP 500.
+- `RsqlFilterBuilder` no longer emits `selector==null` when the principal has no company or
+  organization id; depending on the RSQL dialect that was either a parse error or a clause matching
+  every row whose column is null.
+
+### Migration Notes
+
+**Narrowed - review before upgrading:**
+
+- A principal whose `parentPath` or `companyParentPath` is empty, `"|"`, or absent no longer matches
+  every record on that axis. If your application stores an absent path as `""`, hierarchy privileges
+  for those principals now deny. Populate the anchors, or use `EXACT`.
+- Organizational paths must be canonical (`|seg|seg|`, alphanumeric or underscore segments, at most
+  30 characters each and 20 deep). A path missing its trailing separator is refused rather than
+  compared.
+- In JWT mode: memberships the delegate cannot confirm are dropped, a duplicate `organizationId`
+  rejects the whole claim, and only the position roles the claim names grant anything. **Person-party
+  grants are not available in JWT mode** - a deployment relying on them needs the in-memory or Redis
+  backend as primary.
+- `pathId` in the `orgsec` claim should be the organization's own segment (`"22"`). A full path
+  (`"|1|10|22|"`) is still accepted and normalized, but anything else rejects the claim.
+- The Person API now requires a `JwtDecoder` bean when enabled, and refuses to start without one.
+  Callers must present a bearer token the application's decoder accepts, carrying the realm role
+  named by `orgsec.api.person.required-role`.
+
+**Widened - verify this is what you want:**
+
+- A per-record `EXACT` check now grants when the ids match and the record's path is absent or
+  unusable. Previously it denied, while a list query over the same rows returned them.
+- A per-record hierarchy check now grants on a matching path even when the record carries no
+  organization or company id.
+
+**Configuration:**
+
+- Set `orgsec.storage.redis.enabled` and `orgsec.storage.features.redis-enabled` to the same value.
+  A mismatch is logged as a warning on this line and becomes fatal in 2.0.0; set
+  `orgsec.storage.strict-activation: true` to adopt the 2.0.0 behaviour now.
+- If you relied on `orgsec.storage.primary`, `hybrid-mode-enabled` or `data-sources.*` to select a
+  backend, they never did anything. Use `orgsec.storage.redis.enabled` and
+  `orgsec.storage.features.jwt-enabled`.
+
 ## [1.0.4] - 2026-08-14
 
 ### Security
