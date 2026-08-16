@@ -68,12 +68,16 @@ public class StorageConfiguration {
     /**
      * The storage {@code JwtSecurityDataStorage} resolves organizations, anchors and roles from.
      *
-     * <p>Declared here, in the in-memory module, on purpose: the default delegate must never be
-     * Redis. A Redis delegate returns {@code null} for anything not currently cached, and the JWT
-     * storage treats a missing organization as "membership not proven" and drops it - so a cold or
-     * expired cache silently degrades into deny-all. Applications that still want Redis behind JWT
-     * declare {@code @Bean("jwtDelegateStorage")} themselves and take on registering the
-     * {@code CacheWarmer} loaders that keep it populated.
+     * <p>Declared here, in the in-memory module, on purpose: this module cannot see the Redis one,
+     * so the default delegate structurally cannot be a cache. That matters because a cache returns
+     * {@code null} for anything it does not currently hold, and the JWT storage reads a missing
+     * organization as "membership not proven" and drops it - a cold or expired cache would degrade
+     * into deny-all rather than into slower lookups.
+     *
+     * <p>Enabling the JWT and Redis backends together is rejected at startup by
+     * {@code OrgsecStorageActivationValidator}. An application that needs a different authoritative
+     * store behind JWT declares this bean itself; whatever it declares must answer from a source of
+     * truth, not from a cache.
      */
     @Bean("jwtDelegateStorage")
     @ConditionalOnMissingBean(name = "jwtDelegateStorage")

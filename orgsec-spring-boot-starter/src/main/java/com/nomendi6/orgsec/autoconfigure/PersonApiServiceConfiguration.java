@@ -2,6 +2,7 @@ package com.nomendi6.orgsec.autoconfigure;
 
 import com.nomendi6.orgsec.api.controller.PersonApiController;
 import com.nomendi6.orgsec.api.service.PersonApiService;
+import com.nomendi6.orgsec.exceptions.OrgsecConfigurationException;
 import com.nomendi6.orgsec.provider.SecurityQueryProvider;
 import com.nomendi6.orgsec.storage.SecurityDataStorage;
 import com.nomendi6.orgsec.storage.inmemory.loader.PersonLoader;
@@ -33,7 +34,6 @@ import org.springframework.security.web.SecurityFilterChain;
  */
 @Configuration
 @EnableConfigurationProperties(OrgsecProperties.class)
-@ConditionalOnBean(PersonLoader.class)
 @ConditionalOnProperty(prefix = "orgsec.api.person", name = "enabled", havingValue = "true")
 @AutoConfigureAfter(name = "org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration")
 public class PersonApiServiceConfiguration {
@@ -46,6 +46,7 @@ public class PersonApiServiceConfiguration {
      * explicitly so the answer always comes from the database, never from the caller's token.
      */
     @Bean
+    @ConditionalOnBean(PersonLoader.class)
     public PersonApiService personApiService(
         @Qualifier("delegateSecurityDataStorage") SecurityDataStorage securityDataStorage,
         SecurityQueryProvider queryProvider,
@@ -57,8 +58,47 @@ public class PersonApiServiceConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnBean(PersonApiService.class)
     public PersonApiController personApiController(PersonApiService personApiService) {
         return new PersonApiController(personApiService);
+    }
+
+    /**
+     * Enabling the endpoint without its authoritative loader used to omit the complete API bean
+     * graph silently. Fail before startup instead, with a stable diagnostic.
+     */
+    @Bean
+    @ConditionalOnMissingBean(PersonLoader.class)
+    PersonApiConfigurationError orgsecPersonApiPersonLoaderRequiredFailFast() {
+        throw new OrgsecConfigurationException(
+            "ORGSEC_PERSON_API_PERSON_LOADER_REQUIRED: orgsec.api.person.enabled=true requires " +
+                "a PersonLoader bean backed by the authoritative delegate storage."
+        );
+    }
+
+    /**
+     * Bearer-token chain for the Person API.
+     *
+     * <p>This public factory method is part of the published 1.0.4 Boot configuration API.
+     * Keep it on the outer configuration class while the nested configurations below isolate
+     * the fail-fast checks for optional resource-server classes.
+     */
+    @Bean(name = "orgsecApiSecurityFilterChain")
+    @ConditionalOnClass(SecurityFilterChain.class)
+    @ConditionalOnBean(type = "org.springframework.security.oauth2.jwt.JwtDecoder")
+    @ConditionalOnMissingBean(name = "orgsecApiSecurityFilterChain")
+    @Order(SecurityProperties.BASIC_AUTH_ORDER - 50)
+    public SecurityFilterChain orgsecApiSecurityFilterChain(HttpSecurity http, OrgsecProperties properties) throws Exception {
+        String requiredRole = properties.getApi().getPerson().getRequiredRole();
+        return http
+            .securityMatcher("/api/orgsec/person/**")
+            .authorizeHttpRequests(authorize -> authorize.anyRequest().hasRole(requiredRole))
+            .oauth2ResourceServer(oauth2 ->
+                oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(KeycloakRealmRoleConverter.jwtAuthenticationConverter()))
+            )
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .build();
     }
 
     /**
@@ -68,35 +108,6 @@ public class PersonApiServiceConfiguration {
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(name = "org.springframework.security.oauth2.jwt.JwtDecoder")
     static class ResourceServerPresentConfiguration {
-
-        /**
-         * Bearer-token chain for the Person API.
-         *
-         * <p>Deliberately reuses the application's own {@code JwtDecoder} bean rather than
-         * building a {@code NimbusJwtDecoder} here: issuer and audience validation are the
-         * application's contract (JHipster applications, for example, validate audience with
-         * their own {@code AudienceValidator} rather than through
-         * {@code spring.security.oauth2.resourceserver.jwt.audiences}). Building a second
-         * decoder would silently accept tokens the application rejects.
-         */
-        @Bean(name = "orgsecApiSecurityFilterChain")
-        @ConditionalOnClass(SecurityFilterChain.class)
-        @ConditionalOnBean(type = "org.springframework.security.oauth2.jwt.JwtDecoder")
-        @ConditionalOnMissingBean(name = "orgsecApiSecurityFilterChain")
-        @Order(SecurityProperties.BASIC_AUTH_ORDER - 50)
-        SecurityFilterChain orgsecApiSecurityFilterChain(HttpSecurity http, OrgsecProperties properties) throws Exception {
-            String requiredRole = properties.getApi().getPerson().getRequiredRole();
-            return http
-                .securityMatcher("/api/orgsec/person/**")
-                .authorizeHttpRequests(authorize -> authorize.anyRequest().hasRole(requiredRole))
-                .oauth2ResourceServer(oauth2 ->
-                    oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(KeycloakRealmRoleConverter.jwtAuthenticationConverter()))
-                )
-                .csrf(csrf -> csrf.disable())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .build();
-        }
-
         /**
          * The Person API is enabled but the application never defined a {@code JwtDecoder}, so
          * the chain above cannot be built. Failing here beats starting up with an endpoint that
@@ -105,12 +116,10 @@ public class PersonApiServiceConfiguration {
         @Bean
         @ConditionalOnMissingBean(type = "org.springframework.security.oauth2.jwt.JwtDecoder")
         PersonApiConfigurationError orgsecPersonApiJwtDecoderRequiredFailFast() {
-            throw new IllegalStateException(
-                "orgsec.api.person.enabled=true, but no JwtDecoder bean is present. The OrgSec Person API " +
-                "(/api/orgsec/person/**) is authenticated with a bearer token issued to the Keycloak mapper's " +
-                "service account, and it reuses the application's own JwtDecoder so issuer/audience validation " +
-                "stays in one place. Either configure a resource server (a JwtDecoder bean, or " +
-                "spring.security.oauth2.resourceserver.jwt.issuer-uri), or set orgsec.api.person.enabled=false."
+            throw new OrgsecConfigurationException(
+                "ORGSEC_PERSON_API_JWT_DECODER_REQUIRED: orgsec.api.person.enabled=true requires " +
+                    "the application's JwtDecoder so the Person API validates Bearer-token signature, " +
+                    "issuer, audience and expiry."
             );
         }
     }
@@ -126,11 +135,9 @@ public class PersonApiServiceConfiguration {
 
         @Bean
         PersonApiConfigurationError orgsecPersonApiResourceServerRequiredFailFast() {
-            throw new IllegalStateException(
-                "orgsec.api.person.enabled=true, but spring-security-oauth2-jose is not on the classpath. The " +
-                "OrgSec Person API (/api/orgsec/person/**) is authenticated with a bearer token. Add " +
-                "org.springframework.boot:spring-boot-starter-oauth2-resource-server (the OrgSec starter declares " +
-                "it as optional), or set orgsec.api.person.enabled=false."
+            throw new OrgsecConfigurationException(
+                "ORGSEC_PERSON_API_RESOURCE_SERVER_REQUIRED: orgsec.api.person.enabled=true requires " +
+                    "org.springframework.boot:spring-boot-starter-oauth2-resource-server."
             );
         }
     }

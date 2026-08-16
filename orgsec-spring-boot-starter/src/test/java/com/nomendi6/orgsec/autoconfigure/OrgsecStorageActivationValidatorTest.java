@@ -1,135 +1,143 @@
 package com.nomendi6.orgsec.autoconfigure;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-
-import org.apache.commons.logging.Log;
+import com.nomendi6.orgsec.exceptions.OrgsecConfigurationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.logging.DeferredLogFactory;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.mock.env.MockEnvironment;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+
 /**
  * The storage flags are checked before the context exists, so this validator is exercised
- * directly rather than through an {@code ApplicationContextRunner} - a runner never invokes
- * {@code EnvironmentPostProcessor}s, which is precisely why the check used to be unreachable.
+ * directly rather than through an ApplicationContextRunner.
  */
 class OrgsecStorageActivationValidatorTest {
 
-    private Log log;
     private OrgsecStorageActivationValidator validator;
 
     @BeforeEach
     void setUp() {
-        log = mock(Log.class);
-        DeferredLogFactory logFactory = supplier -> log;
+        DeferredLogFactory logFactory = mock(DeferredLogFactory.class);
         validator = new OrgsecStorageActivationValidator(logFactory);
     }
 
     @Test
-    void shouldStaySilentWhenBothRedisFlagsAgree() {
+    void acceptsInMemoryConfigurationWhenBothRedisFlagsAreAbsent() {
+        assertThatCode(() -> validate(new MockEnvironment(), new SpringApplication()))
+            .doesNotThrowAnyException();
+    }
+
+    @Test
+    void acceptsRedisConfigurationWhenBothFlagsAreTrueAndModuleIsPresent() {
         MockEnvironment environment = new MockEnvironment()
             .withProperty(OrgsecStorageActivationValidator.REDIS_ENABLED, "true")
             .withProperty(OrgsecStorageActivationValidator.FEATURES_REDIS_ENABLED, "true");
 
-        assertThatCode(() -> validator.postProcessEnvironment(environment, new SpringApplication()))
+        assertThatCode(() -> validate(environment, new SpringApplication()))
             .doesNotThrowAnyException();
-        verify(log, never()).warn(any());
     }
 
     @Test
-    void shouldStaySilentWhenNeitherRedisFlagIsSet() {
-        assertThatCode(() -> validator.postProcessEnvironment(new MockEnvironment(), new SpringApplication()))
-            .doesNotThrowAnyException();
-        verify(log, never()).warn(any());
+    void rejectsRedisEnabledWithFeatureDisabledUsingStableDiagnostic() {
+        assertRedisMismatch(true, false);
     }
 
     @Test
-    void shouldWarnAndKeepBootingOnMismatchByDefault() {
-        // Exactly what applications generated against 1.0.4 emit. They must survive the upgrade.
-        MockEnvironment environment = new MockEnvironment()
-            .withProperty(OrgsecStorageActivationValidator.REDIS_ENABLED, "true")
-            .withProperty(OrgsecStorageActivationValidator.FEATURES_REDIS_ENABLED, "false");
-
-        assertThatCode(() -> validator.postProcessEnvironment(environment, new SpringApplication()))
-            .doesNotThrowAnyException();
-
-        ArgumentCaptor<Object> message = ArgumentCaptor.forClass(Object.class);
-        verify(log).warn(message.capture());
-        assertThat(String.valueOf(message.getValue()))
-            .contains(OrgsecStorageActivationValidator.REDIS_ENABLED)
-            .contains(OrgsecStorageActivationValidator.FEATURES_REDIS_ENABLED)
-            .contains(OrgsecStorageActivationValidator.STRICT_ACTIVATION);
+    void rejectsRedisDisabledWithFeatureEnabledUsingSameStableDiagnostic() {
+        assertRedisMismatch(false, true);
     }
 
     @Test
-    void shouldWarnOnTheReverseMismatchToo() {
-        MockEnvironment environment = new MockEnvironment()
-            .withProperty(OrgsecStorageActivationValidator.REDIS_ENABLED, "false")
-            .withProperty(OrgsecStorageActivationValidator.FEATURES_REDIS_ENABLED, "true");
-
-        assertThatCode(() -> validator.postProcessEnvironment(environment, new SpringApplication()))
-            .doesNotThrowAnyException();
-        verify(log).warn(any());
-    }
-
-    @Test
-    void shouldRefuseToStartOnMismatchWhenStrictActivationIsOn() {
+    void legacyStrictActivationPropertyCannotSoftenValidation() {
         MockEnvironment environment = new MockEnvironment()
             .withProperty(OrgsecStorageActivationValidator.REDIS_ENABLED, "true")
             .withProperty(OrgsecStorageActivationValidator.FEATURES_REDIS_ENABLED, "false")
-            .withProperty(OrgsecStorageActivationValidator.STRICT_ACTIVATION, "true");
+            .withProperty(OrgsecStorageActivationValidator.STRICT_ACTIVATION, "false");
 
-        assertThatThrownBy(() -> validator.postProcessEnvironment(environment, new SpringApplication()))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining(OrgsecStorageActivationValidator.REDIS_ENABLED)
-            .hasMessageContaining(OrgsecStorageActivationValidator.FEATURES_REDIS_ENABLED);
+        assertThatThrownBy(() -> validate(environment, new SpringApplication()))
+            .isInstanceOf(OrgsecConfigurationException.class)
+            .hasMessageStartingWith(OrgsecStorageActivationValidator.REDIS_ACTIVATION_MISMATCH + ":");
     }
 
     @Test
-    void shouldReadFlagsCaseInsensitivelyLikeConditionalOnProperty() {
+    void readsFlagsCaseInsensitivelyLikeConditionalOnProperty() {
         MockEnvironment environment = new MockEnvironment()
             .withProperty(OrgsecStorageActivationValidator.REDIS_ENABLED, "TRUE")
             .withProperty(OrgsecStorageActivationValidator.FEATURES_REDIS_ENABLED, "True");
 
-        assertThatCode(() -> validator.postProcessEnvironment(environment, new SpringApplication()))
-            .doesNotThrowAnyException();
-        verify(log, never()).warn(any());
-    }
-
-    @Test
-    void shouldAcceptJwtEnabledWhenTheJwtModuleIsOnTheClasspath() {
-        MockEnvironment environment = new MockEnvironment()
-            .withProperty(OrgsecStorageActivationValidator.FEATURES_JWT_ENABLED, "true");
-
-        assertThatCode(() -> validator.postProcessEnvironment(environment, new SpringApplication()))
+        assertThatCode(() -> validate(environment, new SpringApplication()))
             .doesNotThrowAnyException();
     }
 
     @Test
-    void shouldRefuseToStartWhenJwtIsEnabledWithoutTheJwtModule() {
-        // Without the module nothing is @Primary at all: the in-memory storage has already stood
-        // down. A NoSuchBeanDefinition deep in the graph is not a diagnosis.
+    void rejectsJwtWhenJwtModuleIsMissing() {
         MockEnvironment environment = new MockEnvironment()
             .withProperty(OrgsecStorageActivationValidator.FEATURES_JWT_ENABLED, "true");
-
-        SpringApplication application = new SpringApplication();
-        application.setResourceLoader(
-            new DefaultResourceLoader(new FilteredClassLoader("com.nomendi6.orgsec.storage.jwt.JwtSecurityDataStorage"))
+        SpringApplication application = applicationWithout(
+            "com.nomendi6.orgsec.storage.jwt.JwtSecurityDataStorage"
         );
 
-        assertThatThrownBy(() -> validator.postProcessEnvironment(environment, application))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("orgsec-storage-jwt")
-            .hasMessageContaining(OrgsecStorageActivationValidator.FEATURES_JWT_ENABLED);
+        assertThatThrownBy(() -> validate(environment, application))
+            .isInstanceOf(OrgsecConfigurationException.class)
+            .hasMessageStartingWith(OrgsecStorageActivationValidator.JWT_MODULE_REQUIRED + ":")
+            .hasMessageContaining("orgsec-storage-jwt");
+    }
+
+    @Test
+    void rejectsRedisWhenRedisModuleIsMissing() {
+        MockEnvironment environment = new MockEnvironment()
+            .withProperty(OrgsecStorageActivationValidator.REDIS_ENABLED, "true")
+            .withProperty(OrgsecStorageActivationValidator.FEATURES_REDIS_ENABLED, "true");
+        SpringApplication application = applicationWithout(
+            "com.nomendi6.orgsec.storage.redis.RedisSecurityDataStorage"
+        );
+
+        assertThatThrownBy(() -> validate(environment, application))
+            .isInstanceOf(OrgsecConfigurationException.class)
+            .hasMessageStartingWith(OrgsecStorageActivationValidator.REDIS_MODULE_REQUIRED + ":")
+            .hasMessageContaining("orgsec-storage-redis");
+    }
+
+    @Test
+    void rejectsUnspecifiedJwtRedisHybridBeforeBeanCreation() {
+        MockEnvironment environment = new MockEnvironment()
+            .withProperty(OrgsecStorageActivationValidator.REDIS_ENABLED, "true")
+            .withProperty(OrgsecStorageActivationValidator.FEATURES_REDIS_ENABLED, "true")
+            .withProperty(OrgsecStorageActivationValidator.FEATURES_JWT_ENABLED, "true");
+
+        assertThatThrownBy(() -> validate(environment, new SpringApplication()))
+            .isInstanceOf(OrgsecConfigurationException.class)
+            .hasMessageStartingWith(OrgsecStorageActivationValidator.JWT_REDIS_UNSUPPORTED + ":");
+    }
+
+    private void assertRedisMismatch(boolean redisEnabled, boolean featureEnabled) {
+        MockEnvironment environment = new MockEnvironment()
+            .withProperty(OrgsecStorageActivationValidator.REDIS_ENABLED, Boolean.toString(redisEnabled))
+            .withProperty(
+                OrgsecStorageActivationValidator.FEATURES_REDIS_ENABLED,
+                Boolean.toString(featureEnabled)
+            );
+
+        assertThatThrownBy(() -> validate(environment, new SpringApplication()))
+            .isInstanceOf(OrgsecConfigurationException.class)
+            .hasMessageStartingWith(OrgsecStorageActivationValidator.REDIS_ACTIVATION_MISMATCH + ":")
+            .hasMessageContaining(OrgsecStorageActivationValidator.REDIS_ENABLED)
+            .hasMessageContaining(OrgsecStorageActivationValidator.FEATURES_REDIS_ENABLED);
+    }
+
+    private void validate(MockEnvironment environment, SpringApplication application) {
+        validator.postProcessEnvironment(environment, application);
+    }
+
+    private static SpringApplication applicationWithout(String className) {
+        SpringApplication application = new SpringApplication();
+        application.setResourceLoader(new DefaultResourceLoader(new FilteredClassLoader(className)));
+        return application;
     }
 }

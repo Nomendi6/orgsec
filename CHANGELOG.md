@@ -5,12 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.5] - Unreleased
+## [1.0.5] - 2026-08-16
 
-This is a patch release: it is source- and binary-compatible with 1.0.4. It is **not** behaviour-
-compatible. Authorization changes in both directions - most entries narrow it, two widen it
-deliberately to bring per-record checks back in line with list queries. Read the Migration Notes
-before upgrading.
+This is a patch release: it is source- and binary-compatible with 1.0.4. It is **not** drop-in.
+Authorization changes in both directions - most entries narrow it, three widen it deliberately to
+bring per-record checks back in line with list queries - and two storage configurations that started
+on 1.0.4 are now **refused at startup**. Read the Migration Notes before upgrading; the configuration
+section is the one that can stop a running deployment.
 
 ### Security
 
@@ -57,18 +58,36 @@ facts nothing verified. All 1.0.x deployments before 1.0.5 are affected unless s
   The chain now authenticates the caller with a bearer token, validated by the application's own
   `JwtDecoder`, and refuses to start if the Person API is enabled without one.
 
-No GitHub Security Advisory is published for the 1.0.4 entries listed in the previous section. Where
-an advisory exists for an entry above, its GHSA id is named in that entry.
+**No GitHub Security Advisory is published for these entries, or for the 1.0.4 ones in the section
+below.** They were found by the maintainers during an internal review rather than reported from
+outside, and are documented here instead. That means a GHSA feed or a dependency scanner will not
+flag 1.0.4 and earlier: treat this section as the notice, and upgrade. If you need an advisory record
+for your own compliance process, open an issue and it will be filed.
 
 ### Changed
 
-- **Redis activation is decided by one property.** `orgsec.storage.redis.enabled` activates the
-  backend; `orgsec.storage.features.redis-enabled` only decides whether the in-memory storage keeps
-  `@Primary`. Setting them to different values produces a broken context, so the pair is now checked
-  before the application context is built, by an `EnvironmentPostProcessor`. New property
-  `orgsec.storage.strict-activation` (default `false` on 1.0.x, `true` in 2.0.0) turns the warning
-  into a refusal to start. `orgsec.storage.features.jwt-enabled=true` without `orgsec-storage-jwt` on
-  the classpath is always fatal.
+- **Storage activation is validated before the context is built, and every failure is fatal.**
+  `OrgsecStorageActivationValidator`, an `EnvironmentPostProcessor`, reads the raw `Environment` and
+  refuses to start on any of these, each with a stable diagnostic code:
+
+  | Code | Condition |
+  | --- | --- |
+  | `ORGSEC_STORAGE_REDIS_ACTIVATION_MISMATCH` | `orgsec.storage.redis.enabled` disagrees with `orgsec.storage.features.redis-enabled` |
+  | `ORGSEC_STORAGE_REDIS_MODULE_REQUIRED` | Redis enabled without `orgsec-storage-redis` on the classpath |
+  | `ORGSEC_STORAGE_JWT_MODULE_REQUIRED` | JWT enabled without `orgsec-storage-jwt` on the classpath |
+  | `ORGSEC_STORAGE_JWT_REDIS_UNSUPPORTED` | JWT and Redis enabled together |
+
+  Only `orgsec.storage.redis.enabled` activates the Redis backend; `features.redis-enabled` decides
+  whether the in-memory storage keeps `@Primary`. Because a disagreement leaves either two competing
+  primaries or none, it is refused rather than warned about - a warning would leave a different
+  storage serving authorization than the operator selected. **See the Migration Notes: this is the
+  one change that can stop an existing application from starting.**
+- **JWT and Redis can no longer be enabled together.** The combination needs a frozen contract for
+  what the JWT backend delegates to, and a cache is not a safe delegate: it returns `null` for
+  anything it does not hold, and the JWT backend reads a missing organization as an unproven
+  membership and drops it - so a cold cache denies every request rather than merely slowing it down.
+  Rather than ship that as a footgun, the combination is rejected at startup. Enable exactly one of
+  the two.
 - **Widened: `EXACT` no longer requires a path.** The gate demanded both an id and a usable path for
   every direction. `EXACT` compares ids and never reads a path, so a record with no path was denied
   by a per-record check while the list query returned it. Records whose path is absent or unusable
@@ -76,13 +95,18 @@ an advisory exists for an entry above, its GHSA id is named in that entry.
 - **Widened: hierarchy directions no longer require the record's id.** For the same reason, in the
   other direction: a hierarchy comparison reads paths and never the record's id.
 - **The JWT delegate is configured separately.** `JwtSecurityDataStorage` now injects
-  `jwtDelegateStorage`, which defaults to the in-memory storage. Activating Redis alongside JWT does
-  **not** make Redis the delegate; that requires declaring the bean explicitly, and carries an
-  availability risk documented in [Hybrid storage](docs/storage/05-hybrid.md).
+  `jwtDelegateStorage`, which defaults to the in-memory storage. An application that needs a
+  different authoritative store behind JWT declares that bean itself; see
+  [Hybrid storage](docs/storage/05-hybrid.md).
 - **Bean-name overrides now work.** `primaryInMemoryStorage` and `delegateSecurityDataStorage` carry
   `@ConditionalOnMissingBean(name = ...)`, so an application-declared bean of either name replaces
   the library's. It previously collided, raising `BeanDefinitionOverrideException` or silently
   overriding depending on Spring Boot configuration. This is a new capability, not a fix.
+- **The reactor compiles with `--release 17` instead of `-source`/`-target`.** The old pair emitted
+  Java 17 bytecode but linked against whichever JDK ran the build, so a release built on a newer JDK
+  could reference methods absent from Java 17 and fail only in a consumer's application at runtime.
+  `--release` makes javac refuse them at compile time. Verified: the reactor compiles clean under the
+  new setting, so no such reference existed.
 - **The starter declares `spring-boot-starter-oauth2-resource-server` as `optional`.** Applications
   that leave `orgsec.api.person.enabled` at its default of `false` are unaffected.
 - **Widened: an entity id no longer has to be a `Long`.** The reflective extraction cast straight to
@@ -127,6 +151,19 @@ an advisory exists for an entry above, its GHSA id is named in that entry.
 - `RsqlFilterBuilder` no longer emits `selector==null` when the principal has no company or
   organization id; depending on the RSQL dialect that was either a parse error or a clause matching
   every row whose column is null.
+- **The Redis backend could not start without a Bean Validation provider.**
+  `RedisStorageProperties` was `@Validated` and the module shipped `jakarta.validation-api` without a
+  provider. Spring Boot reads the API's presence as "JSR-303 is available" and bootstraps a validator
+  while binding, so any application that set `orgsec.storage.redis.enabled=true` without its own
+  validation provider failed to start with `NoProviderFoundException`. The constraints are now
+  checked in code, reporting `ORGSEC_STORAGE_REDIS_INVALID_PROPERTY` with the offending property
+  name, and the `jakarta.validation-api` dependency is gone. No Redis test caught this because none
+  of them built a Spring context.
+- The in-memory backend's `notifyPartyRoleChanged`, `notifyPositionRoleChanged` and
+  `notifyOrganizationChanged` no longer run a targeted single-entity sync before the full reload that
+  immediately clears it. Each notification issued two database queries whose results were discarded.
+  The reload was, and remains, what actually makes the change visible - authorization reads the
+  `OrganizationDef` copies carried on each person, which only a full load rebuilds.
 
 ### Migration Notes
 
@@ -158,11 +195,21 @@ an advisory exists for an entry above, its GHSA id is named in that entry.
   If your application relied on that denial - for example because a DTO exposes an unrelated
   `getId()` - the records it was hiding become visible.
 
-**Configuration:**
+**Configuration - this can stop an existing application from starting:**
 
-- Set `orgsec.storage.redis.enabled` and `orgsec.storage.features.redis-enabled` to the same value.
-  A mismatch is logged as a warning on this line and becomes fatal in 2.0.0; set
-  `orgsec.storage.strict-activation: true` to adopt the 2.0.0 behaviour now.
+- **Set `orgsec.storage.redis.enabled` and `orgsec.storage.features.redis-enabled` to the same
+  value before upgrading.** Applications generated against 1.0.4 emit `redis.enabled: true` together
+  with `features.redis-enabled: false`; on 1.0.5 that combination is refused at startup with
+  `ORGSEC_STORAGE_REDIS_ACTIVATION_MISMATCH`. It was never a working configuration - it left the
+  in-memory storage claiming `@Primary` while the Redis beans were created - so the upgrade turns a
+  silent misconfiguration into a visible one. Check every deployment's effective configuration,
+  including profile overrides and environment variables, before rolling out.
+- **Applications running JWT and Redis together do not start on 1.0.5**
+  (`ORGSEC_STORAGE_JWT_REDIS_UNSUPPORTED`). Enable exactly one. If you were relying on the Redis
+  cache being present in a JWT deployment, note that the JWT backend never read through it for
+  `Person` and would have denied on every cache miss for organizations.
+- Enabling a backend without its module on the classpath is refused rather than silently falling
+  back (`ORGSEC_STORAGE_JWT_MODULE_REQUIRED`, `ORGSEC_STORAGE_REDIS_MODULE_REQUIRED`).
 - If you relied on `orgsec.storage.primary`, `hybrid-mode-enabled` or `data-sources.*` to select a
   backend, they never did anything. Use `orgsec.storage.redis.enabled` and
   `orgsec.storage.features.jwt-enabled`.

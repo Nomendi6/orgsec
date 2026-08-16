@@ -210,7 +210,6 @@ public class PrivilegeDef implements Serializable {
      * @param b The second {@link PrivilegeDirection} operand
      * @return the result of addition
      */
-
     public PrivilegeDirection add(PrivilegeDirection a, PrivilegeDirection b) {
         if (a == b) {
             return a;

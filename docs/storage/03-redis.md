@@ -73,15 +73,16 @@ orgsec:
 - **`orgsec.storage.redis.enabled: true`** - the only switch that activates the backend. It gates `RedisStorageAutoConfiguration`; without it no Redis bean is created.
 - **`orgsec.storage.features.redis-enabled: true`** - does *not* activate anything. It only tells the in-memory storage to stop claiming `@Primary`, so that the Redis storage can take over.
 
-Because the two do different jobs, setting only one produces a broken context: `redis.enabled` alone leaves two beans competing for `@Primary`, and `features.redis-enabled` alone leaves the application with no primary storage at all. OrgSec checks the pair before the context is built and reports it by name:
+Because the two do different jobs, setting only one produces a broken context: `redis.enabled` alone leaves two beans competing for `@Primary`, and `features.redis-enabled` alone leaves the application with no primary storage at all. Since 1.0.5 OrgSec checks the pair before the context is built and **refuses to start** on a mismatch:
 
-```yaml
-orgsec:
-  storage:
-    strict-activation: true                 # refuse to start on a mismatch; default false in 1.0.x
+```
+ORGSEC_STORAGE_REDIS_ACTIVATION_MISMATCH: orgsec.storage.redis.enabled=true but
+orgsec.storage.features.redis-enabled=false. Set both properties to the same value.
 ```
 
-With `strict-activation: false` (the 1.0.x default) a mismatch is logged as a warning and the application still starts, so that applications generated against earlier versions survive the upgrade. **The 2.0.0 default is `true`.**
+This is not warned about and cannot be softened by configuration. A warning would let the application run with a different storage serving authorization than the operator selected, which is exactly the failure the check exists to prevent. Applications generated against 1.0.4 emit this combination, so **check your configuration before upgrading** - see the [1.0.5 migration notes](../../CHANGELOG.md).
+
+Two further conditions are refused here: enabling Redis without `orgsec-storage-redis` on the classpath (`ORGSEC_STORAGE_REDIS_MODULE_REQUIRED`), and enabling Redis together with the JWT backend (`ORGSEC_STORAGE_JWT_REDIS_UNSUPPORTED`) - see [Hybrid storage](./05-hybrid.md).
 
 Keeping the Redis JAR on the classpath without activating it is still supported - just leave both flags unset.
 

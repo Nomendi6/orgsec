@@ -121,6 +121,12 @@ public enum PrivilegeScope {
     /**
      * Checks if this scope includes hierarchical access.
      *
+     * <p>Deliberately narrower than {@link PrivilegeDirection#isHierarchical()}: the {@code ALL}
+     * scope is not counted here, while {@link PrivilegeDirection#ALL} is counted there. Neither
+     * answer is wrong for its own enum - a scope code names a privilege shape, a direction names an
+     * axis - but the two must not be treated as interchangeable. Both are descriptive; neither is
+     * consulted when access is decided.
+     *
      * @return true if scope includes hierarchy (HD or HU suffix)
      */
     public boolean isHierarchical() {

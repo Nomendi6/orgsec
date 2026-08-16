@@ -19,8 +19,9 @@ import org.springframework.stereotype.Component;
  * running context. Treat {@code primary}, {@code fallback}, {@code hybrid-mode-enabled},
  * {@code memory-enabled} and {@code data-sources.*} as inert until a per-type router exists.
  *
- * <p>{@code strict-activation} is the exception: it is read by the storage activation validator
- * before the context is created.
+ * <p>The switches that do decide something are read straight from the {@code Environment}, not from
+ * this class: {@code orgsec.storage.redis.enabled} and {@code orgsec.storage.features.jwt-enabled},
+ * checked by the storage activation validator before the context is created.
  */
 @Component
 @ConfigurationProperties(prefix = "orgsec.storage")
@@ -33,16 +34,6 @@ public class StorageFeatureFlags {
     private volatile Features features = new Features();
     private volatile Map<String, String> dataSources = new ConcurrentHashMap<>();
 
-    /**
-     * How to treat a disagreement between {@code orgsec.storage.redis.enabled} (which actually
-     * activates the Redis backend) and {@code orgsec.storage.features.redis-enabled} (which
-     * decides whether the in-memory storage still claims {@code @Primary}).
-     *
-     * <p>{@code false} - the default on the 1.0.x line - logs a warning and boots, so that
-     * applications generated against 1.0.4 keep starting after the upgrade. {@code true} refuses
-     * to start. The 2.0.0 default is {@code true}.
-     */
-    private volatile boolean strictActivation = false;
 
     public StorageFeatureFlags() {
         // Initialize default data sources
@@ -219,14 +210,6 @@ public class StorageFeatureFlags {
 
     public void setFallback(String fallback) {
         this.fallback = fallback;
-    }
-
-    public boolean isStrictActivation() {
-        return strictActivation;
-    }
-
-    public void setStrictActivation(boolean strictActivation) {
-        this.strictActivation = strictActivation;
     }
 
     public Features getFeatures() {

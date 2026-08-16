@@ -45,24 +45,27 @@ SecurityDataStorage delegateSecurityDataStorage() {
 }
 ```
 
-## Redis behind JWT
+## Redis behind JWT is not supported
 
-Redis is **never** selected as the JWT delegate automatically, even when the Redis backend is
-active. It has to be opted into by name:
+Enabling `orgsec.storage.features.jwt-enabled` together with `orgsec.storage.redis.enabled` is
+refused at startup since 1.0.5:
 
-```java
-@Bean("jwtDelegateStorage")
-SecurityDataStorage jwtDelegateStorage(RedisSecurityDataStorage redis) {
-    return redis;
-}
+```
+ORGSEC_STORAGE_JWT_REDIS_UNSUPPORTED: JWT and Redis storage cannot be enabled together without a
+separately frozen hybrid delegate contract. Enable exactly one generated-app storage profile.
 ```
 
-Think twice before doing so. The Redis backend does not read through to a database on a miss: it
-returns `null`. The JWT backend treats a missing organization as "this membership is not proven" and
-drops it. A cold cache after a deployment, or an entry that has simply aged out, therefore does not
-degrade into slower authorization - it degrades into **denied** authorization, for every user, until
-the cache is repopulated. If you take this route, register `CacheWarmer` loaders and treat cache
-population as a startup dependency.
+The reason is not packaging, it is availability. The Redis backend does not read through to a
+database on a miss: it returns `null`. The JWT backend reads a missing organization as "this
+membership is not proven" and drops it. A cold cache after a deployment, or an entry that has simply
+aged out, therefore does not degrade into slower authorization - it degrades into **denied**
+authorization, for every user, until the cache is repopulated. Shipping that as an opt-in flag
+combination would make a cluster-wide outage one YAML line away, so the combination is rejected
+instead.
+
+If you need shared, cross-instance organization data behind JWT, put a store that answers
+authoritatively behind `jwtDelegateStorage` - one that reads through to its source rather than
+returning `null` on a miss.
 
 ## Missing data
 

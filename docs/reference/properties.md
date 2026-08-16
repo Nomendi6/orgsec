@@ -80,11 +80,10 @@ Each entry under `business-roles` is a *named* business role with a list of supp
 
 `StorageFeatureFlags` (in `orgsec-storage-inmemory`) is the binding target for `orgsec.storage.*`.
 
-> **Only three of these properties do anything.** Backend selection happens through
+> **Only two of these properties do anything.** Backend selection happens through
 > `@ConditionalOnProperty` evaluated against the `Environment` when the context starts:
-> `orgsec.storage.redis.enabled` activates Redis, `orgsec.storage.features.jwt-enabled` activates
-> JWT, and `orgsec.storage.strict-activation` decides how a contradictory pair is treated. The
-> remaining properties on this page - `primary`, `fallback`, `hybrid-mode-enabled`,
+> `orgsec.storage.redis.enabled` activates Redis and `orgsec.storage.features.jwt-enabled` activates
+> JWT. The remaining properties on this page - `primary`, `fallback`, `hybrid-mode-enabled`,
 > `memory-enabled` and everything under `data-sources` - are bound and then read by nothing.
 > `JwtSecurityDataStorage` has a single delegate for every data type; there is no per-data-type
 > router. They are listed here because they still bind, not because they take effect.
@@ -94,9 +93,20 @@ Each entry under `business-roles` is a *named* business role with a list of supp
 
 ### Activation - `orgsec.storage.*`
 
+Checked by `OrgsecStorageActivationValidator`, an `EnvironmentPostProcessor`, before any bean is
+defined. Every failure below refuses startup and names a stable diagnostic code; none of them is
+merely warned about, because a warning would leave a different storage serving authorization than
+the operator selected.
+
+| Code | Condition |
+| --- | --- |
+| `ORGSEC_STORAGE_REDIS_ACTIVATION_MISMATCH` | `redis.enabled` disagrees with `features.redis-enabled` |
+| `ORGSEC_STORAGE_REDIS_MODULE_REQUIRED` | Redis enabled, `orgsec-storage-redis` absent |
+| `ORGSEC_STORAGE_JWT_MODULE_REQUIRED` | JWT enabled, `orgsec-storage-jwt` absent |
+| `ORGSEC_STORAGE_JWT_REDIS_UNSUPPORTED` | JWT and Redis enabled together |
+
 | Property                              | Type      | Default   | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | --------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `strict-activation`                   | `boolean` | `false`   | How to treat `orgsec.storage.redis.enabled` disagreeing with `orgsec.storage.features.redis-enabled`. `false` logs a warning and starts; `true` refuses to start. Checked by an `EnvironmentPostProcessor` before any bean is defined. **The 2.0.0 default is `true`.** | [Storage / Redis](../storage/03-redis.md) |
 | `primary`                             | `String`  | `"memory"`| **Inert.** No code reads it.                                                             | [Choose storage](../storage/01-choose-storage.md) |
 | `fallback`                            | `String`  | `"memory"`| **Inert.** No code reads it; the Redis backend does not fall back to another storage on miss or outage. | [Choose storage](../storage/01-choose-storage.md) |
 
@@ -104,8 +114,8 @@ Each entry under `business-roles` is a *named* business role with a list of supp
 
 | Property                              | Type      | Default | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `jwt-enabled`                         | `boolean` | `false` | Activates the JWT backend. Requires `orgsec-storage-jwt` on the classpath - otherwise startup fails with an explicit message. | [Storage / JWT](../storage/04-jwt.md)                          |
-| `redis-enabled`                       | `boolean` | `false` | Does **not** activate Redis - `orgsec.storage.redis.enabled` does. This flag only decides whether the in-memory storage keeps `@Primary`, so it must be set to the same value. See `strict-activation`. | [Storage / Redis](../storage/03-redis.md)                      |
+| `jwt-enabled`                         | `boolean` | `false` | Activates the JWT backend. Requires `orgsec-storage-jwt`, and cannot be combined with Redis. | [Storage / JWT](../storage/04-jwt.md)                          |
+| `redis-enabled`                       | `boolean` | `false` | Does **not** activate Redis - `orgsec.storage.redis.enabled` does. This flag only decides whether the in-memory storage keeps `@Primary`, so it must be set to the same value or startup is refused. | [Storage / Redis](../storage/03-redis.md)                      |
 | `memory-enabled`                      | `boolean` | `true`  | **Inert.** The in-memory backend is always available as a delegate.                      | [Storage / In-memory](../storage/02-in-memory.md)              |
 | `hybrid-mode-enabled`                 | `boolean` | `false` | **Inert.** There is no per-data-type router to switch on.                                | [Hybrid storage](../storage/05-hybrid.md) |
 

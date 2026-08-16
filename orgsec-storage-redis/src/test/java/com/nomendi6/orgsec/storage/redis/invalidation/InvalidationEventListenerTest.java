@@ -17,6 +17,8 @@ class InvalidationEventListenerTest {
     private L1Cache<Long, Object> personCache;
     private L1Cache<Long, Object> organizationCache;
     private L1Cache<Long, Object> roleCache;
+    private L1Cache<Long, Object> positionRoleCache;
+    private L1Cache<String, Object> privilegeCache;
     private InvalidationEventListener listener;
     private ObjectMapper objectMapper;
 
@@ -25,8 +27,18 @@ class InvalidationEventListenerTest {
         personCache = mock(L1Cache.class);
         organizationCache = mock(L1Cache.class);
         roleCache = mock(L1Cache.class);
+        positionRoleCache = mock(L1Cache.class);
+        privilegeCache = mock(L1Cache.class);
         objectMapper = new ObjectMapper();
-        listener = new InvalidationEventListener(personCache, organizationCache, roleCache, "local", objectMapper);
+        listener = new InvalidationEventListener(
+            personCache,
+            organizationCache,
+            roleCache,
+            positionRoleCache,
+            privilegeCache,
+            "local",
+            objectMapper
+        );
     }
 
     @Test
@@ -45,6 +57,7 @@ class InvalidationEventListenerTest {
         verify(personCache).evict(1L);
         verify(organizationCache).evict(2L);
         verify(roleCache).evict(3L);
+        verify(positionRoleCache).evict(3L);
     }
 
     @Test
@@ -56,6 +69,7 @@ class InvalidationEventListenerTest {
         verify(personCache, never()).evict(org.mockito.ArgumentMatchers.any());
         verify(organizationCache, never()).evict(org.mockito.ArgumentMatchers.any());
         verify(roleCache, never()).evict(org.mockito.ArgumentMatchers.any());
+        verify(positionRoleCache, never()).evict(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -66,6 +80,8 @@ class InvalidationEventListenerTest {
         verify(personCache).clear();
         verify(organizationCache).clear();
         verify(roleCache).clear();
+        verify(positionRoleCache).clear();
+        verify(privilegeCache, org.mockito.Mockito.times(2)).clear();
     }
 
     @Test

@@ -1,6 +1,6 @@
 package com.nomendi6.orgsec.autoconfigure;
 
-import org.apache.commons.logging.Log;
+import com.nomendi6.orgsec.exceptions.OrgsecConfigurationException;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.boot.logging.DeferredLogFactory;
@@ -18,68 +18,66 @@ import org.springframework.util.ClassUtils;
  * validator bean could be created, let alone print anything useful. Reading the raw
  * {@code Environment} up front is the only place a legible message survives.
  *
- * <p>Two situations are handled:
- *
- * <ul>
- *   <li>{@code orgsec.storage.redis.enabled} disagreeing with
- *       {@code orgsec.storage.features.redis-enabled}. Only the first actually activates the Redis
- *       backend; the second decides whether the in-memory storage still claims {@code @Primary}.
- *       On the 1.0.x line this warns and boots, because applications generated against 1.0.4 emit
- *       exactly this combination. Set {@code orgsec.storage.strict-activation=true} to refuse
- *       instead; that is the 2.0.0 default.</li>
- *   <li>{@code orgsec.storage.features.jwt-enabled=true} without {@code orgsec-storage-jwt} on the
- *       classpath. Always fatal: the in-memory storage has already stood down from
- *       {@code @Primary}, so nothing would serve authorization at all.</li>
- * </ul>
+ * <p>Invalid configurations fail with stable, machine-searchable diagnostic codes. In
+ * particular, the two historic Redis switches must always agree; warning and continuing can
+ * leave a different storage serving authorization than the operator selected.
  */
 public class OrgsecStorageActivationValidator implements EnvironmentPostProcessor {
 
-    static final String REDIS_ENABLED = "orgsec.storage.redis.enabled";
-    static final String FEATURES_REDIS_ENABLED = "orgsec.storage.features.redis-enabled";
-    static final String FEATURES_JWT_ENABLED = "orgsec.storage.features.jwt-enabled";
-    static final String STRICT_ACTIVATION = "orgsec.storage.strict-activation";
+    public static final String REDIS_ENABLED = "orgsec.storage.redis.enabled";
+    public static final String FEATURES_REDIS_ENABLED = "orgsec.storage.features.redis-enabled";
+    public static final String FEATURES_JWT_ENABLED = "orgsec.storage.features.jwt-enabled";
+
+    /** @deprecated activation validation is now always strict. */
+    @Deprecated
+    public static final String STRICT_ACTIVATION = "orgsec.storage.strict-activation";
+
+    public static final String REDIS_ACTIVATION_MISMATCH = "ORGSEC_STORAGE_REDIS_ACTIVATION_MISMATCH";
+    public static final String JWT_MODULE_REQUIRED = "ORGSEC_STORAGE_JWT_MODULE_REQUIRED";
+    public static final String REDIS_MODULE_REQUIRED = "ORGSEC_STORAGE_REDIS_MODULE_REQUIRED";
+    public static final String JWT_REDIS_UNSUPPORTED = "ORGSEC_STORAGE_JWT_REDIS_UNSUPPORTED";
 
     private static final String JWT_STORAGE_CLASS = "com.nomendi6.orgsec.storage.jwt.JwtSecurityDataStorage";
+    private static final String REDIS_STORAGE_CLASS = "com.nomendi6.orgsec.storage.redis.RedisSecurityDataStorage";
 
-    private final Log log;
-
-    public OrgsecStorageActivationValidator(DeferredLogFactory logFactory) {
-        this.log = logFactory.getLog(OrgsecStorageActivationValidator.class);
+    public OrgsecStorageActivationValidator(DeferredLogFactory ignored) {
     }
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        boolean jwtEnabled = flag(environment, FEATURES_JWT_ENABLED);
-        if (jwtEnabled && !ClassUtils.isPresent(JWT_STORAGE_CLASS, classLoader(application))) {
-            throw new IllegalStateException(
-                FEATURES_JWT_ENABLED + "=true, but " + JWT_STORAGE_CLASS + " is not on the classpath. " +
-                "Add the com.nomendi6.orgsec:orgsec-storage-jwt dependency, or set " +
-                FEATURES_JWT_ENABLED + "=false. Starting would leave the application with no primary " +
-                "SecurityDataStorage at all, because the in-memory storage stands down whenever JWT is enabled."
-            );
-        }
-
         boolean redisEnabled = flag(environment, REDIS_ENABLED);
         boolean featuresRedisEnabled = flag(environment, FEATURES_REDIS_ENABLED);
-        if (redisEnabled == featuresRedisEnabled) {
-            return;
-        }
+        boolean jwtEnabled = flag(environment, FEATURES_JWT_ENABLED);
 
-        String message =
-            "Contradictory OrgSec storage configuration: " +
-            REDIS_ENABLED + "=" + redisEnabled + " but " + FEATURES_REDIS_ENABLED + "=" + featuresRedisEnabled + ". " +
-            REDIS_ENABLED + " is the only switch that activates the Redis backend; " +
-            FEATURES_REDIS_ENABLED + " only decides whether the in-memory storage keeps @Primary. " +
-            "Set both to the same value. Effective behaviour: Redis backend " +
-            (redisEnabled ? "active" : "inactive") + ", in-memory storage " +
-            (featuresRedisEnabled ? "not primary" : "primary") + ".";
-
-        if (flag(environment, STRICT_ACTIVATION)) {
-            throw new IllegalStateException(
-                message + " (Refusing to start because " + STRICT_ACTIVATION + "=true.)"
+        if (redisEnabled != featuresRedisEnabled) {
+            throw configurationFailure(
+                REDIS_ACTIVATION_MISMATCH,
+                REDIS_ENABLED + "=" + redisEnabled + " but " +
+                    FEATURES_REDIS_ENABLED + "=" + featuresRedisEnabled +
+                    ". Set both properties to the same value."
             );
         }
-        log.warn(message + " Continuing because " + STRICT_ACTIVATION + " is false; this becomes fatal in 2.0.0.");
+
+        ClassLoader classLoader = classLoader(application);
+        if (jwtEnabled && !ClassUtils.isPresent(JWT_STORAGE_CLASS, classLoader)) {
+            throw configurationFailure(
+                JWT_MODULE_REQUIRED,
+                FEATURES_JWT_ENABLED + "=true requires com.nomendi6.orgsec:orgsec-storage-jwt"
+            );
+        }
+        if (redisEnabled && !ClassUtils.isPresent(REDIS_STORAGE_CLASS, classLoader)) {
+            throw configurationFailure(
+                REDIS_MODULE_REQUIRED,
+                REDIS_ENABLED + "=true requires com.nomendi6.orgsec:orgsec-storage-redis"
+            );
+        }
+        if (jwtEnabled && redisEnabled) {
+            throw configurationFailure(
+                JWT_REDIS_UNSUPPORTED,
+                "JWT and Redis storage cannot be enabled together without a separately frozen " +
+                    "hybrid delegate contract. Enable exactly one generated-app storage profile."
+            );
+        }
     }
 
     /**
@@ -94,5 +92,9 @@ public class OrgsecStorageActivationValidator implements EnvironmentPostProcesso
     private ClassLoader classLoader(SpringApplication application) {
         ClassLoader classLoader = (application != null) ? application.getClassLoader() : null;
         return (classLoader != null) ? classLoader : ClassUtils.getDefaultClassLoader();
+    }
+
+    private OrgsecConfigurationException configurationFailure(String code, String detail) {
+        return new OrgsecConfigurationException(code + ": " + detail);
     }
 }

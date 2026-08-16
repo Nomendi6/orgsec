@@ -8,7 +8,7 @@
     <parent>
         <groupId>com.nomendi6.orgsec</groupId>
         <artifactId>orgsec-parent</artifactId>
-        <version>1.0.4</version>
+        <version>1.0.5</version>
     </parent>
 
     <artifactId>orgsec-spring-boot-starter</artifactId>
@@ -91,15 +91,6 @@
             <groupId>com.nomendi6.orgsec</groupId>
             <artifactId>orgsec-storage-redis</artifactId>
             <version>${project.version}</version>
-            <scope>test</scope>
-        </dependency>
-
-        <!-- RedisStorageProperties is @Validated, and orgsec-storage-redis brings the Bean Validation
-             API without a provider. Spring Boot sees the API on the classpath and tries to bootstrap
-             JSR-303 while binding, so a context that activates Redis needs a provider present. -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

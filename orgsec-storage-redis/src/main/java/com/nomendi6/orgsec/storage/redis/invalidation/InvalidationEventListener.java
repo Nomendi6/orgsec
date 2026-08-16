@@ -21,6 +21,8 @@ public class InvalidationEventListener implements MessageListener {
     private final L1Cache<Long, ?> personCache;
     private final L1Cache<Long, ?> organizationCache;
     private final L1Cache<Long, ?> roleCache;
+    private final L1Cache<Long, ?> positionRoleCache;
+    private final L1Cache<String, ?> privilegeCache;
     private final String instanceId;
     private final ObjectMapper objectMapper;
 
@@ -40,9 +42,42 @@ public class InvalidationEventListener implements MessageListener {
         String instanceId,
         ObjectMapper objectMapper
     ) {
+        this(
+            personCache,
+            organizationCache,
+            roleCache,
+            roleCache,
+            new L1Cache<>(1),
+            instanceId,
+            objectMapper
+        );
+    }
+
+    /**
+     * Constructs a listener with independent typed role caches and a privilege cache.
+     *
+     * @param personCache       the person L1 cache
+     * @param organizationCache the organization L1 cache
+     * @param roleCache         the party-role L1 cache
+     * @param positionRoleCache the position-role L1 cache
+     * @param privilegeCache    the privilege L1 cache
+     * @param instanceId        the UUID of this application instance
+     * @param objectMapper      the ObjectMapper for JSON deserialization
+     */
+    public InvalidationEventListener(
+        L1Cache<Long, ?> personCache,
+        L1Cache<Long, ?> organizationCache,
+        L1Cache<Long, ?> roleCache,
+        L1Cache<Long, ?> positionRoleCache,
+        L1Cache<String, ?> privilegeCache,
+        String instanceId,
+        ObjectMapper objectMapper
+    ) {
         this.personCache = personCache;
         this.organizationCache = organizationCache;
         this.roleCache = roleCache;
+        this.positionRoleCache = positionRoleCache;
+        this.privilegeCache = privilegeCache;
         this.instanceId = instanceId;
         this.objectMapper = objectMapper;
     }
@@ -119,12 +154,16 @@ public class InvalidationEventListener implements MessageListener {
             case ROLE_CHANGED:
                 if (event.getEntityId() != null) {
                     roleCache.evict(event.getEntityId());
+                    if (positionRoleCache != roleCache) {
+                        positionRoleCache.evict(event.getEntityId());
+                    }
                     log.debug("Evicted role from L1 cache: {}", event.getEntityId());
                 }
                 break;
 
             case PRIVILEGE_CHANGED:
-                log.debug("Privilege changed event received (no L1 cache for privileges)");
+                privilegeCache.clear();
+                log.debug("Privilege changed event received - cleared privilege L1 cache");
                 break;
 
             case SECURITY_REFRESH:
@@ -132,6 +171,10 @@ public class InvalidationEventListener implements MessageListener {
                 personCache.clear();
                 organizationCache.clear();
                 roleCache.clear();
+                if (positionRoleCache != roleCache) {
+                    positionRoleCache.clear();
+                }
+                privilegeCache.clear();
                 break;
 
             default:

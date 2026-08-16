@@ -83,7 +83,7 @@ public class PersonApiService {
             return null;
         }
 
-        PersonDef cached = personsStore.getPerson(personId);
+        PersonDef cached = securityDataStorage.getPerson(personId);
         if (cached != null) {
             return cached;
         }
@@ -96,8 +96,9 @@ public class PersonApiService {
 
         personLoader.syncPerson(personId, persons, personParties, personPartyRoles, personPositionRoles);
 
-        // Get the loaded person from store
-        return personsStore.getPerson(personId);
+        // Read through the explicitly selected delegate. In JWT mode the primary storage would
+        // resolve the mapper service account from its token instead of the requested user.
+        return securityDataStorage.getPerson(personId);
     }
 
     /**

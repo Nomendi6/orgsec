@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import com.nomendi6.orgsec.common.service.BusinessRoleConfiguration;
 import com.nomendi6.orgsec.helper.PathSanitizer;
@@ -55,7 +56,7 @@ public class OrgsecInMemoryFixtures {
         AllOrganizationsStore organizationsStore,
         AllRolesStore rolesStore,
         AllPrivilegesStore privilegesStore,
-        InMemorySecurityDataStorage storage,
+        @Qualifier("inMemorySecurityDataStorage") InMemorySecurityDataStorage storage,
         BusinessRoleConfiguration businessRoles
     ) {
         this.personsStore = personsStore;

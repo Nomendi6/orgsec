@@ -36,14 +36,13 @@ If the identifier intentionally diverges from the convention, register the `Priv
 ```yaml
 orgsec:
   storage:
-    strict-activation: true       # turn the mismatch warning into a startup failure
     features:
       redis-enabled: true         # in-memory stands down from @Primary
     redis:
       enabled: true               # gates RedisStorageAutoConfiguration
 ```
 
-`redis.enabled` gates `RedisStorageAutoConfiguration` through `@ConditionalOnProperty`; without it no Redis bean is created. `features.redis-enabled` activates nothing on its own - it only stops the in-memory storage claiming `@Primary`. Since 1.0.5 a disagreement between them is reported by name at startup. See [Storage / Redis - Activation](../storage/03-redis.md#activation).
+`redis.enabled` gates `RedisStorageAutoConfiguration` through `@ConditionalOnProperty`; without it no Redis bean is created. `features.redis-enabled` activates nothing on its own - it only stops the in-memory storage claiming `@Primary`. Since 1.0.5 a disagreement between them refuses startup. See [Storage / Redis - Activation](../storage/03-redis.md#activation).
 
 ### Two `SecurityDataStorage` beans and `NoUniqueBeanDefinitionException`
 
@@ -174,11 +173,29 @@ If the circuit stays open forever, your Redis password / TLS / network is miscon
 
 **Fix.** Add `org.springframework.boot:spring-boot-starter-oauth2-resource-server` (the OrgSec starter declares it as `optional`) and configure a `JwtDecoder` - either your own bean or `spring.security.oauth2.resourceserver.jwt.issuer-uri`. If the Person API is not actually in use, set `orgsec.api.person.enabled: false`.
 
-### Application fails to start: `Contradictory OrgSec storage configuration`
+### Application fails to start: `ORGSEC_STORAGE_REDIS_ACTIVATION_MISMATCH`
 
-**Cause.** `orgsec.storage.redis.enabled` and `orgsec.storage.features.redis-enabled` disagree, and `orgsec.storage.strict-activation` is `true`.
+**Cause.** `orgsec.storage.redis.enabled` and `orgsec.storage.features.redis-enabled` disagree. Applications generated against 1.0.4 emit exactly this combination, so it commonly appears on the first boot after upgrading.
 
-**Fix.** Set both flags to the same value. Only `orgsec.storage.redis.enabled` activates the backend; `features.redis-enabled` decides whether the in-memory storage keeps `@Primary`. With `strict-activation: false` (the 1.0.x default) the same condition is logged as a warning instead - do not leave it there, the 2.0.0 default is `true`.
+**Fix.** Set both flags to the same value. Only `orgsec.storage.redis.enabled` activates the backend; `features.redis-enabled` decides whether the in-memory storage keeps `@Primary`. There is no property that softens this check - it was never a working configuration, and continuing would leave a different storage serving authorization than you selected.
+
+### Application fails to start: `ORGSEC_STORAGE_JWT_REDIS_UNSUPPORTED`
+
+**Cause.** `orgsec.storage.features.jwt-enabled` and `orgsec.storage.redis.enabled` are both `true`.
+
+**Fix.** Enable exactly one. The JWT backend forwards organizations and roles to its delegate and reads a missing organization as an unproven membership, so a cache behind it denies every request until it is warm. See [Hybrid storage](../storage/05-hybrid.md).
+
+### Application fails to start: `ORGSEC_STORAGE_REDIS_INVALID_PROPERTY`
+
+**Cause.** A value under `orgsec.storage.redis.*` is outside its permitted range - the message names the property and the requirement.
+
+**Fix.** Correct the value. Note that before 1.0.5 these were Bean Validation constraints, which required a validation provider on the classpath; an application without one failed with `NoProviderFoundException` instead. If you added `spring-boot-starter-validation` only to work around that, you can drop it again.
+
+### Application fails to start: `ORGSEC_STORAGE_JWT_MODULE_REQUIRED` / `ORGSEC_STORAGE_REDIS_MODULE_REQUIRED`
+
+**Cause.** A backend is enabled by property but its module is not on the classpath.
+
+**Fix.** Add `com.nomendi6.orgsec:orgsec-storage-jwt` or `com.nomendi6.orgsec:orgsec-storage-redis`, or turn the flag off. Before 1.0.5 this started up with no primary storage at all, or with a placeholder bean that denied every lookup.
 
 ## JWT-specific issues
 

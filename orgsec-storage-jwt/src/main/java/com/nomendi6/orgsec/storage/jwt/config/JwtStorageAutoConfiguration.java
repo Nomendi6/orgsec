@@ -1,6 +1,7 @@
 package com.nomendi6.orgsec.storage.jwt.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nomendi6.orgsec.exceptions.OrgsecConfigurationException;
 import com.nomendi6.orgsec.storage.SecurityDataStorage;
 import com.nomendi6.orgsec.storage.jwt.JwtClaimsParser;
 import com.nomendi6.orgsec.storage.jwt.JwtSecurityDataStorage;
@@ -8,8 +9,10 @@ import com.nomendi6.orgsec.storage.jwt.JwtTokenContextHolder;
 import com.nomendi6.orgsec.storage.jwt.JwtTokenFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -42,6 +45,9 @@ public class JwtStorageAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(JwtStorageAutoConfiguration.class);
 
+    @Autowired
+    private JwtStorageProperties properties = new JwtStorageProperties();
+
     @Bean
     @ConditionalOnMissingBean
     public JwtTokenContextHolder jwtTokenContextHolder() {
@@ -51,6 +57,7 @@ public class JwtStorageAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnBean(JwtDecoder.class)
     public JwtClaimsParser jwtClaimsParser(ObjectMapper objectMapper, JwtDecoder jwtDecoder, JwtStorageProperties properties) {
         log.debug("Creating JwtClaimsParser bean with claim name: {}", properties.getClaimName());
         return new JwtClaimsParser(objectMapper, jwtDecoder, properties.getClaimName(), properties.getClaimVersion());
@@ -59,8 +66,8 @@ public class JwtStorageAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(JwtDecoder.class)
     public Object jwtDecoderRequiredFailFast() {
-        throw new IllegalStateException(
-            "orgsec.storage.features.jwt-enabled=true requires a JwtDecoder bean. " +
+        throw new OrgsecConfigurationException(
+            "ORGSEC_JWT_DECODER_REQUIRED: orgsec.storage.features.jwt-enabled=true requires a JwtDecoder bean. " +
             "Configure Spring Security OAuth2 Resource Server (for example spring.security.oauth2.resourceserver.jwt.issuer-uri) " +
             "so OrgSec can validate JWT signature, issuer, audience, and expiry before reading OrgSec claims."
         );
@@ -72,12 +79,25 @@ public class JwtStorageAutoConfiguration {
      * <p>Bound to {@code jwtDelegateStorage} rather than {@code delegateSecurityDataStorage} so the
      * delegate can be chosen independently of the in-memory alias. The default
      * {@code jwtDelegateStorage} bean resolves to that alias, so nothing changes unless an
-     * application declares its own - which is the supported way to put Redis, or its own store,
-     * behind JWT.
+     * application declares its own. Enabling the Redis backend alongside JWT is rejected at startup -
+     * see {@code OrgsecStorageActivationValidator}.
      */
     @Bean
     @Primary
     @ConditionalOnMissingBean(name = "jwtSecurityDataStorage")
+    @ConditionalOnBean({JwtDecoder.class, JwtClaimsParser.class})
+    public SecurityDataStorage jwtSecurityDataStorage(
+            JwtClaimsParser claimsParser,
+            JwtTokenContextHolder tokenContextHolder,
+            @Qualifier("jwtDelegateStorage") SecurityDataStorage delegateStorage) {
+        return jwtSecurityDataStorage(claimsParser, tokenContextHolder, delegateStorage, properties);
+    }
+
+    /**
+     * Configurable factory retained as an overload for callers already using the 1.x worktree API.
+     * Spring invokes the published three-argument bean method above, which delegates here after
+     * configuration properties have been injected.
+     */
     public SecurityDataStorage jwtSecurityDataStorage(
             JwtClaimsParser claimsParser,
             JwtTokenContextHolder tokenContextHolder,

@@ -97,6 +97,16 @@ public enum PrivilegeDirection {
     /**
      * Checks if this direction includes hierarchical access.
      *
+     * <p>This is a property of the enum value, not a prediction of what an evaluator will do.
+     * {@link #ALL} answers {@code true} here and is nevertheless denied by both
+     * {@code PrivilegeChecker} and {@code RsqlFilterBuilder} - see {@link #ALL}. Code deciding
+     * whether a hierarchy comparison should run must test for {@link #HIERARCHY_DOWN} or
+     * {@link #HIERARCHY_UP} explicitly rather than calling this.
+     *
+     * <p>Note also that {@link PrivilegeScope#isHierarchical()} answers a narrower question - the
+     * scope enum has no {@code ALL}-with-hierarchy member - so the two methods do not agree for every
+     * input. That divergence is left as it is; changing either would move an authorization boundary.
+     *
      * @return true if this is HIERARCHY_DOWN, HIERARCHY_UP, or ALL
      */
     public boolean isHierarchical() {
@@ -154,6 +164,11 @@ public enum PrivilegeDirection {
     /**
      * Checks if this direction includes the target organization.
      * Legacy method for backward compatibility.
+     *
+     * <p>Nothing in the library calls this; it describes the enum's abstract algebra and is not the
+     * authorization decision. In particular it answers {@code true} unconditionally for {@link #ALL},
+     * which no evaluator grants on. An application using it to gate access would grant where OrgSec
+     * itself denies.
      *
      * @param isTarget true if checking the target organization itself
      * @param isDescendant true if checking a descendant

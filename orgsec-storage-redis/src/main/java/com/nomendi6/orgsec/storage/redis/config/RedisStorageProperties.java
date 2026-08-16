@@ -1,32 +1,96 @@
 package com.nomendi6.orgsec.storage.redis.config;
 
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
+import com.nomendi6.orgsec.exceptions.OrgsecConfigurationException;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.validation.annotation.Validated;
 
 /**
  * Configuration properties for Redis storage.
  * <p>
  * These properties are bound from the {@code orgsec.storage.redis} prefix in application configuration.
  * </p>
+ * <p>
+ * Validated in {@link #afterPropertiesSet()} rather than with Bean Validation annotations. The
+ * annotations required {@code jakarta.validation-api} on the classpath, which made Spring Boot treat
+ * JSR-303 as available and try to bootstrap it while binding - so an application that enabled Redis
+ * without also having a validation <em>provider</em> failed to start with
+ * {@code NoProviderFoundException} instead of running. Checking in code removes the dependency
+ * entirely and reports failures the same way the rest of OrgSec's startup checks do: an
+ * {@link OrgsecConfigurationException} carrying a stable diagnostic code.
  */
 @ConfigurationProperties(prefix = "orgsec.storage.redis")
-@Validated
-public class RedisStorageProperties {
+public class RedisStorageProperties implements InitializingBean {
+
+    /** Prefix shared by every diagnostic code this class can raise. */
+    public static final String INVALID_PROPERTY = "ORGSEC_STORAGE_REDIS_INVALID_PROPERTY";
+
+    @Override
+    public void afterPropertiesSet() {
+        requireText("host", host);
+        requireRange("port", port, 1, 65535);
+        requireAtLeast("timeout", timeout, 100);
+
+        requireAtLeast("ttl.person", ttl.getPerson(), 1);
+        requireAtLeast("ttl.organization", ttl.getOrganization(), 1);
+        requireAtLeast("ttl.role", ttl.getRole(), 1);
+        requireAtLeast("ttl.privilege", ttl.getPrivilege(), 1);
+        requireAtLeast("ttl.on-security-change", ttl.getOnSecurityChange(), 1);
+
+        requireRange("cache.l1-max-size", cache.getL1MaxSize(), 1, 1_000_000);
+
+        requireText("invalidation.channel", invalidation.getChannel());
+
+        requireText("preload.strategy", preload.getStrategy());
+        requireText("preload.mode", preload.getMode());
+        requireAtLeast("preload.batch-size", preload.getBatchSize(), 1);
+        requireAtLeast("preload.batch-delay-ms", preload.getBatchDelayMs(), 0);
+        requireAtLeast("preload.parallelism", preload.getParallelism(), 1);
+
+        requireRange("circuit-breaker.failure-threshold", circuitBreaker.getFailureThreshold(), 1, 100);
+        requireAtLeast("circuit-breaker.wait-duration", circuitBreaker.getWaitDuration(), 1000);
+        requireAtLeast("circuit-breaker.sliding-window-size", circuitBreaker.getSlidingWindowSize(), 1);
+        requireAtLeast("circuit-breaker.minimum-calls", circuitBreaker.getMinimumCalls(), 1);
+        requireAtLeast("circuit-breaker.permitted-calls-in-half-open", circuitBreaker.getPermittedCallsInHalfOpen(), 1);
+
+        requireAtLeast("pool.min-idle", pool.getMinIdle(), 0);
+        requireAtLeast("pool.max-idle", pool.getMaxIdle(), 1);
+        requireAtLeast("pool.max-active", pool.getMaxActive(), 1);
+        requireAtLeast("pool.time-between-eviction-runs", pool.getTimeBetweenEvictionRuns(), 1000);
+        requireAtLeast("pool.min-evictable-idle-time", pool.getMinEvictableIdleTime(), 1000);
+    }
+
+    private static void requireText(String name, String value) {
+        if (value == null || value.trim().isEmpty()) {
+            throw invalid(name, value, "must not be blank");
+        }
+    }
+
+    private static void requireAtLeast(String name, long value, long minimum) {
+        if (value < minimum) {
+            throw invalid(name, value, "must be at least " + minimum);
+        }
+    }
+
+    private static void requireRange(String name, long value, long minimum, long maximum) {
+        if (value < minimum || value > maximum) {
+            throw invalid(name, value, "must be between " + minimum + " and " + maximum);
+        }
+    }
+
+    private static OrgsecConfigurationException invalid(String name, Object value, String requirement) {
+        return new OrgsecConfigurationException(
+            INVALID_PROPERTY + ": orgsec.storage.redis." + name + "=" + value + " " + requirement + "."
+        );
+    }
 
     /**
      * Redis server hostname.
      */
-    @NotNull(message = "Redis host cannot be null")
     private String host = "localhost";
 
     /**
      * Redis server port.
      */
-    @Min(value = 1, message = "Port must be greater than 0")
-    @Max(value = 65535, message = "Port must be less than 65536")
     private int port = 6379;
 
     /**
@@ -42,7 +106,6 @@ public class RedisStorageProperties {
     /**
      * Connection timeout in milliseconds.
      */
-    @Min(value = 100, message = "Timeout must be at least 100ms")
     private int timeout = 2000;
 
     /**
@@ -211,31 +274,26 @@ public class RedisStorageProperties {
         /**
          * TTL for person entities in seconds (default: 1 hour).
          */
-        @Min(value = 1, message = "TTL must be at least 1 second")
         private long person = 3600;
 
         /**
          * TTL for organization entities in seconds (default: 2 hours).
          */
-        @Min(value = 1, message = "TTL must be at least 1 second")
         private long organization = 7200;
 
         /**
          * TTL for role entities in seconds (default: 2 hours).
          */
-        @Min(value = 1, message = "TTL must be at least 1 second")
         private long role = 7200;
 
         /**
          * TTL for privilege entities in seconds (default: 2 hours).
          */
-        @Min(value = 1, message = "TTL must be at least 1 second")
         private long privilege = 7200;
 
         /**
          * Reduced TTL after security-related changes in seconds (default: 5 minutes).
          */
-        @Min(value = 1, message = "TTL must be at least 1 second")
         private long onSecurityChange = 300;
 
         public long getPerson() {
@@ -291,8 +349,6 @@ public class RedisStorageProperties {
         /**
          * Maximum number of entries in L1 cache (LRU eviction).
          */
-        @Min(value = 1, message = "L1 max size must be at least 1")
-        @Max(value = 1000000, message = "L1 max size must be less than 1000000")
         private int l1MaxSize = 1000;
 
         /**
@@ -342,7 +398,6 @@ public class RedisStorageProperties {
         /**
          * Redis Pub/Sub channel name for invalidation events.
          */
-        @NotNull(message = "Invalidation channel cannot be null")
         private String channel = "orgsec:invalidation";
 
         public boolean isEnabled() {
@@ -387,25 +442,21 @@ public class RedisStorageProperties {
         /**
          * Preload strategy: "all", "persons", "organizations", "roles".
          */
-        @NotNull(message = "Preload strategy cannot be null")
         private String strategy = "all";
 
         /**
          * Warming mode: "eager" (all at startup), "lazy" (on first access), "progressive" (background loading).
          */
-        @NotNull(message = "Warming mode cannot be null")
         private String mode = "eager";
 
         /**
          * Batch size for progressive loading (number of items per batch).
          */
-        @Min(value = 1, message = "Batch size must be at least 1")
         private int batchSize = 100;
 
         /**
          * Delay between batches in progressive loading (milliseconds).
          */
-        @Min(value = 0, message = "Batch delay must be at least 0ms")
         private long batchDelayMs = 50;
 
         /**
@@ -416,7 +467,6 @@ public class RedisStorageProperties {
         /**
          * Number of threads for parallel warmup.
          */
-        @Min(value = 1, message = "Parallelism must be at least 1")
         private int parallelism = 2;
 
         public boolean isEnabled() {
@@ -496,32 +546,26 @@ public class RedisStorageProperties {
         /**
          * Failure rate threshold percentage to open circuit (default: 50%).
          */
-        @Min(value = 1, message = "Failure threshold must be at least 1%")
-        @Max(value = 100, message = "Failure threshold must be at most 100%")
         private int failureThreshold = 50;
 
         /**
          * Wait duration before attempting to close circuit in milliseconds (default: 30 seconds).
          */
-        @Min(value = 1000, message = "Wait duration must be at least 1 second")
         private long waitDuration = 30000;
 
         /**
          * Sliding window size for failure rate calculation (default: 10).
          */
-        @Min(value = 1, message = "Sliding window size must be at least 1")
         private int slidingWindowSize = 10;
 
         /**
          * Minimum number of calls before calculating failure rate (default: 5).
          */
-        @Min(value = 1, message = "Minimum calls must be at least 1")
         private int minimumCalls = 5;
 
         /**
          * Number of permitted calls in half-open state (default: 3).
          */
-        @Min(value = 1, message = "Permitted calls must be at least 1")
         private int permittedCallsInHalfOpen = 3;
 
         public boolean isEnabled() {
@@ -616,19 +660,16 @@ public class RedisStorageProperties {
         /**
          * Minimum number of idle connections in pool.
          */
-        @Min(value = 0, message = "Min idle must be at least 0")
         private int minIdle = 5;
 
         /**
          * Maximum number of idle connections in pool.
          */
-        @Min(value = 1, message = "Max idle must be at least 1")
         private int maxIdle = 10;
 
         /**
          * Maximum number of active connections in pool.
          */
-        @Min(value = 1, message = "Max active must be at least 1")
         private int maxActive = 20;
 
         /**
@@ -645,13 +686,11 @@ public class RedisStorageProperties {
         /**
          * Time between eviction runs in milliseconds (default: 30 seconds).
          */
-        @Min(value = 1000, message = "Time between eviction runs must be at least 1 second")
         private long timeBetweenEvictionRuns = 30000;
 
         /**
          * Minimum time a connection may sit idle before eviction (default: 60 seconds).
          */
-        @Min(value = 1000, message = "Min evictable idle time must be at least 1 second")
         private long minEvictableIdleTime = 60000;
 
         public boolean isEnabled() {

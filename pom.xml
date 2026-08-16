@@ -7,7 +7,7 @@
 
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-parent</artifactId>
-    <version>1.0.4</version>
+    <version>1.0.5</version>
     <packaging>pom</packaging>
 
     <name>OrgSec Parent</name>
@@ -47,8 +47,14 @@
 
     <properties>
         <java.version>17</java.version>
-        <maven.compiler.source>${java.version}</maven.compiler.source>
-        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <!--
+            `release`, not `source`/`target`. The latter pair emits Java 17 bytecode but still links
+            against whichever JDK runs the build, so a build on JDK 21 can reference methods that do
+            not exist on Java 17 and fail only at runtime, in the consumer's application. `release`
+            makes javac refuse them at compile time, which turns "the operator used the right JDK"
+            from a procedure into a property of the build.
+        -->
+        <maven.compiler.release>${java.version}</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
@@ -99,8 +105,7 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${maven-compiler-plugin.version}</version>
                     <configuration>
-                        <source>${java.version}</source>
-                        <target>${java.version}</target>
+                        <release>${java.version}</release>
                         <!--
                             spring-boot-starter-parent sets this; we only import the BOM, so it
                             has to be set here. Without it the published jars carry no

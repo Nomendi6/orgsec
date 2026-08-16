@@ -264,6 +264,21 @@ class InMemorySecurityDataStorageTest {
         }
 
         @Test
+        void shouldUpdateTypedRolesAndPrivilegeWithoutIdCollisions() {
+            RoleDef partyRole = new RoleDef(7L, "Party role");
+            RoleDef positionRole = new RoleDef(7L, "Position role");
+            PrivilegeDef privilege = new PrivilegeDef("DOCUMENT_ORG_R", "DOCUMENT");
+
+            storage.updatePartyRole(7L, partyRole);
+            storage.updatePositionRole(7L, positionRole);
+            storage.updatePrivilege("DOCUMENT_ORG_R", privilege);
+
+            assertThat(storage.getPartyRole(7L)).isSameAs(partyRole);
+            assertThat(storage.getPositionRole(7L)).isSameAs(positionRole);
+            assertThat(storage.getPrivilege("DOCUMENT_ORG_R")).isSameAs(privilege);
+        }
+
+        @Test
         void shouldNotUpdateWhenNotReady() {
             InMemorySecurityDataStorage uninitializedStorage = new InMemorySecurityDataStorage(
                     new AllPersonsStore(), organizationsStore, rolesStore, privilegesStore,
@@ -307,24 +322,40 @@ class InMemorySecurityDataStorageTest {
             verify(personLoader).syncPerson(eq(1L), any(), any(), any(), any());
         }
 
+        /**
+         * The notification reloads; it does not sync the one organization first.
+         *
+         * <p>It used to do both, and the reload cleared the stores the sync had just written, so the two
+         * per-id queries were paid for and discarded. The reload is the part that matters: a targeted sync
+         * refreshes {@code AllOrganizationsStore}, while authorization reads the {@code OrganizationDef}
+         * copies each person carries, which only a full load rebuilds.
+         */
         @Test
-        void shouldSyncOrganizationOnNotification() {
-            when(queryProvider.loadPartyById(1L)).thenReturn(new ArrayList<>());
-            when(queryProvider.loadPartyAssignedRolesByPartyId(1L)).thenReturn(new ArrayList<>());
-
+        void shouldReloadWithoutTheDiscardedTargetedSyncOnOrganizationNotification() {
             storage.notifyOrganizationChanged(1L);
 
-            verify(organizationLoader).syncParty(eq(1L), any(), any());
+            verify(organizationLoader, never()).syncParty(eq(1L), any(), any());
+            verify(queryProvider, never()).loadPartyById(1L);
+            verify(queryProvider, never()).loadPartyAssignedRolesByPartyId(1L);
+            verify(queryProvider, atLeastOnce()).loadAllParties();
         }
 
         @Test
-        void shouldSyncPartyRoleOnNotification() {
-            when(queryProvider.loadPartyRoleById(1L)).thenReturn(new ArrayList<>());
-            when(queryProvider.loadPartyRolePrivilegesByRoleIdAsStrings(1L)).thenReturn(new ArrayList<>());
-
+        void shouldReloadWithoutTheDiscardedTargetedSyncOnPartyRoleNotification() {
             storage.notifyPartyRoleChanged(1L);
 
-            verify(roleLoader).syncPartyRole(eq(1L), any(), any());
+            verify(roleLoader, never()).syncPartyRole(eq(1L), any(), any());
+            verify(queryProvider, never()).loadPartyRoleById(1L);
+            verify(queryProvider, atLeastOnce()).loadAllPartyRoles();
+        }
+
+        @Test
+        void shouldReloadWithoutTheDiscardedTargetedSyncOnPositionRoleNotification() {
+            storage.notifyPositionRoleChanged(1L);
+
+            verify(roleLoader, never()).syncPositionRole(eq(1L), any(), any());
+            verify(queryProvider, never()).loadPositionRoleById(1L);
+            verify(queryProvider, atLeastOnce()).loadAllPositionRoles();
         }
     }
 

@@ -210,39 +210,21 @@ You should still:
 - **Use short token TTLs.** A revoked role still appears valid until the token expires. Five-to-fifteen-minute access tokens with refresh are typical for OrgSec deployments.
 - **Use a separate Person API role.** When Keycloak's service account calls back into OrgSec to fetch the person data, that call is authorized by `orgsec.api.person.required-role` (default `ORGSEC_API_CLIENT`). Spring Security's `hasRole(...)` adds the `ROLE_` prefix automatically - the service-account principal must therefore carry authority `ROLE_ORGSEC_API_CLIENT` (or whatever value you set, prefixed with `ROLE_`). Do not reuse the role with end-user privileges.
 
-## Combining JWT with a Redis delegate
+## Combining JWT with Redis is refused
 
-Activating Redis alongside JWT does **not** make Redis the delegate - the delegate stays the
-in-memory storage unless you declare it yourself:
+Enabling `orgsec.storage.features.jwt-enabled` together with `orgsec.storage.redis.enabled` stops
+startup since 1.0.5, with `ORGSEC_STORAGE_JWT_REDIS_UNSUPPORTED`. Enable exactly one backend.
 
-```java
-@Bean("jwtDelegateStorage")
-SecurityDataStorage jwtDelegateStorage(RedisSecurityDataStorage redis) {
-    return redis;
-}
-```
+The reason is availability, not packaging. Redis serves only what preload or `notifyXxxChanged` has
+put into the caches - it does not load from your database on a miss, it returns `null` - and the JWT
+backend reads a missing organization as an unproven membership and drops it. A cold cache after a
+deployment therefore denies every request rather than slowing it down. See
+[Hybrid storage](./05-hybrid.md) for what to do instead if you need shared organization data across
+instances.
 
-> **Weigh this carefully.** The Redis backend returns `null` on a miss - it does not read through to
-> a database - and the JWT backend treats a missing organization as an unproven membership and drops
-> it. A cold cache after a deployment, or an entry that aged out, therefore denies every request
-> rather than merely slowing it down. If you take this route, register the `CacheWarmer` loaders and
-> treat cache population as a startup dependency.
-
-```yaml
-orgsec:
-  storage:
-    strict-activation: true
-    features:
-      jwt-enabled: true
-      redis-enabled: true                   # in-memory stands down from @Primary
-    redis:
-      enabled: true                         # gates the Redis auto-configuration
-      host: ${REDIS_HOST}
-      ssl: true
-      # ... rest of Redis config
-```
-
-The Person path is stateless; the Organization / Role path is shared across instances through Redis. This is the canonical setup for a horizontally-scaled microservice fronted by Keycloak. Remember the Redis caveat from [Storage / Redis](./03-redis.md): Redis serves what has been put into the caches via preload or `notifyXxxChanged` - it does not load from your database on miss.
+The delegate stays the in-memory storage unless the application declares `jwtDelegateStorage` itself.
+Whatever it declares has to answer authoritatively; a cache under that name reintroduces exactly the
+failure above.
 
 ## Limitations
 

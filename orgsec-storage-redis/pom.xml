@@ -8,7 +8,7 @@
     <parent>
         <groupId>com.nomendi6.orgsec</groupId>
         <artifactId>orgsec-parent</artifactId>
-        <version>1.0.4</version>
+        <version>1.0.5</version>
     </parent>
 
     <artifactId>orgsec-storage-redis</artifactId>
@@ -86,12 +86,6 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-        </dependency>
-
-        <!-- Validation -->
-        <dependency>
-            <groupId>jakarta.validation</groupId>
-            <artifactId>jakarta.validation-api</artifactId>
         </dependency>
 
         <!-- Testing -->

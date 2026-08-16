@@ -8,7 +8,7 @@ The table below shows which OrgSec versions currently receive security fixes. Ol
 
 | Version | Supported          | Notes                                                                                                   |
 | ------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
-| 1.0.x   | :white_check_mark: | Current GA line. Targets Spring Boot 3.5.x and Java 17. Receives security and bug fixes. Upgrade to the latest 1.0.x patch: earlier patches carry authorization defects fixed since. |
+| 1.0.x   | :white_check_mark: | Current GA line. Targets Spring Boot 3.5.x and Java 17. Receives security and bug fixes. **Upgrade to 1.0.5**: every earlier patch carries authorization defects fixed since, listed under `### Security` in the [CHANGELOG](./CHANGELOG.md). 1.0.5 is not drop-in - read its migration notes first. |
 | 2.0.x   | :hourglass:        | In development. Targets Spring Boot 4.x and Java 21. Will become the supported line at GA.              |
 | < 1.0.0 | :x:                | Pre-release / never published. No support.                                                              |
 
@@ -65,7 +65,11 @@ Once we receive a credible report, we follow these steps:
 6. **Release** the fix as a patch version on the affected line (for example `1.0.5`), publish the advisory, and update the [CHANGELOG](./CHANGELOG.md) with a reference to the advisory ID.
 7. **Credit the reporter** in the advisory unless they have asked to remain anonymous.
 
-Steps 4-6 describe how externally reported vulnerabilities are handled. Authorization defects found by the maintainers during internal review are fixed and documented in the [CHANGELOG](./CHANGELOG.md) under `### Security`, and receive an advisory only where the triage concludes that downstream users need one. Not every entry under `### Security` therefore has a corresponding advisory ID; where one exists, it is named in the CHANGELOG entry.
+Steps 4-6 describe how **externally reported** vulnerabilities are handled.
+
+Authorization defects the maintainers find during internal review follow a different path: they are fixed and documented in the [CHANGELOG](./CHANGELOG.md) under `### Security`, without a GitHub Security Advisory. No advisory has been published for any release so far, including the security fixes in 1.0.4 and 1.0.5. A GHSA feed or dependency scanner will therefore not flag older OrgSec versions - the CHANGELOG is the notice. If you need an advisory record for a compliance process, open an issue and one will be filed.
+
+This does not apply to anything reported to us: a report from outside goes through the process above, advisory included.
 
 We do not currently run a paid bug-bounty program.
 
@@ -85,4 +89,4 @@ If GitHub or the maintainer's email becomes unavailable for an extended period a
 
 ---
 
-*This policy is reviewed at every minor release. Last reviewed for OrgSec 1.0.1.*
+*This policy is reviewed at every minor release. Last reviewed for OrgSec 1.0.5.*

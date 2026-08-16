@@ -42,12 +42,13 @@ For Redis, set both flags (they do different jobs; see [Activation](./03-redis.m
 ```yaml
 orgsec:
   storage:
-    strict-activation: true       # refuse to start if the two disagree
     features:
       redis-enabled: true         # in-memory stands down from @Primary
     redis:
       enabled: true               # activates the Redis backend
 ```
+
+Setting only one of the two refuses startup - see [Activation](./03-redis.md#activation).
 
 For JWT - person from the token, organizations and roles from the delegate:
 
@@ -58,7 +59,7 @@ orgsec:
       jwt-enabled: true
 ```
 
-The delegate defaults to in-memory. Adding Redis to a JWT deployment does **not** make Redis the delegate; that requires declaring a `jwtDelegateStorage` bean, and carries a real availability risk. See [Hybrid storage](./05-hybrid.md).
+The delegate defaults to in-memory. **JWT and Redis cannot be enabled together** - the combination is refused at startup, because a cache is not a safe delegate for the JWT backend. To put a different authoritative store behind JWT, declare a `jwtDelegateStorage` bean. See [Hybrid storage](./05-hybrid.md).
 
 > `orgsec.storage.primary`, `hybrid-mode-enabled` and `data-sources.*` appear in older examples but are inert - no code reads them. There is no per-data-type router in 1.0.x.
 

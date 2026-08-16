@@ -14,7 +14,9 @@ import java.security.NoSuchAlgorithmException;
  * Generates cache keys following the naming convention:
  * - Person: orgsec:p:{userId}
  * - Organization: orgsec:o:{orgId}
- * - Role: orgsec:r:{roleId}
+ * - Legacy role: orgsec:r:{roleId}
+ * - Party role: orgsec:r:party:{roleId}
+ * - Position role: orgsec:r:position:{roleId}
  * - Privilege: orgsec:priv:{privilegeId}
  * </p>
  * <p>
@@ -29,6 +31,8 @@ public class CacheKeyBuilder {
     private static final String PERSON_PREFIX = KEY_PREFIX + ":p:";
     private static final String ORGANIZATION_PREFIX = KEY_PREFIX + ":o:";
     private static final String ROLE_PREFIX = KEY_PREFIX + ":r:";
+    private static final String PARTY_ROLE_PREFIX = ROLE_PREFIX + "party:";
+    private static final String POSITION_ROLE_PREFIX = ROLE_PREFIX + "position:";
     private static final String PRIVILEGE_PREFIX = KEY_PREFIX + ":priv:";
 
     private static final String PERSON_PATTERN = KEY_PREFIX + ":p:*";
@@ -84,6 +88,32 @@ public class CacheKeyBuilder {
             throw new IllegalArgumentException("Role ID cannot be null");
         }
         return buildKey(ROLE_PREFIX + roleId);
+    }
+
+    /**
+     * Builds a cache key for a party/organization role.
+     *
+     * @param roleId the party role ID
+     * @return the cache key
+     */
+    public String buildPartyRoleKey(Long roleId) {
+        if (roleId == null) {
+            throw new IllegalArgumentException("Party role ID cannot be null");
+        }
+        return buildKey(PARTY_ROLE_PREFIX + roleId);
+    }
+
+    /**
+     * Builds a cache key for a position role.
+     *
+     * @param roleId the position role ID
+     * @return the cache key
+     */
+    public String buildPositionRoleKey(Long roleId) {
+        if (roleId == null) {
+            throw new IllegalArgumentException("Position role ID cannot be null");
+        }
+        return buildKey(POSITION_ROLE_PREFIX + roleId);
     }
 
     /**

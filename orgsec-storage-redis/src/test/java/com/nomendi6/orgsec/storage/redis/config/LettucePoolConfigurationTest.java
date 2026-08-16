@@ -4,6 +4,10 @@ import io.lettuce.core.resource.ClientResources;
 import io.lettuce.core.api.StatefulConnection;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -11,6 +15,31 @@ import static org.assertj.core.api.Assertions.assertThat;
 class LettucePoolConfigurationTest {
 
     private final LettucePoolConfiguration configuration = new LettucePoolConfiguration();
+
+    @Test
+    void autoConfigurationUsesFrozenOrgsecHostAndNonDefaultPort() {
+        new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(
+                RedisAutoConfiguration.class,
+                RedisStorageAutoConfiguration.class,
+                LettucePoolConfiguration.class
+            ))
+            .withPropertyValues(
+                "orgsec.storage.redis.enabled=true",
+                "orgsec.storage.redis.host=orgsec-redis.internal",
+                "orgsec.storage.redis.port=16379",
+                "orgsec.storage.redis.preload.enabled=false",
+                "spring.data.redis.host=boot-redis-should-not-win.internal",
+                "spring.data.redis.port=26379"
+            )
+            .run(context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context).hasSingleBean(RedisConnectionFactory.class);
+                LettuceConnectionFactory factory = context.getBean(LettuceConnectionFactory.class);
+                assertThat(factory.getHostName()).isEqualTo("orgsec-redis.internal");
+                assertThat(factory.getPort()).isEqualTo(16379);
+            });
+    }
 
     @Test
     void shouldCreateClientResources() {

@@ -114,6 +114,7 @@ class RedisStorageAutoConfigurationTest {
         assertThat(configuration.personL1Cache(properties).getMaxSize()).isEqualTo(7);
         assertThat(configuration.organizationL1Cache(properties).getMaxSize()).isEqualTo(7);
         assertThat(configuration.roleL1Cache(properties).getMaxSize()).isEqualTo(7);
+        assertThat(configuration.positionRoleL1Cache(properties).getMaxSize()).isEqualTo(7);
         assertThat(configuration.privilegeL1Cache(properties).getMaxSize()).isEqualTo(7);
     }
 

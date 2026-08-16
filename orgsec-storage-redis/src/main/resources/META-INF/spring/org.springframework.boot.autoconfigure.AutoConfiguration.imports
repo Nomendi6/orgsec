@@ -1,1 +1,2 @@
+com.nomendi6.orgsec.storage.redis.config.LettucePoolConfiguration
 com.nomendi6.orgsec.storage.redis.config.RedisStorageAutoConfiguration

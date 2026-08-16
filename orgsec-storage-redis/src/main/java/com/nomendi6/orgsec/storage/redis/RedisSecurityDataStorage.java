@@ -19,7 +19,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
 /**
  * Redis-based implementation of SecurityDataStorage.
@@ -45,7 +44,9 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
     // L1 Caches (in-memory)
     private final L1Cache<Long, PersonDef> personL1Cache;
     private final L1Cache<Long, OrganizationDef> organizationL1Cache;
+    /** Party-role cache; kept under the historic field name for binary/source continuity. */
     private final L1Cache<Long, RoleDef> roleL1Cache;
+    private final L1Cache<Long, RoleDef> positionRoleL1Cache;
     private final L1Cache<String, PrivilegeDef> privilegeL1Cache;
 
     // L2 Caches (Redis)
@@ -83,10 +84,46 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
             InvalidationEventPublisher invalidationPublisher,
             CacheWarmer cacheWarmer) {
 
+        this(
+            properties,
+            personL1Cache,
+            organizationL1Cache,
+            roleL1Cache,
+            new L1Cache<>(Math.max(1, roleL1Cache.getMaxSize())),
+            privilegeL1Cache,
+            personL2Cache,
+            organizationL2Cache,
+            roleL2Cache,
+            privilegeL2Cache,
+            cacheKeyBuilder,
+            invalidationPublisher,
+            cacheWarmer
+        );
+    }
+
+    /**
+     * Constructor with independent party-role and position-role L1 caches.
+     */
+    public RedisSecurityDataStorage(
+            RedisStorageProperties properties,
+            L1Cache<Long, PersonDef> personL1Cache,
+            L1Cache<Long, OrganizationDef> organizationL1Cache,
+            L1Cache<Long, RoleDef> roleL1Cache,
+            L1Cache<Long, RoleDef> positionRoleL1Cache,
+            L1Cache<String, PrivilegeDef> privilegeL1Cache,
+            L2RedisCache<PersonDef> personL2Cache,
+            L2RedisCache<OrganizationDef> organizationL2Cache,
+            L2RedisCache<RoleDef> roleL2Cache,
+            L2RedisCache<PrivilegeDef> privilegeL2Cache,
+            CacheKeyBuilder cacheKeyBuilder,
+            InvalidationEventPublisher invalidationPublisher,
+            CacheWarmer cacheWarmer) {
+
         this.properties = properties;
         this.personL1Cache = personL1Cache;
         this.organizationL1Cache = organizationL1Cache;
         this.roleL1Cache = roleL1Cache;
+        this.positionRoleL1Cache = positionRoleL1Cache;
         this.privilegeL1Cache = privilegeL1Cache;
         this.personL2Cache = personL2Cache;
         this.organizationL2Cache = organizationL2Cache;
@@ -158,41 +195,54 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
 
     @Override
     public RoleDef getPartyRole(Long roleId) {
-        return getRole(roleId);
+        return getRole(roleId, roleL1Cache, true);
     }
 
     @Override
     public RoleDef getPositionRole(Long roleId) {
-        return getRole(roleId);
+        return getRole(roleId, positionRoleL1Cache, false);
     }
 
     /**
-     * Internal method to get role (both party and position roles use same logic).
+     * Gets a typed role, falling back to the 1.0.4 untyped Redis key during rolling upgrades.
+     * A legacy hit is copied into the typed namespace so subsequent reads are unambiguous.
      */
-    private RoleDef getRole(Long roleId) {
+    private RoleDef getRole(
+        Long roleId,
+        L1Cache<Long, RoleDef> localCache,
+        boolean partyRole
+    ) {
         if (roleId == null) {
             return null;
         }
 
         // L1 cache hit
-        RoleDef role = roleL1Cache.get(roleId);
+        RoleDef role = localCache.get(roleId);
         if (role != null) {
-            log.debug("L1 cache hit for role: {}", roleId);
+            log.debug("L1 cache hit for {} role: {}", partyRole ? "party" : "position", roleId);
             return role;
         }
 
-        // L2 cache hit
-        String key = cacheKeyBuilder.buildRoleKey(roleId);
-        role = roleL2Cache.get(key);
+        String typedKey = partyRole
+            ? cacheKeyBuilder.buildPartyRoleKey(roleId)
+            : cacheKeyBuilder.buildPositionRoleKey(roleId);
+        role = roleL2Cache.get(typedKey);
         if (role != null) {
-            log.debug("L2 cache hit for role: {}", roleId);
-            // Populate L1 cache
-            roleL1Cache.put(roleId, role);
+            log.debug("L2 cache hit for {} role: {}", partyRole ? "party" : "position", roleId);
+            localCache.put(roleId, role);
             return role;
         }
 
-        // Cache miss - return null
-        log.debug("Cache miss for role: {}", roleId);
+        String legacyKey = cacheKeyBuilder.buildRoleKey(roleId);
+        role = roleL2Cache.get(legacyKey);
+        if (role != null) {
+            log.debug("Legacy L2 cache hit for {} role: {}", partyRole ? "party" : "position", roleId);
+            localCache.put(roleId, role);
+            roleL2Cache.set(typedKey, role, properties.getTtl().getRole());
+            return role;
+        }
+
+        log.debug("Cache miss for {} role: {}", partyRole ? "party" : "position", roleId);
         return null;
     }
 
@@ -268,16 +318,65 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
             return;
         }
 
-        log.debug("Updating role: {}", roleId);
-
-        // Update both caches
+        log.warn(
+            "Updating legacy untyped role {} in party, position, and 1.0.4 namespaces; " +
+                "prefer updatePartyRole or updatePositionRole",
+            roleId
+        );
         roleL1Cache.put(roleId, role);
-        String key = cacheKeyBuilder.buildRoleKey(roleId);
+        positionRoleL1Cache.put(roleId, role);
         long ttl = properties.getTtl().getRole();
-        roleL2Cache.set(key, role, ttl);
-
-        // Publish invalidation event
+        roleL2Cache.set(cacheKeyBuilder.buildPartyRoleKey(roleId), role, ttl);
+        roleL2Cache.set(cacheKeyBuilder.buildPositionRoleKey(roleId), role, ttl);
+        roleL2Cache.set(cacheKeyBuilder.buildRoleKey(roleId), role, ttl);
         invalidationPublisher.publishRoleChanged(roleId);
+    }
+
+    @Override
+    public void updatePartyRole(Long roleId, RoleDef role) {
+        updateTypedRole(roleId, role, roleL1Cache, true);
+    }
+
+    @Override
+    public void updatePositionRole(Long roleId, RoleDef role) {
+        updateTypedRole(roleId, role, positionRoleL1Cache, false);
+    }
+
+    private void updateTypedRole(
+        Long roleId,
+        RoleDef role,
+        L1Cache<Long, RoleDef> localCache,
+        boolean partyRole
+    ) {
+        if (roleId == null || role == null) {
+            return;
+        }
+
+        log.debug("Updating {} role: {}", partyRole ? "party" : "position", roleId);
+        localCache.put(roleId, role);
+        long ttl = properties.getTtl().getRole();
+        String typedKey = partyRole
+            ? cacheKeyBuilder.buildPartyRoleKey(roleId)
+            : cacheKeyBuilder.buildPositionRoleKey(roleId);
+        roleL2Cache.set(typedKey, role, ttl);
+        // Dual-write the 1.0.4 key while mixed-version application instances may coexist.
+        roleL2Cache.set(cacheKeyBuilder.buildRoleKey(roleId), role, ttl);
+        invalidationPublisher.publishRoleChanged(roleId);
+    }
+
+    @Override
+    public void updatePrivilege(String privilegeIdentifier, PrivilegeDef privilege) {
+        if (privilegeIdentifier == null || privilegeIdentifier.isBlank() || privilege == null) {
+            return;
+        }
+
+        log.debug("Updating privilege: {}", privilegeIdentifier);
+        privilegeL1Cache.put(privilegeIdentifier, privilege);
+        String key = cacheKeyBuilder.buildPrivilegeKey(privilegeIdentifier);
+        long ttl = properties.getTtl().getPrivilege();
+        privilegeL2Cache.set(key, privilege, ttl);
+        // Privilege IDs are strings but the 1.x invalidation payload carries only Long IDs.
+        invalidationPublisher.publishSecurityRefresh();
     }
 
     // ========== BATCH OPERATIONS ==========
@@ -488,8 +587,10 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
         for (Map.Entry<Long, RoleDef> entry : roles.entrySet()) {
             if (entry.getKey() != null && entry.getValue() != null) {
                 roleL1Cache.put(entry.getKey(), entry.getValue());
-                String key = cacheKeyBuilder.buildRoleKey(entry.getKey());
-                cacheEntries.put(key, entry.getValue());
+                positionRoleL1Cache.put(entry.getKey(), entry.getValue());
+                cacheEntries.put(cacheKeyBuilder.buildPartyRoleKey(entry.getKey()), entry.getValue());
+                cacheEntries.put(cacheKeyBuilder.buildPositionRoleKey(entry.getKey()), entry.getValue());
+                cacheEntries.put(cacheKeyBuilder.buildRoleKey(entry.getKey()), entry.getValue());
             }
         }
 
@@ -499,6 +600,58 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
         }
 
         log.debug("Batch update roles: {} entries stored", cacheEntries.size());
+    }
+
+    /**
+     * Stores multiple party roles in the typed namespace and in the 1.0.4 compatibility namespace.
+     *
+     * @param roles map of party-role ID to RoleDef
+     */
+    public void updatePartyRoles(Map<Long, RoleDef> roles) {
+        updateTypedRoles(roles, roleL1Cache, true);
+    }
+
+    /**
+     * Stores multiple position roles in the typed namespace and in the 1.0.4 compatibility namespace.
+     *
+     * @param roles map of position-role ID to RoleDef
+     */
+    public void updatePositionRoles(Map<Long, RoleDef> roles) {
+        updateTypedRoles(roles, positionRoleL1Cache, false);
+    }
+
+    private void updateTypedRoles(
+        Map<Long, RoleDef> roles,
+        L1Cache<Long, RoleDef> localCache,
+        boolean partyRole
+    ) {
+        if (roles == null || roles.isEmpty()) {
+            return;
+        }
+
+        Map<String, RoleDef> cacheEntries = new HashMap<>();
+        int storedRoles = 0;
+        for (Map.Entry<Long, RoleDef> entry : roles.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                localCache.put(entry.getKey(), entry.getValue());
+                String typedKey = partyRole
+                    ? cacheKeyBuilder.buildPartyRoleKey(entry.getKey())
+                    : cacheKeyBuilder.buildPositionRoleKey(entry.getKey());
+                cacheEntries.put(typedKey, entry.getValue());
+                cacheEntries.put(cacheKeyBuilder.buildRoleKey(entry.getKey()), entry.getValue());
+                storedRoles++;
+            }
+        }
+
+        if (!cacheEntries.isEmpty()) {
+            roleL2Cache.multiSet(cacheEntries, properties.getTtl().getRole());
+        }
+
+        log.debug(
+            "Batch update {} roles: {} entries stored",
+            partyRole ? "party" : "position",
+            storedRoles
+        );
     }
 
     // ========== LIFECYCLE OPERATIONS ==========
@@ -511,6 +664,8 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
         cacheWarmer.setPersonBatchStore(this::updatePersons);
         cacheWarmer.setOrganizationBatchStore(this::updateOrganizations);
         cacheWarmer.setRoleBatchStore(this::updateRoles);
+        cacheWarmer.setPartyRoleBatchStore(this::updatePartyRoles);
+        cacheWarmer.setPositionRoleBatchStore(this::updatePositionRoles);
 
         // Perform cache warmup if enabled
         if (properties.getPreload().isEnabled()) {
@@ -541,11 +696,7 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
     public void refresh() {
         log.info("Refreshing RedisSecurityDataStorage...");
 
-        // Clear L1 caches
-        personL1Cache.clear();
-        organizationL1Cache.clear();
-        roleL1Cache.clear();
-        privilegeL1Cache.clear();
+        clearLocalCaches();
 
         // Optionally clear L2 caches (Redis)
         // This would require deleting all keys matching patterns
@@ -562,6 +713,17 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
         invalidationPublisher.publishSecurityRefresh();
 
         log.info("RedisSecurityDataStorage refreshed successfully");
+    }
+
+    /**
+     * Clears every process-local (L1) OrgSec cache without touching Redis (L2).
+     */
+    public void clearLocalCaches() {
+        personL1Cache.clear();
+        organizationL1Cache.clear();
+        roleL1Cache.clear();
+        positionRoleL1Cache.clear();
+        privilegeL1Cache.clear();
     }
 
     @Override
@@ -598,7 +760,7 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
         log.debug("Redis storage notified: position role {} changed - invalidating cache", roleId);
 
         // Invalidate L1 cache
-        roleL1Cache.invalidate(roleId);
+        positionRoleL1Cache.invalidate(roleId);
 
         // Publish distributed invalidation event
         invalidationPublisher.publishRoleChanged(roleId);
@@ -645,6 +807,10 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
 
     public L1Cache.CacheStats getRoleL1Stats() {
         return roleL1Cache.getStats();
+    }
+
+    public L1Cache.CacheStats getPositionRoleL1Stats() {
+        return positionRoleL1Cache.getStats();
     }
 
     public L1Cache.CacheStats getPrivilegeL1Stats() {

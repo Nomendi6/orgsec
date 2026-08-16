@@ -27,6 +27,9 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
     private CacheKeyBuilder keyBuilder;
     private L1Cache<Long, PersonDef> personL1Cache;
     private L2RedisCache<PersonDef> personL2Cache;
+    private L1Cache<Long, RoleDef> roleL1Cache;
+    private L1Cache<Long, RoleDef> positionRoleL1Cache;
+    private L2RedisCache<RoleDef> roleL2Cache;
 
     @BeforeEach
     void setUp() {
@@ -46,13 +49,14 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
         // L1 caches
         personL1Cache = new L1Cache<>(100);
         L1Cache<Long, OrganizationDef> organizationL1Cache = new L1Cache<>(100);
-        L1Cache<Long, RoleDef> roleL1Cache = new L1Cache<>(100);
+        roleL1Cache = new L1Cache<>(100);
+        positionRoleL1Cache = new L1Cache<>(100);
         L1Cache<String, PrivilegeDef> privilegeL1Cache = new L1Cache<>(100);
 
         // L2 caches
         personL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(PersonDef.class), keyBuilder);
         L2RedisCache<OrganizationDef> organizationL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(OrganizationDef.class), keyBuilder);
-        L2RedisCache<RoleDef> roleL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(RoleDef.class), keyBuilder);
+        roleL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(RoleDef.class), keyBuilder);
         L2RedisCache<PrivilegeDef> privilegeL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(PrivilegeDef.class), keyBuilder);
 
         // Invalidation publisher
@@ -67,6 +71,7 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
             personL1Cache,
             organizationL1Cache,
             roleL1Cache,
+            positionRoleL1Cache,
             privilegeL1Cache,
             personL2Cache,
             organizationL2Cache,
@@ -78,6 +83,31 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
         );
 
         storage.initialize();
+    }
+
+    @Test
+    void typedRoleWritesSurviveL1ClearWithSameIdAndRemainReadableBy104Nodes() {
+        RoleDef partyRole = new RoleDef(7L, "Party role");
+        RoleDef positionRole = new RoleDef(7L, "Position role");
+
+        storage.updatePartyRole(7L, partyRole);
+        storage.updatePositionRole(7L, positionRole);
+        storage.clearLocalCaches();
+
+        assertThat(storage.getPartyRole(7L).name).isEqualTo("Party role");
+        assertThat(storage.getPositionRole(7L).name).isEqualTo("Position role");
+        assertThat(roleL2Cache.get(keyBuilder.buildRoleKey(7L)).name)
+            .as("the rolling-upgrade key remains available to a 1.0.4 node")
+            .isEqualTo("Position role");
+    }
+
+    @Test
+    void typedReadFallsBackToAndMigratesA104RoleKey() {
+        RoleDef legacyRole = new RoleDef(8L, "Legacy role");
+        roleL2Cache.set(keyBuilder.buildRoleKey(8L), legacyRole, 60);
+
+        assertThat(storage.getPartyRole(8L).name).isEqualTo("Legacy role");
+        assertThat(roleL2Cache.get(keyBuilder.buildPartyRoleKey(8L)).name).isEqualTo("Legacy role");
     }
 
     @Test

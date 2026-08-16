@@ -209,7 +209,15 @@ public class RedisStorageAutoConfiguration {
     @ConditionalOnMissingBean(name = "roleL1Cache")
     public L1Cache<Long, RoleDef> roleL1Cache(RedisStorageProperties properties) {
         int maxSize = properties.getCache().getL1MaxSize();
-        log.info("Creating RoleDef L1 cache with max size: {}", maxSize);
+        log.info("Creating party RoleDef L1 cache with max size: {}", maxSize);
+        return new L1Cache<>(maxSize);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(name = "positionRoleL1Cache")
+    public L1Cache<Long, RoleDef> positionRoleL1Cache(RedisStorageProperties properties) {
+        int maxSize = properties.getCache().getL1MaxSize();
+        log.info("Creating position RoleDef L1 cache with max size: {}", maxSize);
         return new L1Cache<>(maxSize);
     }
 
@@ -310,9 +318,6 @@ public class RedisStorageAutoConfiguration {
     /**
      * Listener for receiving cache invalidation events.
      */
-    @Bean
-    @ConditionalOnMissingBean
-    @ConditionalOnProperty(prefix = "orgsec.storage.redis.invalidation", name = "enabled", havingValue = "true")
     public InvalidationEventListener invalidationEventListener(
             L1Cache<Long, PersonDef> personL1Cache,
             L1Cache<Long, OrganizationDef> organizationL1Cache,
@@ -325,6 +330,36 @@ public class RedisStorageAutoConfiguration {
             personL1Cache,
             organizationL1Cache,
             roleL1Cache,
+            instanceId,
+            objectMapperFactory.getEventObjectMapper()
+        );
+    }
+
+    /**
+     * Listener bean with all typed L1 caches. The legacy public factory method above remains
+     * available for applications compiled against 1.0.4.
+     */
+    @Bean("invalidationEventListener")
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "orgsec.storage.redis.invalidation", name = "enabled", havingValue = "true")
+    public InvalidationEventListener typedInvalidationEventListener(
+            L1Cache<Long, PersonDef> personL1Cache,
+            L1Cache<Long, OrganizationDef> organizationL1Cache,
+            @org.springframework.beans.factory.annotation.Qualifier("roleL1Cache")
+            L1Cache<Long, RoleDef> roleL1Cache,
+            @org.springframework.beans.factory.annotation.Qualifier("positionRoleL1Cache")
+            L1Cache<Long, RoleDef> positionRoleL1Cache,
+            L1Cache<String, PrivilegeDef> privilegeL1Cache,
+            String instanceId,
+            OrgsecObjectMapperFactory objectMapperFactory) {
+
+        log.info("Creating typed InvalidationEventListener for instance: {}", instanceId);
+        return new InvalidationEventListener(
+            personL1Cache,
+            organizationL1Cache,
+            roleL1Cache,
+            positionRoleL1Cache,
+            privilegeL1Cache,
             instanceId,
             objectMapperFactory.getEventObjectMapper()
         );
@@ -385,7 +420,6 @@ public class RedisStorageAutoConfiguration {
      * now lives on {@link #orgsecPrimaryStorage(RedisSecurityDataStorage)}, which is registered
      * only when JWT is off.
      */
-    @Bean
     public RedisSecurityDataStorage redisSecurityDataStorage(
             RedisStorageProperties properties,
             L1Cache<Long, PersonDef> personL1Cache,
@@ -419,6 +453,48 @@ public class RedisStorageAutoConfiguration {
         // Initialize on bean creation
         storage.initialize();
 
+        return storage;
+    }
+
+    /**
+     * Main storage bean with independent role caches. The legacy public factory method above is
+     * retained so applications compiled against 1.0.4 keep linking.
+     */
+    @Bean("redisSecurityDataStorage")
+    public RedisSecurityDataStorage typedRedisSecurityDataStorage(
+            RedisStorageProperties properties,
+            L1Cache<Long, PersonDef> personL1Cache,
+            L1Cache<Long, OrganizationDef> organizationL1Cache,
+            @org.springframework.beans.factory.annotation.Qualifier("roleL1Cache")
+            L1Cache<Long, RoleDef> roleL1Cache,
+            @org.springframework.beans.factory.annotation.Qualifier("positionRoleL1Cache")
+            L1Cache<Long, RoleDef> positionRoleL1Cache,
+            L1Cache<String, PrivilegeDef> privilegeL1Cache,
+            L2RedisCache<PersonDef> personL2Cache,
+            L2RedisCache<OrganizationDef> organizationL2Cache,
+            L2RedisCache<RoleDef> roleL2Cache,
+            L2RedisCache<PrivilegeDef> privilegeL2Cache,
+            CacheKeyBuilder cacheKeyBuilder,
+            InvalidationEventPublisher invalidationPublisher,
+            CacheWarmer cacheWarmer) {
+
+        log.info("Creating RedisSecurityDataStorage with typed role caches");
+        RedisSecurityDataStorage storage = new RedisSecurityDataStorage(
+            properties,
+            personL1Cache,
+            organizationL1Cache,
+            roleL1Cache,
+            positionRoleL1Cache,
+            privilegeL1Cache,
+            personL2Cache,
+            organizationL2Cache,
+            roleL2Cache,
+            privilegeL2Cache,
+            cacheKeyBuilder,
+            invalidationPublisher,
+            cacheWarmer
+        );
+        storage.initialize();
         return storage;
     }
 
