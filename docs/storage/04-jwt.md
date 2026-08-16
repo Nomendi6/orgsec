@@ -82,16 +82,8 @@ For tests, supply a `JwtDecoder` bean manually - the simplest implementation is 
 ```yaml
 orgsec:
   storage:
-    primary: jwt
     features:
-      jwt-enabled: true
-      memory-enabled: true                  # or redis-enabled: true
-      hybrid-mode-enabled: true             # required for delegation
-    data-sources:
-      person: jwt
-      organization: primary                 # = memory or redis
-      role: primary
-      privilege: memory
+      jwt-enabled: true                     # person from the token; everything else from the delegate
     jwt:
       claim-name: orgsec
       claim-version: "1.0"
@@ -127,13 +119,13 @@ The JWT must carry an `orgsec` claim (or the name you set in `claim-name`) shape
       {
         "organizationId": 22,
         "companyId": 1,
-        "pathId": "|1|10|22|",
+        "pathId": "22",
         "positionRoleIds": [101, 205]
       },
       {
         "organizationId": 99,
         "companyId": 99,
-        "pathId": "|99|",
+        "pathId": "99",
         "positionRoleIds": [307]
       }
     ]
@@ -146,6 +138,28 @@ The fields:
 - **`version`** - matches `claim-version` (default `1.0`). Mismatched versions are rejected.
 - **`person`** - the `PersonDef` body, minus `organizationsMap` (which is built from `memberships`).
 - **`memberships`** - one entry per organization the person belongs to. The `positionRoleIds` are looked up against the delegate storage; the delegate is expected to know the role's privileges.
+
+### `pathId`: the organization's own segment
+
+The canonical value is the organization's **local path segment** - `"22"`, `"ow"` - not its full
+path. That is what `OrganizationDef.pathId` means everywhere else in OrgSec, and what the
+`OrganizationLoader` puts there when reading from the database.
+
+For compatibility, a **full path** (`"|1|10|22|"`) is also accepted and normalized to its last
+segment, so a realm running an older mapper build keeps working and tokens already in flight stay
+valid. Emit the local segment in new deployments.
+
+Nothing else is derived from `pathId`. In particular the hierarchy anchors `parentPath` and
+`companyParentPath` are **not** reconstructed from it - a segment says nothing about ancestry, and a
+guessed anchor would be an authorization decision made on invented data. Those come from the
+delegate storage, which is the authority for the hierarchy.
+
+Any other value - absent, blank, a bare `"|"`, an unterminated `"|1|10"`, an empty inner segment, an
+illegal character, or a segment longer than 30 characters - **rejects the entire claim**, and the
+request proceeds as unauthenticated. Only the offending membership is not dropped: a principal that
+silently lost one membership looks legitimately smaller than it is, which is the more dangerous
+failure. `parsePersonFromToken` returns `null` in all these cases and never throws, so a malformed
+token surfaces as 401/403 rather than 500.
 
 The JWT parser is permissive about unknown JSON fields (`@JsonIgnoreProperties(ignoreUnknown = true)` is set on the DTOs) so older or richer claim schemas can flow through without breaking deserialization - only fields OrgSec recognizes are used.
 
@@ -171,24 +185,31 @@ You should still:
 - **Use short token TTLs.** A revoked role still appears valid until the token expires. Five-to-fifteen-minute access tokens with refresh are typical for OrgSec deployments.
 - **Use a separate Person API role.** When Keycloak's service account calls back into OrgSec to fetch the person data, that call is authorized by `orgsec.api.person.required-role` (default `ORGSEC_API_CLIENT`). Spring Security's `hasRole(...)` adds the `ROLE_` prefix automatically - the service-account principal must therefore carry authority `ROLE_ORGSEC_API_CLIENT` (or whatever value you set, prefixed with `ROLE_`). Do not reuse the role with end-user privileges.
 
-## Combining JWT with Redis delegate
+## Combining JWT with a Redis delegate
 
-When you have many instances and need cached organization data, route the org / role types to Redis:
+Activating Redis alongside JWT does **not** make Redis the delegate - the delegate stays the
+in-memory storage unless you declare it yourself:
+
+```java
+@Bean("jwtDelegateStorage")
+SecurityDataStorage jwtDelegateStorage(RedisSecurityDataStorage redis) {
+    return redis;
+}
+```
+
+> **Weigh this carefully.** The Redis backend returns `null` on a miss - it does not read through to
+> a database - and the JWT backend treats a missing organization as an unproven membership and drops
+> it. A cold cache after a deployment, or an entry that aged out, therefore denies every request
+> rather than merely slowing it down. If you take this route, register the `CacheWarmer` loaders and
+> treat cache population as a startup dependency.
 
 ```yaml
 orgsec:
   storage:
-    primary: jwt
+    strict-activation: true
     features:
       jwt-enabled: true
-      redis-enabled: true
-      memory-enabled: true
-      hybrid-mode-enabled: true
-    data-sources:
-      person: jwt
-      organization: redis
-      role: redis
-      privilege: memory
+      redis-enabled: true                   # in-memory stands down from @Primary
     redis:
       enabled: true                         # gates the Redis auto-configuration
       host: ${REDIS_HOST}

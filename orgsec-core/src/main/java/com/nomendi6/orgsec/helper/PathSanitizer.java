@@ -95,6 +95,52 @@ public class PathSanitizer {
     }
 
     /**
+     * Validates that a path is both well-formed and usable as a hierarchy anchor.
+     *
+     * <p>{@link #validatePath} and {@link #isUsableHierarchyAnchor} answer different questions, and
+     * a hierarchy comparison needs both answers to be yes. Calling only the first accepts
+     * {@code "|"}, which every path starts with; calling only the second accepts
+     * {@code "|A|B"} or {@code "|A||"}, which compare in ways the caller does not intend. This
+     * combines them so no caller has to remember the pairing.
+     *
+     * @param path The path to validate
+     * @return The validated path, unchanged
+     * @throws OrgsecSecurityException if the path is null, blank, {@code "|"}, malformed, too deep,
+     *     or holds an illegal or over-long segment
+     */
+    public static String validateHierarchyAnchor(String path) {
+        if (!isUsableHierarchyAnchor(path)) {
+            throw new OrgsecSecurityException(
+                "Path cannot anchor a hierarchy comparison: " + (path == null ? "null" : "'" + path + "'")
+            );
+        }
+        return validatePath(path);
+    }
+
+    /**
+     * Returns the last segment of a canonical path.
+     *
+     * <p>{@code "|1|10|22|"} yields {@code "22"}. This is the inverse of {@link #buildPath} for the
+     * leaf: an organization's {@code pathId} is its own segment, while its full path is what the
+     * parent chain plus that segment spells out.
+     *
+     * @param path A path that has already passed {@link #validateHierarchyAnchor}
+     * @return The last non-empty segment
+     * @throws OrgsecSecurityException if the path is not a usable anchor or holds no segment
+     */
+    public static String lastSegment(String path) {
+        validateHierarchyAnchor(path);
+
+        String[] segments = path.split("\\|");
+        for (int i = segments.length - 1; i >= 0; i--) {
+            if (!segments[i].isEmpty()) {
+                return segments[i];
+            }
+        }
+        throw new OrgsecSecurityException("Path holds no segment: '" + path + "'");
+    }
+
+    /**
      * Validates a single path ID.
      *
      * @param pathId The path ID to validate

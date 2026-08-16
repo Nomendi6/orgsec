@@ -116,12 +116,17 @@ Successful response (HTTP 200):
     {
       "organizationId": 22,
       "companyId": 1,
-      "pathId": "|1|10|22|",
+      "pathId": "22",
       "positionRoleIds": [101, 205]
     }
   ]
 }
 ```
+
+`pathId` is the organization's **own path segment**, which is what `OrganizationLoader` reads out of
+the database - not the full path. The mapper copies this field into the token verbatim; the JWT
+backend still accepts a full path for compatibility, but new deployments should emit the segment.
+See [Storage / JWT - `pathId`](../storage/04-jwt.md#pathid-the-organizations-own-segment).
 
 Error responses:
 

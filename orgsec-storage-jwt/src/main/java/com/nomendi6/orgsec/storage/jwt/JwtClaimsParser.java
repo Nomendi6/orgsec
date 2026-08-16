@@ -1,6 +1,7 @@
 package com.nomendi6.orgsec.storage.jwt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nomendi6.orgsec.exceptions.OrgsecSecurityException;
 import com.nomendi6.orgsec.helper.PathSanitizer;
 import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.PersonDef;
@@ -51,8 +52,15 @@ public class JwtClaimsParser {
     /**
      * Parse PersonDef from JWT token string.
      *
+     * <p>Fail-closed and total: any problem with the claim - a rejected token, a missing or
+     * unsupported claim, a malformed {@code pathId} - yields {@code null}, never an exception. A
+     * claim OrgSec cannot fully understand is not partially trusted; the whole principal is
+     * discarded, and the caller treats a {@code null} person as "not authorized". Letting an
+     * exception out would surface a malformed token as HTTP 500 instead of 401/403, and would put
+     * the parser's internals in a response body.
+     *
      * @param jwtToken the JWT token string (without Bearer prefix)
-     * @return PersonDef or null if claims not found
+     * @return PersonDef, or null if the claim is absent, unsupported or not fully valid
      */
     public PersonDef parsePersonFromToken(String jwtToken) {
         if (jwtToken == null || jwtToken.isEmpty()) {
@@ -79,17 +87,16 @@ public class JwtClaimsParser {
 
             // Validate version
             if (!isVersionSupported(claimsDTO.getVersion())) {
-                log.error("Unsupported OrgSec claims version: {}", claimsDTO.getVersion());
-                throw new IllegalArgumentException("Unsupported OrgSec claims version: " + claimsDTO.getVersion());
+                log.warn("Unsupported OrgSec claims version: {}", claimsDTO.getVersion());
+                return null;
             }
 
             // Map to PersonDef
             return mapToPersonDef(claimsDTO);
 
-        } catch (IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Failed to parse OrgSec claims from token", e);
+        } catch (RuntimeException e) {
+            log.warn("Rejecting OrgSec claim: {}", e.getMessage());
+            log.debug("Failed to parse OrgSec claims from token", e);
             return null;
         }
     }
@@ -151,17 +158,18 @@ public class JwtClaimsParser {
 
     /**
      * Map MembershipClaimDTO to OrganizationDef.
+     *
+     * <p>Hierarchy anchors ({@code parentPath}, {@code companyParentPath}) are deliberately left
+     * unset. They cannot be derived from what the claim carries - a {@code pathId} names the
+     * organization's own segment, not its ancestry - and a guessed anchor is an authorization
+     * decision made on invented data. {@code JwtSecurityDataStorage} fills them in from the
+     * delegate storage, which is the authority for the hierarchy.
      */
     private OrganizationDef mapMembershipToOrganization(MembershipClaimDTO membership) {
         OrganizationDef orgDef = new OrganizationDef();
         orgDef.organizationId = membership.getOrganizationId();
         orgDef.companyId = membership.getCompanyId();
-        orgDef.pathId = PathSanitizer.sanitizePath(membership.getPathId());
-
-        // Calculate parentPath from pathId
-        if (orgDef.pathId != null) {
-            orgDef.parentPath = calculateParentPath(orgDef.pathId);
-        }
+        orgDef.pathId = resolvePathId(membership.getPathId());
 
         // Note: positionRoleIds are stored for later resolution with delegate storage
         // The actual RoleDef objects will be populated by JwtSecurityDataStorage
@@ -171,22 +179,36 @@ public class JwtClaimsParser {
     }
 
     /**
-     * Calculate parent path from full path.
-     * Example: |1|10|15| -> |1|10|
+     * Reads a membership {@code pathId} in either the canonical or the legacy shape.
+     *
+     * <p>The canonical claim carries the organization's own segment - {@code "ow"}, {@code "22"} -
+     * which is what {@code OrganizationDef.pathId} means everywhere else in OrgSec. Tokens minted
+     * by older mapper builds carry the full path instead ({@code "|root|ow|"}); those are accepted
+     * and normalized to their last segment, so a realm can be migrated without invalidating tokens
+     * already in flight.
+     *
+     * <p>Anything else - absent, blank, a bare {@code "|"}, an unterminated {@code "|A|B"}, an empty
+     * inner segment, an illegal character, or an over-long segment - fails the whole claim rather
+     * than degrading to a partial membership. A membership whose organization cannot be identified
+     * cannot be checked against the delegate either, and silently dropping just that entry would
+     * leave the principal looking legitimately smaller than it is.
+     *
+     * @param rawPathId the claim value, possibly null
+     * @return the local segment
+     * @throws com.nomendi6.orgsec.exceptions.OrgsecSecurityException if the value is neither shape
      */
-    private String calculateParentPath(String pathId) {
-        if (pathId == null || pathId.length() <= 1) {
-            return "|";
+    private String resolvePathId(String rawPathId) {
+        if (rawPathId == null || rawPathId.trim().isEmpty()) {
+            throw new OrgsecSecurityException("Membership pathId is missing");
         }
 
-        String path = pathId.endsWith("|") ? pathId.substring(0, pathId.length() - 1) : pathId;
-
-        int lastSeparator = path.lastIndexOf('|');
-        if (lastSeparator <= 0) {
-            return "|";
+        String raw = rawPathId.trim();
+        try {
+            return PathSanitizer.validatePathId(raw);
+        } catch (OrgsecSecurityException notALocalSegment) {
+            // Legacy full path. lastSegment re-validates, so "|", "|A|B" and "|A||" still fail.
+            return PathSanitizer.lastSegment(raw);
         }
-
-        return path.substring(0, lastSeparator + 1);
     }
 
     /**
