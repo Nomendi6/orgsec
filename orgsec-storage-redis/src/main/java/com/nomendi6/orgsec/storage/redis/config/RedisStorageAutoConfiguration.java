@@ -378,10 +378,14 @@ public class RedisStorageAutoConfiguration {
 
     /**
      * Main RedisSecurityDataStorage bean.
-     * This is the primary implementation of SecurityDataStorage interface.
+     *
+     * <p>Deliberately not {@code @Primary}. When JWT storage is also active it is
+     * {@code JwtSecurityDataStorage} that must be primary, and a {@code @Primary} marker on this
+     * implementation made that a race between two auto-configurations. The primary designation
+     * now lives on {@link #orgsecPrimaryStorage(RedisSecurityDataStorage)}, which is registered
+     * only when JWT is off.
      */
     @Bean
-    @org.springframework.context.annotation.Primary
     public RedisSecurityDataStorage redisSecurityDataStorage(
             RedisStorageProperties properties,
             L1Cache<Long, PersonDef> personL1Cache,
@@ -416,5 +420,29 @@ public class RedisStorageAutoConfiguration {
         storage.initialize();
 
         return storage;
+    }
+
+    /**
+     * Marks the Redis storage as the primary {@link com.nomendi6.orgsec.storage.SecurityDataStorage}
+     * for Redis-only deployments.
+     *
+     * <p>Strictly an alias: it returns the very same instance, undecorated, so
+     * {@code orgsecPrimaryStorage == redisSecurityDataStorage} holds. Anything else would give
+     * invalidation callbacks and the health indicator a different object than the one serving
+     * lookups.
+     */
+    @Bean("orgsecPrimaryStorage")
+    @org.springframework.context.annotation.Primary
+    @ConditionalOnMissingBean(name = "orgsecPrimaryStorage")
+    @ConditionalOnProperty(
+        name = "orgsec.storage.features.jwt-enabled",
+        havingValue = "false",
+        matchIfMissing = true
+    )
+    public com.nomendi6.orgsec.storage.SecurityDataStorage orgsecPrimaryStorage(
+            RedisSecurityDataStorage redisSecurityDataStorage) {
+
+        log.info("Configuring RedisSecurityDataStorage as PRIMARY storage (JWT storage not active)");
+        return redisSecurityDataStorage;
     }
 }

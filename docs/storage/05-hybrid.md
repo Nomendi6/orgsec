@@ -1,60 +1,73 @@
 # Hybrid Storage
 
-Hybrid storage routes different OrgSec data types to different backends.
+> **Per-data-type routing does not exist in 1.0.x.** `orgsec.storage.hybrid-mode-enabled` and
+> everything under `orgsec.storage.data-sources.*` bind onto `StorageFeatureFlags` and are then read
+> by nothing - `getDataSource(...)` has no call sites outside that class. Setting them changes no
+> behaviour. Earlier versions of this page described them as a working router; they never were.
+>
+> What *does* work is the one hybrid topology OrgSec actually implements: the JWT backend answering
+> `Person` from the token and forwarding every other type to a single delegate storage. That is what
+> the rest of this page documents.
 
-The common setup is:
+## What the JWT backend actually does
 
-- current person from JWT
-- organizations and roles from Redis or in-memory
-- privilege definitions from in-memory
+`JwtSecurityDataStorage` is a wrapper, not a router. It has exactly one delegate, used for every
+data type it does not serve itself:
 
-This keeps tokens small while still making user identity stateless.
+| Data type | Served by | Notes |
+| --- | --- | --- |
+| `person` | the JWT claim on the current request | Parsed per request; a principal cache with a TTL sits in front of it. |
+| `organization` | the delegate | Also the authority for `companyId`, name and hierarchy anchors - the token's values are not trusted for these. |
+| `role` | the delegate | Position roles named by the claim are looked up here. |
+| `privilege` | the delegate | Registered at startup by the application. |
 
-## Enable Hybrid Mode
+There is no per-type choice: whatever bean is registered as the delegate answers all three.
+
+## Enabling it
 
 ```yaml
 orgsec:
   storage:
-    primary: redis
     features:
-      memory-enabled: true
-      redis-enabled: true
       jwt-enabled: true
-      hybrid-mode-enabled: true
-    data-sources:
-      person: jwt
-      organization: primary
-      role: primary
-      privilege: memory
 ```
 
-`hybrid-mode-enabled` is the switch that makes `data-sources` matter. When it is false, `primary` handles every data type.
+`orgsec-storage-jwt` must be on the classpath; if it is not, startup fails with an explicit message
+rather than silently falling back.
 
-## Common Topologies
+The delegate defaults to the in-memory storage, published as the bean named
+`delegateSecurityDataStorage`. To put your own store behind JWT, declare a bean of that name:
 
-| Topology | Configuration idea |
-| --- | --- |
-| OAuth2 app, one JVM | `person: jwt`, `organization: memory`, `role: memory`, `privilege: memory` |
-| OAuth2 app, many JVMs | `person: jwt`, `organization: redis`, `role: redis`, `privilege: memory` |
-| Migration from memory to Redis | `primary: redis`, temporarily route selected data types to `memory` |
+```java
+@Bean("delegateSecurityDataStorage")
+SecurityDataStorage delegateSecurityDataStorage() {
+    return myOwnStorage;
+}
+```
 
-## How Routing Is Evaluated
+## Redis behind JWT
 
-For each read, OrgSec first checks whether hybrid mode is enabled. If it is not, the `primary` backend receives every call. If it is enabled, the `data-sources` entry for the requested data type is used:
+Redis is **never** selected as the JWT delegate automatically, even when the Redis backend is
+active. It has to be opted into by name:
 
-| Data type | Typical route | Reason |
-| --- | --- | --- |
-| `person` | `jwt` | Current user data travels with the request. |
-| `organization` | `redis` or `memory` | Organization hierarchy is shared reference data. |
-| `role` | `redis` or `memory` | Role assignments need cache invalidation after changes. |
-| `privilege` | `memory` | Privilege definitions are usually application startup data. |
+```java
+@Bean("jwtDelegateStorage")
+SecurityDataStorage jwtDelegateStorage(RedisSecurityDataStorage redis) {
+    return redis;
+}
+```
 
-`primary` inside `data-sources` means "use whatever `orgsec.storage.primary` names", not "always use memory".
+Think twice before doing so. The Redis backend does not read through to a database on a miss: it
+returns `null`. The JWT backend treats a missing organization as "this membership is not proven" and
+drops it. A cold cache after a deployment, or an entry that has simply aged out, therefore does not
+degrade into slower authorization - it degrades into **denied** authorization, for every user, until
+the cache is repopulated. If you take this route, register `CacheWarmer` loaders and treat cache
+population as a startup dependency.
 
-## Missing Data
+## Missing data
 
-Hybrid mode does not create read-through behavior. If `organization: redis` and Redis does not contain an organization, OrgSec receives `null` and denies. If `person: jwt` and the token has no valid OrgSec claim, the request is not authorized.
-
-Plan warmup and invalidation for every backend used in the route.
+None of these paths create read-through behaviour. If the delegate does not have an organization,
+OrgSec receives `null` and denies. If the token carries no valid OrgSec claim, the request is not
+authorized. Plan warm-up and invalidation for whichever backend serves the delegate.
 
 Next: [Spring Boot starter](../spring/01-spring-boot-starter.md).

@@ -1,3 +1,6 @@
 org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
   com.nomendi6.orgsec.autoconfigure.OrgsecAutoConfiguration,\
   com.nomendi6.orgsec.autoconfigure.PersonApiServiceConfiguration
+
+org.springframework.boot.env.EnvironmentPostProcessor=\
+  com.nomendi6.orgsec.autoconfigure.OrgsecStorageActivationValidator

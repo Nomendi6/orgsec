@@ -59,24 +59,33 @@ The module pulls in `spring-boot-starter-data-redis` and the Lettuce client. You
 
 ## Activation
 
-Three flags turn the backend on. All three must be set:
+Set both flags, to the same value:
 
 ```yaml
 orgsec:
   storage:
-    primary: redis
     features:
-      memory-enabled: true                  # in-memory remains available as L1 source
-      redis-enabled: true
+      redis-enabled: true                   # in-memory storage stands down from @Primary
     redis:
       enabled: true                         # auto-configures the Redis beans
 ```
 
-- **`orgsec.storage.redis.enabled: true`** - gates the `RedisStorageAutoConfiguration` itself. Without this, no Redis beans are created, regardless of the flags above.
-- **`orgsec.storage.features.redis-enabled: true`** - tells the storage facade that Redis is an active backend, so it can be picked by `primary` or by hybrid `data-sources` routing.
-- **`orgsec.storage.primary: redis`** - selects Redis as the active backend.
+- **`orgsec.storage.redis.enabled: true`** - the only switch that activates the backend. It gates `RedisStorageAutoConfiguration`; without it no Redis bean is created.
+- **`orgsec.storage.features.redis-enabled: true`** - does *not* activate anything. It only tells the in-memory storage to stop claiming `@Primary`, so that the Redis storage can take over.
 
-The three-flag design lets you ship the Redis JAR on the classpath without auto-activating it (useful for builds that include several backends and choose at deploy time). When `primary: redis`, the Redis backend's `SecurityDataStorage` bean is `@Primary`; when `primary` is something else, the Redis backend can still serve specific entity types under hybrid mode.
+Because the two do different jobs, setting only one produces a broken context: `redis.enabled` alone leaves two beans competing for `@Primary`, and `features.redis-enabled` alone leaves the application with no primary storage at all. OrgSec checks the pair before the context is built and reports it by name:
+
+```yaml
+orgsec:
+  storage:
+    strict-activation: true                 # refuse to start on a mismatch; default false in 1.0.x
+```
+
+With `strict-activation: false` (the 1.0.x default) a mismatch is logged as a warning and the application still starts, so that applications generated against earlier versions survive the upgrade. **The 2.0.0 default is `true`.**
+
+Keeping the Redis JAR on the classpath without activating it is still supported - just leave both flags unset.
+
+`orgsec.storage.primary` is **not** part of activation and is not read by any code; see [properties reference](../reference/properties.md#storagefeatureflags---orgsecstorage).
 
 ## Connection settings
 

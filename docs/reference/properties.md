@@ -46,11 +46,11 @@ The conventions used in the tables below:
 
 ### Storage type and in-memory tuning - `orgsec.storage.*` (legacy properties on `OrgsecProperties`)
 
-These properties predate `StorageFeatureFlags`. The canonical way to select a backend is `orgsec.storage.primary` (see the next section). `orgsec.storage.type` is kept for backwards compatibility; the in-memory sub-section holds reserved tuning knobs.
+These properties predate `StorageFeatureFlags`. Neither of them selects a backend; see [Feature flags](#feature-flags---orgsecstoragefeatures) for the switches that actually do. The in-memory sub-section holds reserved tuning knobs.
 
 | Property                              | Type      | Default                | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ---------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `type`                                | `String`  | `"inmemory"`           | Legacy storage type selector. Prefer `orgsec.storage.primary`.                           | [Choose storage](../storage/01-choose-storage.md) |
+| `type`                                | `String`  | `"inmemory"`           | Legacy storage type selector. **Inert** - no code reads it.                              | [Choose storage](../storage/01-choose-storage.md) |
 | `inmemory.cache-ttl`                  | `int`     | `3600`                 | Reserved; not enforced by the in-memory backend in 1.0.x.                                | [Storage / In-memory](../storage/02-in-memory.md#configuration) |
 | `inmemory.max-entries`                | `int`     | `10000`                | Reserved; not enforced by the in-memory backend in 1.0.x.                                | [Storage / In-memory](../storage/02-in-memory.md#configuration) |
 
@@ -78,34 +78,48 @@ Each entry under `business-roles` is a *named* business role with a list of supp
 
 ## `StorageFeatureFlags` - `orgsec.storage.*`
 
-`StorageFeatureFlags` (in `orgsec-storage-inmemory`) is the canonical place to configure the active backend, the fallback, the per-feature flags, and per-data-type routing.
+`StorageFeatureFlags` (in `orgsec-storage-inmemory`) is the binding target for `orgsec.storage.*`.
 
-### Active backend - `orgsec.storage.*`
+> **Only three of these properties do anything.** Backend selection happens through
+> `@ConditionalOnProperty` evaluated against the `Environment` when the context starts:
+> `orgsec.storage.redis.enabled` activates Redis, `orgsec.storage.features.jwt-enabled` activates
+> JWT, and `orgsec.storage.strict-activation` decides how a contradictory pair is treated. The
+> remaining properties on this page - `primary`, `fallback`, `hybrid-mode-enabled`,
+> `memory-enabled` and everything under `data-sources` - are bound and then read by nothing.
+> `JwtSecurityDataStorage` has a single delegate for every data type; there is no per-data-type
+> router. They are listed here because they still bind, not because they take effect.
+>
+> The setter-style methods on `StorageFeatureFlags` (`enableJwtStorage()`, `setPersonDataSource(...)`)
+> are inert for the same reason: wiring is decided once, at startup, from the `Environment`.
 
-| Property                              | Type      | Default       | Description                                                                              | See                                                            |
-| ------------------------------------- | --------- | ------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `primary`                             | `String`  | `"memory"`    | Active backend: `memory` / `redis` / `jwt`.                                              | [Choose storage](../storage/01-choose-storage.md) |
-| `fallback`                            | `String`  | `"memory"`    | Reserved/informational in 1.0.x. Exposed by `StorageFeatureFlags` for higher-level routing and future fallback behavior; the Redis backend itself does not fall back to this storage on miss or outage.                                 | [Choose storage](../storage/01-choose-storage.md)      |
+### Activation - `orgsec.storage.*`
+
+| Property                              | Type      | Default   | Description                                                                              | See                                                            |
+| ------------------------------------- | --------- | --------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `strict-activation`                   | `boolean` | `false`   | How to treat `orgsec.storage.redis.enabled` disagreeing with `orgsec.storage.features.redis-enabled`. `false` logs a warning and starts; `true` refuses to start. Checked by an `EnvironmentPostProcessor` before any bean is defined. **The 2.0.0 default is `true`.** | [Storage / Redis](../storage/03-redis.md) |
+| `primary`                             | `String`  | `"memory"`| **Inert.** No code reads it.                                                             | [Choose storage](../storage/01-choose-storage.md) |
+| `fallback`                            | `String`  | `"memory"`| **Inert.** No code reads it; the Redis backend does not fall back to another storage on miss or outage. | [Choose storage](../storage/01-choose-storage.md) |
 
 ### Feature flags - `orgsec.storage.features.*`
 
 | Property                              | Type      | Default | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `memory-enabled`                      | `boolean` | `true`  | Activate the in-memory backend (also used as a delegate).                                | [Storage / In-memory](../storage/02-in-memory.md)              |
-| `redis-enabled`                       | `boolean` | `false` | Activate the Redis backend (must be `true` alongside `primary=redis`).                   | [Storage / Redis](../storage/03-redis.md)                      |
-| `jwt-enabled`                         | `boolean` | `false` | Activate the JWT backend (must be `true` alongside `primary=jwt`).                       | [Storage / JWT](../storage/04-jwt.md)                          |
-| `hybrid-mode-enabled`                 | `boolean` | `false` | When `true`, honor `data-sources` per data type. When `false`, route everything to `primary`. | [Hybrid storage](../storage/05-hybrid.md) |
+| `jwt-enabled`                         | `boolean` | `false` | Activates the JWT backend. Requires `orgsec-storage-jwt` on the classpath - otherwise startup fails with an explicit message. | [Storage / JWT](../storage/04-jwt.md)                          |
+| `redis-enabled`                       | `boolean` | `false` | Does **not** activate Redis - `orgsec.storage.redis.enabled` does. This flag only decides whether the in-memory storage keeps `@Primary`, so it must be set to the same value. See `strict-activation`. | [Storage / Redis](../storage/03-redis.md)                      |
+| `memory-enabled`                      | `boolean` | `true`  | **Inert.** The in-memory backend is always available as a delegate.                      | [Storage / In-memory](../storage/02-in-memory.md)              |
+| `hybrid-mode-enabled`                 | `boolean` | `false` | **Inert.** There is no per-data-type router to switch on.                                | [Hybrid storage](../storage/05-hybrid.md) |
 
-### Hybrid-mode routing - `orgsec.storage.data-sources.*`
+### Per-data-type routing - `orgsec.storage.data-sources.*`
 
-Each entry routes one entity type to a specific source. Honored only when `hybrid-mode-enabled: true`.
+**Inert in 1.0.x.** These bind onto `StorageFeatureFlags` and are read by nothing; `getDataSource(...)`
+has no call sites outside that class. Setting them has no effect on which backend answers a lookup.
 
 | Property                              | Type     | Default     | Description                                                                              | See                                                            |
 | ------------------------------------- | -------- | ----------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `person`                              | `String` | `"primary"` | One of `primary`, `memory`, `redis`, `jwt`.                                              | [Storage / JWT](../storage/04-jwt.md#orgsec-configuration)     |
-| `organization`                        | `String` | `"primary"` | One of `primary`, `memory`, `redis`, `jwt`.                                              | [Hybrid storage](../storage/05-hybrid.md) |
-| `role`                                | `String` | `"primary"` | One of `primary`, `memory`, `redis`, `jwt`.                                              | [Hybrid storage](../storage/05-hybrid.md) |
-| `privilege`                           | `String` | `"memory"`  | One of `primary`, `memory`, `redis`, `jwt`. Recommended to keep at `memory`.             | [Hybrid storage](../storage/05-hybrid.md) |
+| `person`                              | `String` | `"primary"` | **Inert.**                                                                               | [Storage / JWT](../storage/04-jwt.md#orgsec-configuration)     |
+| `organization`                        | `String` | `"primary"` | **Inert.**                                                                               | [Hybrid storage](../storage/05-hybrid.md) |
+| `role`                                | `String` | `"primary"` | **Inert.**                                                                               | [Hybrid storage](../storage/05-hybrid.md) |
+| `privilege`                           | `String` | `"memory"`  | **Inert.**                                                                               | [Hybrid storage](../storage/05-hybrid.md) |
 
 ---
 

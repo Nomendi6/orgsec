@@ -4,6 +4,7 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,10 +29,14 @@ public class StorageConfiguration {
     /**
      * Provides InMemorySecurityDataStorage as @Primary ONLY when JWT and Redis are disabled.
      * This is the default storage when no other storage modules are active.
+     *
+     * <p>Backs off if the application already defines a bean of this name. Before 1.0.5 such an
+     * override collided with this definition instead of replacing it.
      */
     @Bean
     @Primary
     @Qualifier("primaryInMemoryStorage")
+    @ConditionalOnMissingBean(name = "primaryInMemoryStorage")
     @ConditionalOnProperty(
         prefix = "orgsec.storage.features",
         name = {"jwt-enabled", "redis-enabled"},
@@ -48,21 +53,48 @@ public class StorageConfiguration {
      * This bean is NEVER @Primary - it only serves as a delegate for other storage implementations.
      * Note: We don't use @ConditionalOnProperty here because this bean should always be available
      * as a delegate, regardless of which storage modules are enabled.
+     *
+     * <p>Backs off if the application already defines a bean of this name, which is how an
+     * application substitutes its own authoritative store behind JWT.
      */
     @Bean
     @Qualifier("delegateSecurityDataStorage")
+    @ConditionalOnMissingBean(name = "delegateSecurityDataStorage")
     public SecurityDataStorage delegateSecurityDataStorage(InMemorySecurityDataStorage inMemoryStorage) {
         log.info("Registering InMemorySecurityDataStorage as delegate storage for hybrid implementations");
         return inMemoryStorage;
     }
 
     /**
-     * JWT Security Data Storage (placeholder implementation)
-     * This will be activated when JWT features are enabled AND real JWT module is NOT available
+     * The storage {@code JwtSecurityDataStorage} resolves organizations, anchors and roles from.
+     *
+     * <p>Declared here, in the in-memory module, on purpose: the default delegate must never be
+     * Redis. A Redis delegate returns {@code null} for anything not currently cached, and the JWT
+     * storage treats a missing organization as "membership not proven" and drops it - so a cold or
+     * expired cache silently degrades into deny-all. Applications that still want Redis behind JWT
+     * declare {@code @Bean("jwtDelegateStorage")} themselves and take on registering the
+     * {@code CacheWarmer} loaders that keep it populated.
      */
-    @Bean
+    @Bean("jwtDelegateStorage")
+    @ConditionalOnMissingBean(name = "jwtDelegateStorage")
     @ConditionalOnProperty(name = "orgsec.storage.features.jwt-enabled", havingValue = "true")
-    @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass("com.nomendi6.orgsec.storage.jwt.JwtSecurityDataStorage")
+    public SecurityDataStorage jwtDelegateStorage(
+        @Qualifier("delegateSecurityDataStorage") SecurityDataStorage delegateSecurityDataStorage
+    ) {
+        log.info("Registering {} as the JWT delegate storage", delegateSecurityDataStorage.getProviderType());
+        return delegateSecurityDataStorage;
+    }
+
+    /**
+     * JWT Security Data Storage (placeholder implementation)
+     *
+     * @deprecated Inert since 1.0.5 and removed in 2.0.0. This used to be registered as a bean
+     *     named {@code jwtSecurityDataStorage} whenever {@code orgsec.storage.features.jwt-enabled}
+     *     was set without {@code orgsec-storage-jwt} on the classpath - the same bean name the real
+     *     JWT storage uses, but denying every lookup. Enabling JWT without the module is now
+     *     rejected at startup instead. Kept only so the 1.0.5 patch removes no public type.
+     */
+    @Deprecated
     public JwtSecurityDataStorage jwtSecurityDataStorage(StorageFeatureFlags featureFlags) {
         log.info("JWT Security Data Storage enabled (placeholder - real JWT module not found)");
         return new JwtSecurityDataStorage();
@@ -70,11 +102,12 @@ public class StorageConfiguration {
 
     /**
      * Redis Security Data Storage (placeholder implementation)
-     * This will be activated when Redis features are enabled AND real Redis module is NOT available
+     *
+     * @deprecated Inert since 1.0.5 and removed in 2.0.0. See
+     *     {@link #jwtSecurityDataStorage(StorageFeatureFlags)} - the same shadowing problem applied
+     *     to {@code redisSecurityDataStorage}.
      */
-    @Bean
-    @ConditionalOnProperty(name = "orgsec.storage.features.redis-enabled", havingValue = "true")
-    @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass("com.nomendi6.orgsec.storage.redis.RedisSecurityDataStorage")
+    @Deprecated
     public RedisSecurityDataStorage redisSecurityDataStorage(
         StorageFeatureFlags featureFlags,
         Optional<SecurityDataStorage> fallbackStorage
@@ -85,8 +118,10 @@ public class StorageConfiguration {
 
     /**
      * Placeholder JWT Security Data Storage implementation
-     * TODO: Move this to separate class when implementing JWT storage
+     *
+     * @deprecated Inert since 1.0.5 and removed in 2.0.0.
      */
+    @Deprecated
     public static class JwtSecurityDataStorage implements SecurityDataStorage {
 
         private static final Logger log = LoggerFactory.getLogger(JwtSecurityDataStorage.class);
@@ -144,8 +179,10 @@ public class StorageConfiguration {
 
     /**
      * Placeholder Redis Security Data Storage implementation
-     * TODO: Move this to separate class when implementing Redis storage
+     *
+     * @deprecated Inert since 1.0.5 and removed in 2.0.0.
      */
+    @Deprecated
     public static class RedisSecurityDataStorage implements SecurityDataStorage {
 
         private static final Logger log = LoggerFactory.getLogger(RedisSecurityDataStorage.class);
