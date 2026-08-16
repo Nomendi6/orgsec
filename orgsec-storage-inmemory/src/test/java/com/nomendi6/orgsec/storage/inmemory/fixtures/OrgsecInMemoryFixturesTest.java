@@ -142,12 +142,15 @@ class OrgsecInMemoryFixturesTest {
             List.of(privilegeTuple(1L, "DOCUMENT_ORGHD_R"))
         );
 
+        // Same contract a real party query (and the fixture) use: pathId is the local segment,
+        // parentPath is this node's full path including itself. Feeding the inverted pair here
+        // made this test pass against a broken fixture.
         OrganizationLoader organizationLoader = new OrganizationLoader(loaderRoles, loaderOrganizations);
         organizationLoader.loadOrganizationsFromQueryResults(
             List.of(
-                partyTuple(1L, "Acme", "|1|", null, 1L, "|1|"),
-                partyTuple(10L, "EU Region", "|1|10|", "|1|", 1L, "|1|"),
-                partyTuple(22L, "Shop-22", "|1|10|22|", "|1|10|", 1L, "|1|")
+                partyTuple(1L, "Acme", "1", "|1|", 1L, "|1|"),
+                partyTuple(10L, "EU Region", "10", "|1|10|", 1L, "|1|"),
+                partyTuple(22L, "Shop-22", "22", "|1|10|22|", 1L, "|1|")
             ),
             List.of()
         );
