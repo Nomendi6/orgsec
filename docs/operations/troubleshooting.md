@@ -29,21 +29,21 @@ If the identifier intentionally diverges from the convention, register the `Priv
 
 ### Redis backend not active despite the JAR being on the classpath
 
-**Cause.** Redis activation requires three flags. Setting only one or two leaves Redis disabled.
+**Cause.** `orgsec.storage.redis.enabled` is not `true`. It is the only flag that activates the backend, and it is easy to confuse with the similarly named `features.redis-enabled`.
 
-**Fix.** Verify all three are present in your configuration:
+**Fix.** Set both, to the same value:
 
 ```yaml
 orgsec:
   storage:
-    primary: redis
+    strict-activation: true       # turn the mismatch warning into a startup failure
     features:
-      redis-enabled: true
+      redis-enabled: true         # in-memory stands down from @Primary
     redis:
-      enabled: true
+      enabled: true               # gates RedisStorageAutoConfiguration
 ```
 
-The `redis.enabled: true` flag gates `RedisStorageAutoConfiguration` through `@ConditionalOnProperty`; without it no Redis bean is created. See [Storage / Redis - Activation](../storage/03-redis.md#activation).
+`redis.enabled` gates `RedisStorageAutoConfiguration` through `@ConditionalOnProperty`; without it no Redis bean is created. `features.redis-enabled` activates nothing on its own - it only stops the in-memory storage claiming `@Primary`. Since 1.0.5 a disagreement between them is reported by name at startup. See [Storage / Redis - Activation](../storage/03-redis.md#activation).
 
 ### Two `SecurityDataStorage` beans and `NoUniqueBeanDefinitionException`
 
@@ -160,13 +160,25 @@ If the circuit stays open forever, your Redis password / TLS / network is miscon
 
 **Cause.** The mapper's service-account principal does not carry the authority `ROLE_<requiredRole>`.
 
-**Fix.** Spring Security's `hasRole(...)` prepends `ROLE_` automatically. With the default `required-role: ORGSEC_API_CLIENT`, the principal must have `ROLE_ORGSEC_API_CLIENT`. Configure a `JwtAuthenticationConverter` that produces `ROLE_*` authorities from your IdP's claims (typically by reading `realm_access.roles` and prefixing). See [Keycloak Person API](../spring/03-keycloak-person-api.md) and [Spring Security Integration - Authority vs role](../spring/02-spring-security.md#authority-vs-role).
+**Fix.** Since 1.0.5 the OrgSec chain maps Keycloak's `realm_access.roles` to `ROLE_*` itself, so no converter is needed on your side - a `403` means the token genuinely lacks the role. Assign the realm role (default `ORGSEC_API_CLIENT`) to the mapper client's **service account**, not just to the client, and confirm it appears in `realm_access.roles` of the issued token. See [Keycloak Person API](../spring/03-keycloak-person-api.md).
 
 ### Person API returns `401 Unauthorized`
 
-**Cause.** No valid JWT on the request.
+**Cause.** No bearer token, or one your application's `JwtDecoder` rejects - expired, wrong issuer, or wrong audience.
 
-**Fix.** Verify the mapper's static bearer token is still valid (the mapper does not refresh it). If it has expired, paste a fresh token into the mapper config. For long-running deployments consider switching to `api-key` auth with infrastructure-managed rotation - see [Keycloak Person API - Choosing the auth type](../spring/03-keycloak-person-api.md#choosing-the-auth-type).
+**Fix.** The Person API chain validates the token with **your application's** decoder, so a token the rest of your API accepts is accepted here too, and one it rejects is rejected here too. Decode the mapper's token and compare `iss` and `aud` against what your decoder enforces (with JHipster, that is `jhipster.security.oauth2.audience`, not `spring.security.oauth2.resourceserver.jwt.audiences`). If the token has simply expired, check that the mapper is using `client_credentials` rather than a static bearer pasted into its configuration.
+
+### Application fails to start: `no JwtDecoder bean is present`
+
+**Cause.** `orgsec.api.person.enabled: true` without a resource server. Since 1.0.5 this is refused at startup rather than leaving the endpoint's protection to whichever chain happens to match it.
+
+**Fix.** Add `org.springframework.boot:spring-boot-starter-oauth2-resource-server` (the OrgSec starter declares it as `optional`) and configure a `JwtDecoder` - either your own bean or `spring.security.oauth2.resourceserver.jwt.issuer-uri`. If the Person API is not actually in use, set `orgsec.api.person.enabled: false`.
+
+### Application fails to start: `Contradictory OrgSec storage configuration`
+
+**Cause.** `orgsec.storage.redis.enabled` and `orgsec.storage.features.redis-enabled` disagree, and `orgsec.storage.strict-activation` is `true`.
+
+**Fix.** Set both flags to the same value. Only `orgsec.storage.redis.enabled` activates the backend; `features.redis-enabled` decides whether the in-memory storage keeps `@Primary`. With `strict-activation: false` (the 1.0.x default) the same condition is logged as a warning instead - do not leave it there, the 2.0.0 default is `true`.
 
 ## JWT-specific issues
 

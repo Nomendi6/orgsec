@@ -247,9 +247,11 @@ class MyRedisReplacementConfig {
 
 **Pattern for in-memory (no `@ConditionalOnMissingBean`):**
 
-The in-memory `primaryInMemoryStorage` bean is gated by `@ConditionalOnProperty` - it activates only when both `orgsec.storage.features.jwt-enabled=false` and `orgsec.storage.features.redis-enabled=false`. To replace it, either set one of those flags so the OrgSec bean steps aside, or exclude `StorageConfiguration` and wire the in-memory beans yourself. Reusing the bean name `primaryInMemoryStorage` directly is **not** safe - the OrgSec bean has no missing-bean guard, so you would hit a `BeanDefinitionOverrideException` or a silent override depending on your Spring Boot configuration.
+The in-memory `primaryInMemoryStorage` bean is gated by `@ConditionalOnProperty` - it activates only when both `orgsec.storage.features.jwt-enabled=false` and `orgsec.storage.features.redis-enabled=false`.
 
-In short: bean-name reuse is the right pattern only for JWT; for Redis and in-memory, prefer auto-config exclusion or feature-flag-driven deactivation.
+**Changed in 1.0.5:** `primaryInMemoryStorage` and `delegateSecurityDataStorage` now carry `@ConditionalOnMissingBean(name = ...)`, so declaring a bean under either name replaces the library's instead of colliding with it. Before 1.0.5 that produced a `BeanDefinitionOverrideException` or a silent override depending on your Spring Boot configuration, and auto-config exclusion was the only way.
+
+In short: bean-name reuse is now the supported pattern for the in-memory primary, the delegate, the JWT delegate (`jwtDelegateStorage`) and the Person API chain (`orgsecApiSecurityFilterChain`).
 
 ### 4. Replace the Person API filter chain
 
@@ -259,12 +261,14 @@ In short: bean-name reuse is the right pattern only for JWT; for Redis and in-me
 public SecurityFilterChain customOrgsecApiSecurityFilterChain(HttpSecurity http) throws Exception {
     return http
         .securityMatcher("/api/orgsec/person/**")
-        // ... your auth rules, e.g., API-key validation instead of hasRole
+        // ... your auth rules, e.g., API-key validation instead of a bearer token
         .build();
 }
 ```
 
 The bean's name (`orgsecApiSecurityFilterChain`) is what `PersonApiServiceConfiguration`'s `@ConditionalOnMissingBean(name = "orgsecApiSecurityFilterChain")` checks for; supplying it skips the default chain.
+
+Since 1.0.5 the default chain already authenticates the caller - bearer token through the application's `JwtDecoder`, Keycloak `realm_access.roles` mapped to `ROLE_*`, then `hasRole(requiredRole)` - so replacing it is only necessary for a genuinely different scheme such as mTLS or an API key. **Whatever you substitute must authenticate**: the chain you register is the only thing protecting `/api/orgsec/person/**`, and it returns the full organizational graph for any user id.
 
 ## Boot order summary
 

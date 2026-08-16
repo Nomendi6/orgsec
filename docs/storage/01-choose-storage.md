@@ -35,40 +35,32 @@ The storage choice answers "where do user grants come from?" It does not answer 
 
 ## Configuration Sketch
 
-```yaml
-orgsec:
-  storage:
-    primary: memory
-```
+In-memory needs no configuration - it is what runs when nothing else is switched on.
 
-For Redis:
+For Redis, set both flags (they do different jobs; see [Activation](./03-redis.md#activation)):
 
 ```yaml
 orgsec:
   storage:
-    primary: redis
+    strict-activation: true       # refuse to start if the two disagree
     features:
-      redis-enabled: true
+      redis-enabled: true         # in-memory stands down from @Primary
     redis:
-      enabled: true
+      enabled: true               # activates the Redis backend
 ```
 
-For JWT/hybrid:
+For JWT - person from the token, organizations and roles from the delegate:
 
 ```yaml
 orgsec:
   storage:
-    primary: jwt
     features:
       jwt-enabled: true
-      redis-enabled: true
-      hybrid-mode-enabled: true
-    data-sources:
-      person: jwt
-      organization: redis
-      role: redis
-      privilege: memory
 ```
+
+The delegate defaults to in-memory. Adding Redis to a JWT deployment does **not** make Redis the delegate; that requires declaring a `jwtDelegateStorage` bean, and carries a real availability risk. See [Hybrid storage](./05-hybrid.md).
+
+> `orgsec.storage.primary`, `hybrid-mode-enabled` and `data-sources.*` appear in older examples but are inert - no code reads them. There is no per-data-type router in 1.0.x.
 
 ## Migration Notes
 

@@ -191,14 +191,18 @@ com.example.orgsec.mongo.MongoStorageAutoConfiguration
 ```yaml
 orgsec:
   storage:
-    primary: mongo                          # or "memory", with hybrid mode and data-sources routing
     mongo:
       enabled: true
       connection-string: ${MONGO_URI}
       database: orgsec
 ```
 
-`StorageFeatureFlags` does not have a `features.mongo-enabled` flag. The application can still pick your backend by setting `primary: mongo` (which the starter does not validate against an enum) or by registering it via `data-sources`. If you want to integrate cleanly with the existing routing flags, add a custom configuration that inspects `StorageFeatureFlags` and decorates accordingly.
+Your own `@ConditionalOnProperty` on `orgsec.storage.mongo.enabled` is what activates the backend, and your `@Primary` `SecurityDataStorage` bean is what makes OrgSec use it. Nothing in `StorageFeatureFlags` selects a backend for you: `primary` and `data-sources.*` bind but are read by nothing, so setting `primary: mongo` has no effect.
+
+Two OrgSec beans you do need to account for, both in `orgsec-storage-inmemory`'s `StorageConfiguration`:
+
+- `primaryInMemoryStorage` is `@Primary` unless `orgsec.storage.features.jwt-enabled` or `redis-enabled` is `true`. Since 1.0.5 it also carries `@ConditionalOnMissingBean(name = "primaryInMemoryStorage")`, so declaring your backend under that bean name is a supported way to take over.
+- `delegateSecurityDataStorage` is what the JWT backend reads organizations and roles from. If your backend is meant to be the authoritative store behind JWT, declare it under that name (also `@ConditionalOnMissingBean` since 1.0.5).
 
 ## Testing
 
@@ -229,14 +233,16 @@ Run a notify followed by a read; verify the read returns the new value (or `null
 
 For a cache-style backend, a useful smoke test is to load the same dataset into both your backend and the in-memory backend, then run the same `PrivilegeChecker.checkOrganizationPrivilege` calls against each. The two should agree on every decision. Where they disagree, your backend has either richer semantics (fine) or a bug in the read/aggregation path (not fine).
 
-## Hybrid mode
+## Serving only some data types
 
-If you want your backend to participate in hybrid mode with `data-sources.person`, `.organization`, `.role`, `.privilege` routing, you need to integrate with the storage facade more deeply than the simple `@Primary` registration above. The 1.0.x facade hard-codes the backend names (`primary`, `memory`, `redis`, `jwt`) in `StorageFeatureFlags.getDataSource(...)` consumers. To plug a fourth backend cleanly, you have two options:
+**There is no per-data-type routing to hook into.** `StorageFeatureFlags.getDataSource(...)` has no consumers - the property binds and is then read by nothing - so a backend cannot be registered "for organizations only" through configuration. Two options remain:
 
-1. **Run as primary only.** Make your backend the `@Primary` `SecurityDataStorage` and ignore the routing flags. The simplest approach.
-2. **Wrap the existing backends.** Implement `SecurityDataStorage` as a *delegating facade* that reads from your backend or one of the existing ones based on per-data-type configuration. More flexible but requires more code.
+1. **Run as primary.** Make your backend the `@Primary` `SecurityDataStorage`. It answers every call. The simplest approach, and the one the SPI is shaped for.
+2. **Wrap the existing backends.** Implement `SecurityDataStorage` as a *delegating facade* that decides per data type in your own code, and register that facade as `@Primary`. More flexible, and entirely yours to maintain.
 
-For OrgSec 2.0.x the routing layer is expected to become extensible; until then, treat hybrid-mode integration as opt-in additional work.
+A third, narrower option exists specifically for JWT deployments: register your backend as `delegateSecurityDataStorage` (or `jwtDelegateStorage`) and let `JwtSecurityDataStorage` keep serving `Person` from the token. That is the one split OrgSec implements itself.
+
+A real routing layer may arrive in a later major version; until then, treat per-type routing as something you write.
 
 ## Operating contract
 
@@ -262,7 +268,7 @@ Publish your backend as a Maven artifact alongside `orgsec-core` and `orgsec-com
 </dependency>
 ```
 
-Application code adds your dependency, sets `orgsec.storage.mongo.enabled: true` and `orgsec.storage.primary: mongo`, and OrgSec runs against your backend. The rest of the application code - `PrivilegeChecker`, `RsqlFilterBuilder`, `@PreAuthorize` integration - does not change.
+Application code adds your dependency and sets `orgsec.storage.mongo.enabled: true`, and OrgSec runs against your backend. The rest of the application code - `PrivilegeChecker`, `RsqlFilterBuilder`, `@PreAuthorize` integration - does not change.
 
 If your backend is generally useful, consider proposing it as an OrgSec add-on. OrgSec's storage SPI is intentionally small enough that a community-maintained `orgsec-storage-jdbc` or `orgsec-storage-mongo` is feasible.
 

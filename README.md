@@ -12,7 +12,7 @@ The full documentation lives in [`docs/`](./docs/index.md).
 
 - **Hierarchical, multi-tenant authorization model.** Privileges scope to *exactly* one organization, *down* through descendants, or *up* through ancestors. Cascade evaluation runs across company -> org -> person and is fail-closed.
 - **String-based privilege identifiers, registered at runtime.** Your application defines its own vocabulary - `DOCUMENT_READ`, `INVOICE_APPROVE`, `CONTRACT_SIGN_HD` - through `PrivilegeDefinitionProvider` beans. OrgSec ships no closed enum.
-- **Three pluggable storage backends.** Choose in-memory (default), Redis (L1+L2 with Pub/Sub invalidation), or JWT (stateless Person from a token claim) per data type. Backend changes are configuration-only.
+- **Three pluggable storage backends.** Choose in-memory (default), Redis (L1+L2 with Pub/Sub invalidation), or JWT (stateless Person from a token claim, other types served by a delegate backend). Backend changes are configuration-only.
 - **Spring Boot auto-configuration.** Add the starter, declare your business roles, register your privileges, and the privilege evaluator, security data store, audit logger, and Spring Security adapter are wired automatically.
 
 ## Modules
@@ -47,16 +47,16 @@ orgsec:
       supported-fields: [COMPANY, COMPANY_PATH]
 ```
 
-Then implement `SecurityEnabledEntity` on your domain class, register your privileges through a `PrivilegeDefinitionProvider`, and inject `PrivilegeChecker` where you need to make a decision. The full path is in the [Quick Start](./docs/guide/02-quick-start.md) (under thirty minutes) and the in-memory [example app](./docs/examples/in-memory-app.md).
+Then implement `SecurityEnabledEntity` on your domain class, register your privileges through a `PrivilegeDefinitionProvider`, and inject `PrivilegeChecker` where you need to make a decision. The full path is in the [first working example](./docs/start-here/04-first-working-example.md).
 
 ## Documentation
 
 - [Documentation home](./docs/index.md)
-- [Introduction](./docs/guide/01-introduction.md) - what OrgSec solves and when to use it
-- [Quick Start](./docs/guide/02-quick-start.md) - first privilege check in 30 minutes
-- [Core Concepts](./docs/guide/03-core-concepts.md) - the privilege model in depth
-- [Configuration](./docs/guide/04-configuration.md) - every `orgsec.*` property in context
-- [Storage Overview](./docs/storage/01-overview.md) - pick a backend
+- [What is OrgSec](./docs/start-here/01-what-is-orgsec.md) - what OrgSec solves and when to use it
+- [First working example](./docs/start-here/04-first-working-example.md) - first privilege check end to end
+- [Core Concepts](./docs/reference/concepts.md) - the privilege model in depth
+- [Privilege Model](./docs/reference/privilege-model.md) - operations, directions, cascade
+- [Choose storage](./docs/storage/01-choose-storage.md) - pick a backend
 - [Properties Reference](./docs/reference/properties.md) - every property name, type, default
 
 ## Compatibility

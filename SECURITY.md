@@ -8,7 +8,7 @@ The table below shows which OrgSec versions currently receive security fixes. Ol
 
 | Version | Supported          | Notes                                                                                                   |
 | ------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
-| 1.0.x   | :white_check_mark: | Current GA line. Targets Spring Boot 3.5.x and Java 17. Receives security and bug fixes. Upgrade to 1.0.4 or later: 1.0.0 and 1.0.3 are affected by published advisories. |
+| 1.0.x   | :white_check_mark: | Current GA line. Targets Spring Boot 3.5.x and Java 17. Receives security and bug fixes. Upgrade to the latest 1.0.x patch: earlier patches carry authorization defects fixed since. |
 | 2.0.x   | :hourglass:        | In development. Targets Spring Boot 4.x and Java 21. Will become the supported line at GA.              |
 | < 1.0.0 | :x:                | Pre-release / never published. No support.                                                              |
 
@@ -61,9 +61,11 @@ Once we receive a credible report, we follow these steps:
 2. **Triage** within 7 calendar days — confirm the vulnerability, classify severity using CVSS v3.1, and assign a tracking ID.
 3. **Develop a fix** on a private branch. The reporter is kept informed and is invited to review patches before release.
 4. **Coordinate disclosure.** We aim to publish a fix and a [GitHub Security Advisory](https://github.com/Nomendi6/orgsec/security/advisories) within **90 days** of the initial report, and sooner for high-severity issues. If a vulnerability is being actively exploited or has been independently disclosed, we will accelerate the timeline.
-4. **Request a CVE** through GitHub's CNA, when the issue warrants one.
-5. **Release** the fix as a patch version on the affected line (for example `1.0.2`), publish the advisory, and update the [CHANGELOG](./CHANGELOG.md) with a reference to the advisory ID.
-6. **Credit the reporter** in the advisory unless they have asked to remain anonymous.
+5. **Request a CVE** through GitHub's CNA, when the issue warrants one.
+6. **Release** the fix as a patch version on the affected line (for example `1.0.5`), publish the advisory, and update the [CHANGELOG](./CHANGELOG.md) with a reference to the advisory ID.
+7. **Credit the reporter** in the advisory unless they have asked to remain anonymous.
+
+Steps 4-6 describe how externally reported vulnerabilities are handled. Authorization defects found by the maintainers during internal review are fixed and documented in the [CHANGELOG](./CHANGELOG.md) under `### Security`, and receive an advisory only where the triage concludes that downstream users need one. Not every entry under `### Security` therefore has a corresponding advisory ID; where one exists, it is named in the CHANGELOG entry.
 
 We do not currently run a paid bug-bounty program.
 
@@ -73,7 +75,7 @@ Even when OrgSec itself is sound, deployment choices affect overall security. Co
 
 - Configure a `JwtDecoder` bean when using `orgsec-storage-jwt` - the library fails fast at startup if one is missing, so this should never go to production without verification.
 - Enable TLS for Redis (`orgsec.storage.redis.ssl: true`) and supply credentials via environment variables, not committed YAML.
-- Restrict the OrgSec Person API (`orgsec.api.person.enabled: true`) so only Keycloak service accounts can call it (`requiredRole`). The default filter chain uses Spring Security `hasRole(...)`, which expects the authenticated principal to carry authority `ROLE_<requiredRole>` (for example `ROLE_ORGSEC_API_CLIENT`); verify your IdP emits the prefixed authority, or override `orgsecApiSecurityFilterChain`.
+- Restrict the OrgSec Person API (`orgsec.api.person.enabled: true`) so only Keycloak service accounts can call it (`requiredRole`). Since 1.0.5 the library's `orgsecApiSecurityFilterChain` both authenticates the caller - as a bearer token, validated by *your* application's `JwtDecoder` - and authorizes it with `hasRole(requiredRole)`, mapping Keycloak's `realm_access.roles` to `ROLE_*` itself. Enabling the Person API without a `JwtDecoder` bean now fails at startup rather than leaving the endpoint's protection to whichever chain happens to match it. Restrict the endpoint at the network layer as well.
 - Keep Spring Boot, Spring Security, and the Redis client (Lettuce) on supported, patched versions. Subscribe to GitHub Dependabot alerts on your OrgSec-using repository.
 - Turn on audit logging through `orgsec.storage.redis.audit.enabled: true` (when the Redis backend is active) or supply your own `SecurityAuditLogger` bean, so authorization decisions are observable post-incident.
 

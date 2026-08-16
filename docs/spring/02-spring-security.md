@@ -182,7 +182,9 @@ boolean authenticated = auth != null
 
 ### Authority vs. role
 
-Spring Security `hasRole("X")` matches authority `ROLE_X`; `hasAuthority("X")` matches authority `X`. OrgSec's Person API filter chain uses `hasRole(...)`, so the configured `required-role` value is *prepended* with `ROLE_` at evaluation time. If your IdP emits unprefixed authorities (e.g., raw Keycloak realm roles), either map them to `ROLE_*` (Spring Security has converters for this), set `required-role` to a value your authorities already include, or replace the `orgsecApiSecurityFilterChain` bean.
+Spring Security `hasRole("X")` matches authority `ROLE_X`; `hasAuthority("X")` matches authority `X`. OrgSec's Person API filter chain uses `hasRole(...)`, so the configured `required-role` value is *prepended* with `ROLE_` at evaluation time.
+
+Since 1.0.5 the chain maps Keycloak's `realm_access.roles` claim to `ROLE_*` itself, so a realm role named `ORGSEC_API_CLIENT` matches `hasRole("ORGSEC_API_CLIENT")` without any converter on your side. This mapping applies **only** to that chain; your application's own chains keep whatever `JwtAuthenticationConverter` you configured. If your IdP is not Keycloak and puts roles elsewhere in the token, replace the `orgsecApiSecurityFilterChain` bean.
 
 ### CSRF on the Person API
 

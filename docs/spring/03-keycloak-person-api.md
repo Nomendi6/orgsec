@@ -71,12 +71,25 @@ orgsec:
       required-role: ORGSEC_API_CLIENT      # default value; the principal must carry ROLE_ORGSEC_API_CLIENT
 ```
 
-The starter wires a dedicated filter chain (`orgsecApiSecurityFilterChain`) that protects `/api/orgsec/person/**` with `hasRole(requiredRole)`. Spring Security's `hasRole(...)` *prepends* `ROLE_` at evaluation time, so the principal that calls the API must hold the authority `ROLE_ORGSEC_API_CLIENT`. Configure that in Keycloak:
+The starter wires a dedicated filter chain (`orgsecApiSecurityFilterChain`) for `/api/orgsec/person/**`. Since 1.0.5 that chain does the whole job:
+
+- **Authentication.** The request must carry a bearer token, validated through the **application's own `JwtDecoder` bean**. The library deliberately does not build a `JwtDecoder` of its own, so issuer and audience are checked exactly once, by the rules your application already enforces - including a JHipster-style `AudienceValidator`, which Boot's `spring.security.oauth2.resourceserver.jwt.audiences` property would bypass.
+- **Authority mapping.** Keycloak's `realm_access.roles` claim is mapped to `ROLE_*` authorities by the library. Spring Security's resource-server stack ships no Keycloak adapter and its default converter reads `scope`/`scp` into `SCOPE_*`, which never matches `hasRole(...)`; you no longer have to supply a converter for this endpoint.
+- **Authorization.** `hasRole(requiredRole)`, which *prepends* `ROLE_`, so the caller must end up holding `ROLE_ORGSEC_API_CLIENT`.
+
+Responses are `401` without a valid token, `403` when authenticated without the role, and `200` otherwise.
+
+What you still configure in Keycloak:
 
 - Create a Keycloak **realm role** named `ORGSEC_API_CLIENT`.
 - Create a **client** for the mapper-callback path (e.g., `orgsec-mapper-callback`) with **service accounts enabled** and **client_credentials** flow.
 - Assign the realm role `ORGSEC_API_CLIENT` to that client's service account.
-- Make sure your application's `JwtAuthenticationConverter` produces `ROLE_*` authorities. Spring Security's resource-server stack does **not** ship a "Keycloak adapter" out of the box; configure a custom `Converter<Jwt, Collection<GrantedAuthority>>` (typically reading `realm_access.roles` and prefixing with `ROLE_`) and register it through `oauth2ResourceServer().jwt().jwtAuthenticationConverter(...)`. Without this step a Keycloak realm role like `ORGSEC_API_CLIENT` arrives as the literal authority `ORGSEC_API_CLIENT`, which `hasRole("ORGSEC_API_CLIENT")` will *not* match.
+- Make sure that client's audience is accepted by your application's decoder, since that decoder is what validates the mapper's token.
+
+> **A `JwtDecoder` bean is required.** `orgsec.api.person.enabled: true` without one - or without
+> `spring-boot-starter-oauth2-resource-server` on the classpath, which the OrgSec starter declares
+> as `optional` - fails at startup with an explicit message. Leaving the API disabled (the default)
+> needs neither.
 
 In production, also restrict the endpoint at the network layer - only Keycloak should reach it.
 
@@ -281,19 +294,13 @@ spring:
 
 orgsec:
   storage:
-    primary: jwt
     features:
-      jwt-enabled: true
-      memory-enabled: true
-      hybrid-mode-enabled: true
-    data-sources:
-      person: jwt
-      organization: primary
-      role: primary
-      privilege: memory
+      jwt-enabled: true                       # person from the token, everything else from the delegate
     jwt:
       claim-name: orgsec                      # match the mapper's "Claim Name"
 ```
+
+The delegate defaults to the in-memory storage, which is exactly what this topology wants. `primary`, `memory-enabled`, `hybrid-mode-enabled` and `data-sources.*` appeared in earlier versions of this example; they bind but are read by nothing, so they are omitted here.
 
 The full JWT-side reference is in [Storage / JWT](../storage/04-jwt.md). The application configuration of the Person API itself is covered in [Keycloak Person API](../spring/03-keycloak-person-api.md).
 

@@ -272,7 +272,9 @@ flowchart LR
     Jwt -.->|delegates org/role| Redis
 ```
 
-The `SecurityDataStore` facade keeps `PrivilegeChecker` agnostic to the active backend. A request always asks `Store.getPerson(personId)`; behind that call the inmemory backend reads from a `ConcurrentHashMap` snapshot, the Redis backend reads from L1-then-L2, and the JWT backend reads from a parsed token claim. Per-data-type routing (`orgsec.storage.data-sources.person=jwt`, etc.) is honored at this layer.
+The `SecurityDataStore` facade keeps `PrivilegeChecker` agnostic to the active backend. A request always asks `Store.getPerson(personId)`; behind that call the inmemory backend reads from a `ConcurrentHashMap` snapshot, the Redis backend reads from L1-then-L2, and the JWT backend reads from a parsed token claim.
+
+There is **no per-data-type router** at this or any other layer. Exactly one `SecurityDataStorage` is `@Primary` and answers every call. The dashed edges above are the JWT backend forwarding to its single delegate - not configurable per type. `orgsec.storage.data-sources.*` binds but is read by nothing; see [properties reference](./properties.md#per-data-type-routing---orgsecstoragedata-sources).
 
 For backend-specific behavior - how data is loaded, when caches are invalidated, what happens on cache miss - see the [Choose storage](../storage/01-choose-storage.md) and the per-backend pages.
 

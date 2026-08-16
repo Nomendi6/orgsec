@@ -39,11 +39,11 @@ Keep application code and OrgSec code separated. Do not place your domain classe
 
 ```yaml
 orgsec:
-  storage:
-    primary: memory
   business-roles:
     owner:
       supported-fields: [COMPANY, COMPANY_PATH, ORG, ORG_PATH, PERSON]
 ```
+
+No storage block is needed: the in-memory backend runs unless Redis or JWT is switched on.
 
 Next: [Spring Security](./02-spring-security.md).

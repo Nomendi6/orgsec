@@ -48,9 +48,9 @@ In a single-instance deployment the notify hooks keep the cache in sync with you
 
 ## When to use it
 
-- **Local development and tests.** Zero infrastructure, fast feedback. The starter's default `orgsec.storage.primary: memory` lets every developer run the app with no extra setup.
+- **Local development and tests.** Zero infrastructure, fast feedback. In-memory is what you get when no other backend is switched on, so every developer can run the app with no extra setup.
 - **Single-instance production.** A small SaaS, an internal tool, a back-office app that runs on one process - in-memory is enough. There is no inherent scale ceiling on the data set; what matters is whether the numbers fit in your heap.
-- **Delegate for JWT (and parallel to Redis).** When `orgsec-storage-jwt` is on the classpath, in-memory typically serves as the JWT backend's *delegate* - the place where organizations and roles actually live, while the JWT backend handles `Person` from token claims. This is `data-sources.organization: primary` (= memory) when `primary: jwt`. The Redis backend, by contrast, does **not** call the in-memory backend on miss in 1.0.x; the two can coexist in the Spring context (one as `@Primary`, one as a delegate target for JWT), but Redis itself does not read through to in-memory.
+- **Delegate for JWT (and parallel to Redis).** When `orgsec-storage-jwt` is on the classpath, in-memory serves as the JWT backend's *delegate* - the place where organizations and roles actually live, while the JWT backend handles `Person` from token claims. This is the **default**, and it stays the default even when the Redis backend is also active; Redis becomes the JWT delegate only if you declare a `jwtDelegateStorage` bean yourself. The Redis backend does **not** call the in-memory backend on miss in 1.0.x; the two can coexist in the Spring context (one as `@Primary`, one as the delegate target for JWT), but Redis does not read through to in-memory.
 
 ## When not to use it
 
@@ -62,17 +62,11 @@ The in-memory backend is **not coherent across JVM instances.** Each instance ha
 
 ## Configuration
 
-The only must-set property is the active backend:
+There is nothing to set. In-memory is the backend you get when neither `orgsec.storage.redis.enabled` nor `orgsec.storage.features.jwt-enabled` is `true`, so a fresh project needs no storage block at all.
 
-```yaml
-orgsec:
-  storage:
-    primary: memory                       # default
-    features:
-      memory-enabled: true                # default true
-```
+(`orgsec.storage.primary: memory` and `features.memory-enabled: true` appear in older examples. They bind but are read by nothing - see [properties reference](../reference/properties.md#storagefeatureflags---orgsecstorage).)
 
-The starter sets `primary: memory` by default, so in a fresh project you do not need to write any storage block at all. The `OrgsecProperties.Storage.InMemory` sub-class also exposes two informational knobs that the in-memory backend itself does not consult; they are reserved for future use:
+The `OrgsecProperties.Storage.InMemory` sub-class exposes two informational knobs that the in-memory backend itself does not consult; they are reserved for future use:
 
 ```yaml
 orgsec:

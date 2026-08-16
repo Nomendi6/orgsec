@@ -14,7 +14,9 @@ Use this list as a PR-template checkbox set or as a sign-off document during a d
 | 2 | `JwtDecoder` enforces `iss`, `exp`, and `aud` | Spring Security validates `iss` and `exp` automatically. Configure audience validation explicitly - it is not on by default. | [Storage / JWT - Defense in depth](../storage/04-jwt.md#defense-in-depth) |
 | 3 | `orgsec.storage.redis.ssl: true` in any non-dev environment | Authorization data on the wire in plaintext is a single packet capture away from being a breach. | [Storage / Redis - Connection settings](../storage/03-redis.md#connection-settings) |
 | 4 | Redis password supplied through environment variable, not committed YAML | Committed credentials end up in CI logs, container images, and forks. | [Storage / Redis](../storage/03-redis.md) |
-| 5 | If Person API is enabled (`orgsec.api.person.enabled: true`), Spring Security authority `ROLE_<requiredRole>` is required by your filter chain | Default chain uses `hasRole(...)`, which prepends `ROLE_`. An IdP that emits unprefixed authorities will return 403 on legitimate calls and 200 if you also disable the chain. | [Keycloak Person API](../spring/03-keycloak-person-api.md) |
+| 4a | `orgsec.storage.redis.enabled` and `orgsec.storage.features.redis-enabled` are set to the same value, and `orgsec.storage.strict-activation: true` | Only the first activates Redis; the second decides whether the in-memory storage stands down from `@Primary`. Disagreeing values leave either two competing primaries or none. Strict mode turns the 1.0.x warning into a refusal to start. | [Storage / Redis - Activation](../storage/03-redis.md#activation) |
+| 5 | If Person API is enabled (`orgsec.api.person.enabled: true`), a `JwtDecoder` bean exists and enforces the audience of the mapper's client | Since 1.0.5 the OrgSec chain authenticates the caller with *your* decoder and maps `realm_access.roles` to `ROLE_*` itself. Startup fails if the decoder is missing; if it is present but does not check `aud`, any token from the same issuer can read the whole organizational graph. | [Keycloak Person API](../spring/03-keycloak-person-api.md) |
+| 5a | If you replaced `orgsecApiSecurityFilterChain`, your replacement authenticates as well as authorizes | Your bean is the only thing protecting `/api/orgsec/person/**`. Before 1.0.5 the default chain authorized without authenticating - verify a replacement copied from older docs does not repeat that. | [Auto-configuration](../architecture/auto-configuration.md) |
 | 6 | If Person API is enabled, the endpoint is reachable only from your IdP's network (firewall / network policy) | The endpoint exposes person and organization data; treat it like a service-to-service API. | [Storage / JWT](../storage/04-jwt.md#issuing-the-claim-from-keycloak) |
 | 6a | If Person API is consumed by Keycloak's mapper with `bearer` auth, you have a documented credential-rotation plan | The mapper does not refresh OAuth2 tokens itself; an expired bearer breaks every login until rotated. Prefer `api-key` with infrastructure-managed rotation, or operate a daily-rotation process for the bearer token. | [Keycloak Person API - Choosing the auth type](../spring/03-keycloak-person-api.md#choosing-the-auth-type) |
 | 7 | Spring Boot, Spring Security, and Lettuce on currently supported, patched versions | OrgSec inherits CVE exposure from these. Subscribe to GitHub Dependabot alerts. | [`pom.xml` parent versions](https://github.com/Nomendi6/orgsec/blob/main/pom.xml) |
@@ -54,7 +56,9 @@ Mandatory:
 - [ ] 2. iss / exp / aud validated by JwtDecoder
 - [ ] 3. Redis SSL on
 - [ ] 4. Redis password from env
-- [ ] 5. Person API ROLE_ prefix verified
+- [ ] 4a. Redis activation flags agree; strict-activation on
+- [ ] 5. Person API JwtDecoder present and audience-checked
+- [ ] 5a. Any replacement orgsecApiSecurityFilterChain authenticates
 - [ ] 6. Person API network-restricted
 - [ ] 6a. Person API mapper credential rotation plan documented
 - [ ] 7. SB / Spring Sec / Lettuce on supported versions
