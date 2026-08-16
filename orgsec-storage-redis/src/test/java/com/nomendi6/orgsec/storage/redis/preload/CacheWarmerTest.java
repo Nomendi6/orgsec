@@ -171,6 +171,25 @@ class CacheWarmerTest {
             assertThat(count).isEqualTo(1);
             assertThat(storedCount.get()).isEqualTo(1);
         }
+
+        @Test
+        void shouldWarmupSameIdPartyAndPositionRolesWithoutCollision() {
+            RoleDef partyRole = new RoleDef(1L, "Party role");
+            RoleDef positionRole = new RoleDef(1L, "Position role");
+            Map<Long, RoleDef> storedPartyRoles = new HashMap<>();
+            Map<Long, RoleDef> storedPositionRoles = new HashMap<>();
+
+            cacheWarmer.setPartyRoleLoader(() -> Map.of(1L, partyRole));
+            cacheWarmer.setPositionRoleLoader(() -> Map.of(1L, positionRole));
+            cacheWarmer.setPartyRoleBatchStore(storedPartyRoles::putAll);
+            cacheWarmer.setPositionRoleBatchStore(storedPositionRoles::putAll);
+
+            int count = cacheWarmer.warmupRoles();
+
+            assertThat(count).isEqualTo(2);
+            assertThat(storedPartyRoles).containsOnly(Map.entry(1L, partyRole));
+            assertThat(storedPositionRoles).containsOnly(Map.entry(1L, positionRole));
+        }
     }
 
     @Nested

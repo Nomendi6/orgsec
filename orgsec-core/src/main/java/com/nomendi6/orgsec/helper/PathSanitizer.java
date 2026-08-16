@@ -95,6 +95,45 @@ public class PathSanitizer {
     }
 
     /**
+     * Validates that a path is both well formed and safe to use as a hierarchy anchor.
+     *
+     * <p>{@link #validatePath(String)} accepts the bare separator, while
+     * {@link #isUsableHierarchyAnchor(String)} does not validate the path grammar. Authorization
+     * code that needs an anchor requires both guarantees.
+     *
+     * @param path path to validate
+     * @return the validated path unchanged
+     * @throws OrgsecSecurityException when the path is malformed or would match every hierarchy
+     */
+    public static String validateHierarchyAnchor(String path) {
+        if (!isUsableHierarchyAnchor(path)) {
+            throw new OrgsecSecurityException(
+                "Path cannot anchor a hierarchy comparison: " +
+                    (path == null ? "null" : "'" + path + "'")
+            );
+        }
+        return validatePath(path);
+    }
+
+    /**
+     * Returns the local leaf segment of a canonical full path.
+     *
+     * @param path canonical, usable full path such as {@code |root|ow|}
+     * @return the last segment, such as {@code ow}
+     * @throws OrgsecSecurityException when the path is not a usable hierarchy path
+     */
+    public static String lastSegment(String path) {
+        validateHierarchyAnchor(path);
+        String[] segments = path.split("\\|");
+        for (int i = segments.length - 1; i >= 0; i--) {
+            if (!segments[i].isEmpty()) {
+                return segments[i];
+            }
+        }
+        throw new OrgsecSecurityException("Path holds no segment: '" + path + "'");
+    }
+
+    /**
      * Validates a single path ID.
      *
      * @param pathId The path ID to validate

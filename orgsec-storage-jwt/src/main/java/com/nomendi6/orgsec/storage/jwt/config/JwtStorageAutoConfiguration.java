@@ -1,5 +1,6 @@
 package com.nomendi6.orgsec.storage.jwt.config;
 
+import com.nomendi6.orgsec.exceptions.OrgsecConfigurationException;
 import com.nomendi6.orgsec.storage.SecurityDataStorage;
 import com.nomendi6.orgsec.storage.jwt.JwtClaimsParser;
 import com.nomendi6.orgsec.storage.jwt.JwtSecurityDataStorage;
@@ -9,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -35,7 +37,8 @@ import tools.jackson.databind.ObjectMapper;
  * IMPORTANT: When this configuration is active, JwtSecurityDataStorage becomes @Primary
  * and InMemorySecurityDataStorage serves as delegate (not primary).
  */
-@AutoConfiguration
+@AutoConfiguration(afterName =
+    "org.springframework.boot.security.oauth2.server.resource.autoconfigure.servlet.OAuth2ResourceServerAutoConfiguration")
 @EnableConfigurationProperties(JwtStorageProperties.class)
 @ConditionalOnProperty(name = "orgsec.storage.features.jwt-enabled", havingValue = "true")
 public class JwtStorageAutoConfiguration {
@@ -51,6 +54,7 @@ public class JwtStorageAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnBean(JwtDecoder.class)
     public JwtClaimsParser jwtClaimsParser(ObjectMapper objectMapper, JwtDecoder jwtDecoder, JwtStorageProperties properties) {
         log.debug("Creating JwtClaimsParser bean with claim name: {}", properties.getClaimName());
         return new JwtClaimsParser(objectMapper, jwtDecoder, properties.getClaimName(), properties.getClaimVersion());
@@ -59,8 +63,8 @@ public class JwtStorageAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(JwtDecoder.class)
     public Object jwtDecoderRequiredFailFast() {
-        throw new IllegalStateException(
-            "orgsec.storage.features.jwt-enabled=true requires a JwtDecoder bean. " +
+        throw new OrgsecConfigurationException(
+            "ORGSEC_JWT_DECODER_REQUIRED: orgsec.storage.features.jwt-enabled=true requires a JwtDecoder bean. " +
             "Configure Spring Security OAuth2 Resource Server (for example spring.security.oauth2.resourceserver.jwt.issuer-uri) " +
             "so OrgSec can validate JWT signature, issuer, audience, and expiry before reading OrgSec claims."
         );
@@ -69,10 +73,11 @@ public class JwtStorageAutoConfiguration {
     @Bean
     @Primary
     @ConditionalOnMissingBean(name = "jwtSecurityDataStorage")
+    @ConditionalOnBean(JwtDecoder.class)
     public SecurityDataStorage jwtSecurityDataStorage(
             JwtClaimsParser claimsParser,
             JwtTokenContextHolder tokenContextHolder,
-            @Qualifier("delegateSecurityDataStorage") SecurityDataStorage delegateStorage,
+            @Qualifier("jwtDelegateStorage") SecurityDataStorage delegateStorage,
             JwtStorageProperties properties) {
         log.info("Creating JwtSecurityDataStorage as primary SecurityDataStorage with delegate: {} (cache: {}, ttl: {}s)",
                 delegateStorage.getProviderType(), properties.isCacheParsedPerson(), properties.getCacheTtlSeconds());

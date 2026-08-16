@@ -93,6 +93,27 @@ class CacheKeyBuilderTest {
     }
 
     @Test
+    void typedRoleKeysKeepEqualIdsInDistinctNamespaces() {
+        CacheKeyBuilder builder = new CacheKeyBuilder(false);
+
+        assertThat(builder.buildPartyRoleKey(789L)).isEqualTo("orgsec:r:party:789");
+        assertThat(builder.buildPositionRoleKey(789L)).isEqualTo("orgsec:r:position:789");
+        assertThat(builder.buildPartyRoleKey(789L)).isNotEqualTo(builder.buildPositionRoleKey(789L));
+    }
+
+    @Test
+    void typedRoleKeysRejectNullIds() {
+        CacheKeyBuilder builder = new CacheKeyBuilder(false);
+
+        assertThatThrownBy(() -> builder.buildPartyRoleKey(null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Party role ID cannot be null");
+        assertThatThrownBy(() -> builder.buildPositionRoleKey(null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Position role ID cannot be null");
+    }
+
+    @Test
     void buildPrivilegeKey_withoutObfuscation_returnsPlainKey() {
         // Given
         CacheKeyBuilder builder = new CacheKeyBuilder(false);

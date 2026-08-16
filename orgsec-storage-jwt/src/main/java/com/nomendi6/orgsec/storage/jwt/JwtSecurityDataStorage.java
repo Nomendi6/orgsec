@@ -1,6 +1,5 @@
 package com.nomendi6.orgsec.storage.jwt;
 
-import com.nomendi6.orgsec.model.BusinessRoleDef;
 import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.model.PrivilegeDef;
@@ -10,12 +9,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.nomendi6.orgsec.helper.PrivilegeSecurityHelper;
-import org.apache.commons.lang3.SerializationUtils;
 
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.LongSupplier;
 
 /**
@@ -268,28 +268,52 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
 
     private PersonDef parseAndEnrich(String token) {
         log.debug("Parsing and enriching PersonDef from JWT token");
-        PersonDef person = claimsParser.parsePersonFromToken(token);
-        return person != null ? enrichPersonWithRoles(person, token) : null;
+        JwtClaimsParser.ParsedPrincipal principal = claimsParser.parsePrincipalFromToken(token);
+        return principal != null ? enrichPersonWithRoles(principal) : null;
     }
 
     /**
-     * Enrich PersonDef with role information from delegate storage.
+     * Confirms and enriches every claimed membership against the authoritative delegate.
      *
-     * The JWT token contains positionRoleIds, but we need full RoleDef objects
-     * with privileges. These are loaded from the delegate storage.
+     * <p>A missing organization or company mismatch removes the membership completely. Merely
+     * clearing hierarchy anchors would still allow exact privileges to trust the unconfirmed
+     * organization id. Organization/party roles are not copied: JWT principals receive only the
+     * position roles named by their own validated claim.
      */
-    private PersonDef enrichPersonWithRoles(PersonDef person, String token) {
+    private PersonDef enrichPersonWithRoles(JwtClaimsParser.ParsedPrincipal principal) {
+        PersonDef person = principal.person();
         if (person == null || person.organizationsMap == null) {
             return person;
         }
 
-        // For each organization in the person's memberships
-        for (Map.Entry<Long, OrganizationDef> entry : person.organizationsMap.entrySet()) {
+        Iterator<Map.Entry<Long, OrganizationDef>> memberships = person.organizationsMap.entrySet().iterator();
+        while (memberships.hasNext()) {
+            Map.Entry<Long, OrganizationDef> entry = memberships.next();
             Long orgId = entry.getKey();
             OrganizationDef orgDef = entry.getValue();
 
-            // Get position role IDs from JWT claims
-            List<Long> positionRoleIds = claimsParser.getPositionRoleIds(token, orgId);
+            OrganizationDef fullOrgDef = delegateStorage.getOrganization(orgId);
+            if (fullOrgDef == null) {
+                log.warn("Organization {} is unknown to the delegate - dropping claimed membership", orgId);
+                memberships.remove();
+                continue;
+            }
+            if (!Objects.equals(orgDef.companyId, fullOrgDef.companyId)) {
+                log.warn(
+                    "Claimed companyId {} for organization {} does not match delegate companyId {} - dropping membership",
+                    orgDef.companyId,
+                    orgId,
+                    fullOrgDef.companyId
+                );
+                memberships.remove();
+                continue;
+            }
+
+            orgDef.organizationName = fullOrgDef.organizationName;
+            orgDef.parentPath = fullOrgDef.parentPath;
+            orgDef.companyParentPath = fullOrgDef.companyParentPath;
+
+            List<Long> positionRoleIds = principal.positionRoleIdsByOrganization().getOrDefault(orgId, List.of());
 
             log.debug("Enriching organization {} with {} position roles", orgId, positionRoleIds.size());
 
@@ -304,50 +328,7 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
                 }
             }
 
-            // Get organization from delegate storage to copy organization roles
-            OrganizationDef fullOrgDef = delegateStorage.getOrganization(orgId);
-            if (fullOrgDef != null) {
-                // Copy organization name
-                orgDef.organizationName = fullOrgDef.organizationName;
-                // Take the hierarchy anchors from the delegate, not from the token. The claim carries only
-                // pathId, so JwtClaimsParser has to derive parentPath from it - and derives the STRICT
-                // parent, one level above the full-path-of-this-node that every other backend stores. A
-                // principal at |1|10|15| ended up anchored at |1|10|, so HIERARCHY_DOWN granted every
-                // sibling subtree under org 10; for a root-level membership the derived anchor is "|",
-                // which matches every path in the system. companyParentPath has no claim at all and stayed
-                // null, so the company hierarchy comparisons dereferenced null.
-                //
-                // The delegate holds whatever path convention the application maintains, so copying keeps
-                // JWT principals deciding the same way InMemory and Redis do for the same organization,
-                // without this class having to know which convention that is.
-                orgDef.parentPath = fullOrgDef.parentPath;
-                orgDef.companyParentPath = fullOrgDef.companyParentPath;
-                // Copy organization roles
-                orgDef.organizationRolesSet.addAll(fullOrgDef.organizationRolesSet);
-                // Deep-copy the business roles instead of sharing the delegate's instances. The
-                // loop below merges this request's position roles into these objects, and for a
-                // business role the delegate already carries that merge writes straight into the
-                // delegate's own BusinessRoleDef - so one principal's privileges would end up in
-                // state that every other principal of this organization reads.
-                fullOrgDef.businessRolesMap.forEach((name, businessRole) ->
-                    orgDef.businessRolesMap.put(name, copyBusinessRole(businessRole))
-                );
-                log.debug("Copied {} business roles from organization {}", fullOrgDef.businessRolesMap.size(), orgId);
-            } else {
-                // Fail closed. The only hierarchy anchor available here is the one derived from the token,
-                // and the comment above says why it cannot be trusted. Clearing it makes PrivilegeChecker
-                // deny hierarchical privileges for this organization instead of granting on a path this
-                // class knows to be wrong by one level.
-                orgDef.parentPath = null;
-                orgDef.companyParentPath = null;
-                log.warn(
-                    "Organization {} not found in delegate storage - hierarchical privileges will be denied for it",
-                    orgId
-                );
-            }
-
-            // Build business roles from position roles (user's specific privileges)
-            // This is crucial - position roles contain the user's actual privileges
+            // Build business roles from this principal's position roles only.
             for (RoleDef roleDef : orgDef.positionRolesSet) {
                 PrivilegeSecurityHelper.buildBusinessRoleResourceMap(orgDef.businessRolesMap, roleDef);
             }
@@ -356,28 +337,6 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
         }
 
         return person;
-    }
-
-    /**
-     * Copy a business role so that merging this request's roles into it cannot reach the delegate's
-     * stored organization.
-     * <p>
-     * The copy has to go one level deeper than the map: {@code addResourceDefinition} mutates the
-     * {@link com.nomendi6.orgsec.model.ResourceDef} instances inside {@code resourcesMap}, so
-     * copying only the map would still share those. {@code ResourceDef} is {@link java.io.Serializable}
-     * and is cloned the same way {@code PrivilegeSecurityHelper} clones it when it creates a new
-     * business role.
-     */
-    private static BusinessRoleDef copyBusinessRole(BusinessRoleDef source) {
-        BusinessRoleDef copy = new BusinessRoleDef(source.businessRoleName);
-        copy.filter = source.filter;
-        copy.allowAll = source.allowAll;
-        if (source.resourcesMap != null) {
-            source.resourcesMap.forEach((resourceName, resourceDef) ->
-                copy.resourcesMap.put(resourceName, SerializationUtils.clone(resourceDef))
-            );
-        }
-        return copy;
     }
 
     /**

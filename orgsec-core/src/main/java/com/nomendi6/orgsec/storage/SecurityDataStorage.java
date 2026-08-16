@@ -78,6 +78,44 @@ public interface SecurityDataStorage {
         throw new UnsupportedOperationException("Update not supported by this storage provider");
     }
 
+    /**
+     * Update a party/organization role without conflating it with a position role that happens to
+     * have the same numeric ID.
+     *
+     * <p>The default delegates to the legacy {@link #updateRole(Long, RoleDef)} operation for
+     * source compatibility. Providers with distinct role stores should override it.
+     *
+     * @param roleId party role ID
+     * @param role party role definition
+     */
+    default void updatePartyRole(Long roleId, RoleDef role) {
+        updateRole(roleId, role);
+    }
+
+    /**
+     * Update a position role without conflating it with a party role that happens to have the same
+     * numeric ID.
+     *
+     * <p>The default delegates to the legacy {@link #updateRole(Long, RoleDef)} operation for
+     * source compatibility. Providers with distinct role stores should override it.
+     *
+     * @param roleId position role ID
+     * @param role position role definition
+     */
+    default void updatePositionRole(Long roleId, RoleDef role) {
+        updateRole(roleId, role);
+    }
+
+    /**
+     * Update a privilege definition by its stable string identifier.
+     *
+     * @param privilegeIdentifier privilege string identifier
+     * @param privilege privilege definition
+     */
+    default void updatePrivilege(String privilegeIdentifier, PrivilegeDef privilege) {
+        throw new UnsupportedOperationException("Privilege update not supported by this storage provider");
+    }
+
     // ========== LIFECYCLE OPERATIONS ==========
 
     /**

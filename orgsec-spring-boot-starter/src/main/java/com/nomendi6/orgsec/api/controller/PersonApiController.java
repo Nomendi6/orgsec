@@ -33,9 +33,9 @@ public class PersonApiController {
      *
      * @param userId Keycloak user UUID
      * @return PersonApiDTO or 404 if not found
-     */
+    */
     @GetMapping("/by-user/{userId}")
-    public ResponseEntity<PersonApiDTO> getPersonByUserId(@PathVariable String userId) {
+    public ResponseEntity<PersonApiDTO> getPersonByUserId(@PathVariable("userId") String userId) {
         long startTime = System.currentTimeMillis();
         log.debug("GET /api/orgsec/person/by-user/{}", userId);
 
@@ -63,9 +63,9 @@ public class PersonApiController {
      *
      * @param personId the person ID
      * @return PersonApiDTO or 404 if not found
-     */
+    */
     @GetMapping("/{personId}")
-    public ResponseEntity<PersonApiDTO> getPersonById(@PathVariable Long personId) {
+    public ResponseEntity<PersonApiDTO> getPersonById(@PathVariable("personId") Long personId) {
         long startTime = System.currentTimeMillis();
         log.debug("GET /api/orgsec/person/{}", personId);
 

@@ -26,6 +26,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
@@ -48,10 +49,17 @@ import java.util.UUID;
  * ObjectMapper - no ObjectMapper beans are exposed by this configuration.
  * </p>
  */
-@AutoConfiguration(afterName = "org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration")
+@AutoConfiguration(
+    afterName = "org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration",
+    beforeName = {
+        "org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration",
+        "org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration"
+    }
+)
 @ConditionalOnClass(RedisConnectionFactory.class)
 @ConditionalOnProperty(prefix = "orgsec.storage.redis", name = "enabled", havingValue = "true")
 @EnableConfigurationProperties(RedisStorageProperties.class)
+@Import(LettucePoolConfiguration.class)
 public class RedisStorageAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(RedisStorageAutoConfiguration.class);
@@ -208,7 +216,15 @@ public class RedisStorageAutoConfiguration {
     @ConditionalOnMissingBean(name = "roleL1Cache")
     public L1Cache<Long, RoleDef> roleL1Cache(RedisStorageProperties properties) {
         int maxSize = properties.getCache().getL1MaxSize();
-        log.info("Creating RoleDef L1 cache with max size: {}", maxSize);
+        log.info("Creating party RoleDef L1 cache with max size: {}", maxSize);
+        return new L1Cache<>(maxSize);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(name = "positionRoleL1Cache")
+    public L1Cache<Long, RoleDef> positionRoleL1Cache(RedisStorageProperties properties) {
+        int maxSize = properties.getCache().getL1MaxSize();
+        log.info("Creating position RoleDef L1 cache with max size: {}", maxSize);
         return new L1Cache<>(maxSize);
     }
 
@@ -315,7 +331,11 @@ public class RedisStorageAutoConfiguration {
     public InvalidationEventListener invalidationEventListener(
             L1Cache<Long, PersonDef> personL1Cache,
             L1Cache<Long, OrganizationDef> organizationL1Cache,
+            @org.springframework.beans.factory.annotation.Qualifier("roleL1Cache")
             L1Cache<Long, RoleDef> roleL1Cache,
+            @org.springframework.beans.factory.annotation.Qualifier("positionRoleL1Cache")
+            L1Cache<Long, RoleDef> positionRoleL1Cache,
+            L1Cache<String, PrivilegeDef> privilegeL1Cache,
             String instanceId,
             OrgsecObjectMapperFactory objectMapperFactory) {
 
@@ -324,6 +344,8 @@ public class RedisStorageAutoConfiguration {
             personL1Cache,
             organizationL1Cache,
             roleL1Cache,
+            positionRoleL1Cache,
+            privilegeL1Cache,
             instanceId,
             objectMapperFactory.getEventObjectMapper()
         );
@@ -377,15 +399,20 @@ public class RedisStorageAutoConfiguration {
 
     /**
      * Main RedisSecurityDataStorage bean.
-     * This is the primary implementation of SecurityDataStorage interface.
+     *
+     * <p>The implementation bean itself is not primary. The conditional
+     * {@code orgsecPrimaryStorage} alias below carries that marker so a JWT storage can never race
+     * it for primary status.
      */
     @Bean
-    @org.springframework.context.annotation.Primary
     public RedisSecurityDataStorage redisSecurityDataStorage(
             RedisStorageProperties properties,
             L1Cache<Long, PersonDef> personL1Cache,
             L1Cache<Long, OrganizationDef> organizationL1Cache,
+            @org.springframework.beans.factory.annotation.Qualifier("roleL1Cache")
             L1Cache<Long, RoleDef> roleL1Cache,
+            @org.springframework.beans.factory.annotation.Qualifier("positionRoleL1Cache")
+            L1Cache<Long, RoleDef> positionRoleL1Cache,
             L1Cache<String, PrivilegeDef> privilegeL1Cache,
             L2RedisCache<PersonDef> personL2Cache,
             L2RedisCache<OrganizationDef> organizationL2Cache,
@@ -401,6 +428,7 @@ public class RedisStorageAutoConfiguration {
             personL1Cache,
             organizationL1Cache,
             roleL1Cache,
+            positionRoleL1Cache,
             privilegeL1Cache,
             personL2Cache,
             organizationL2Cache,
@@ -415,5 +443,25 @@ public class RedisStorageAutoConfiguration {
         storage.initialize();
 
         return storage;
+    }
+
+    /**
+     * Public primary alias for a Redis-only profile.
+     *
+     * <p>This returns the exact implementation instance; health, invalidation and application
+     * lookups therefore cannot accidentally observe different cache objects.
+     */
+    @Bean("orgsecPrimaryStorage")
+    @org.springframework.context.annotation.Primary
+    @ConditionalOnMissingBean(name = "orgsecPrimaryStorage")
+    @ConditionalOnProperty(
+        name = "orgsec.storage.features.jwt-enabled",
+        havingValue = "false",
+        matchIfMissing = true
+    )
+    public com.nomendi6.orgsec.storage.SecurityDataStorage orgsecPrimaryStorage(
+            RedisSecurityDataStorage redisSecurityDataStorage) {
+        log.info("Configuring RedisSecurityDataStorage as PRIMARY storage");
+        return redisSecurityDataStorage;
     }
 }

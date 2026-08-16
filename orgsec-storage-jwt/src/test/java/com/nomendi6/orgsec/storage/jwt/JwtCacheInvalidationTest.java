@@ -8,6 +8,7 @@ import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.storage.SecurityDataStorage;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -52,8 +53,9 @@ class JwtCacheInvalidationTest {
 
         // A fresh PersonDef per parse, so a stale result can only come from the cache, never from the parser
         // handing back the same mutated object.
-        when(claimsParser.parsePersonFromToken(TOKEN)).thenAnswer(invocation -> membershipOnlyPrincipal());
-        when(claimsParser.getPositionRoleIds(TOKEN, ORG_ID)).thenReturn(List.of());
+        when(claimsParser.parsePrincipalFromToken(TOKEN)).thenAnswer(invocation ->
+            new JwtClaimsParser.ParsedPrincipal(membershipOnlyPrincipal(), Map.of(ORG_ID, List.of()))
+        );
         tokenContextHolder.setToken(TOKEN);
     }
 

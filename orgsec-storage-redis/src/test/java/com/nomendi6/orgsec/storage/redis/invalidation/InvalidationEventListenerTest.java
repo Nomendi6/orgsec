@@ -69,6 +69,28 @@ class InvalidationEventListenerTest {
     }
 
     @Test
+    void shouldInvalidateBothTypedRoleCachesAndStringPrivilegeCache() throws Exception {
+        L1Cache<Long, Object> positionRoleCache = mock(L1Cache.class);
+        L1Cache<String, Object> privilegeCache = mock(L1Cache.class);
+        listener = new InvalidationEventListener(
+            personCache,
+            organizationCache,
+            roleCache,
+            positionRoleCache,
+            privilegeCache,
+            "local",
+            objectMapper
+        );
+
+        listener.onMessage(message(new InvalidationEvent(InvalidationType.ROLE_CHANGED, 3L, "remote", 1L)), null);
+        listener.onMessage(message(new InvalidationEvent(InvalidationType.PRIVILEGE_CHANGED, 4L, "remote", 1L)), null);
+
+        verify(roleCache).evict(3L);
+        verify(positionRoleCache).evict(3L);
+        verify(privilegeCache).clear();
+    }
+
+    @Test
     void shouldNotPropagateMalformedJson() {
         Message message = mock(Message.class);
         when(message.getBody()).thenReturn("{bad-json".getBytes());

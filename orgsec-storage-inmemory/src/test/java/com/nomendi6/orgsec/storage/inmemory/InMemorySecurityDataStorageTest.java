@@ -264,6 +264,21 @@ class InMemorySecurityDataStorageTest {
         }
 
         @Test
+        void shouldUpdateTypedRolesAndPrivilegeWithoutIdCollisions() {
+            RoleDef partyRole = new RoleDef(7L, "Party role");
+            RoleDef positionRole = new RoleDef(7L, "Position role");
+            PrivilegeDef privilege = new PrivilegeDef("DOCUMENT_ORG_R", "DOCUMENT");
+
+            storage.updatePartyRole(7L, partyRole);
+            storage.updatePositionRole(7L, positionRole);
+            storage.updatePrivilege("DOCUMENT_ORG_R", privilege);
+
+            assertThat(storage.getPartyRole(7L)).isSameAs(partyRole);
+            assertThat(storage.getPositionRole(7L)).isSameAs(positionRole);
+            assertThat(storage.getPrivilege("DOCUMENT_ORG_R")).isSameAs(privilege);
+        }
+
+        @Test
         void shouldNotUpdateWhenNotReady() {
             InMemorySecurityDataStorage uninitializedStorage = new InMemorySecurityDataStorage(
                     new AllPersonsStore(), organizationsStore, rolesStore, privilegesStore,

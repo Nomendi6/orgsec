@@ -15,6 +15,7 @@ import com.nomendi6.orgsec.model.ResourceDef;
 import com.nomendi6.orgsec.model.RoleDef;
 import com.nomendi6.orgsec.storage.SecurityDataStorage;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -66,14 +67,14 @@ class JwtDelegateIsolationTest {
 
         tokenContextHolder.setToken("token-alice");
         PersonDef alice = storage.getPerson(1L);
-        assertThat(privilegeNamesOf(alice)).containsExactlyInAnyOrder("DOCUMENT_ORG_R", "DOCUMENT_ORGHD_R");
+        assertThat(privilegeNamesOf(alice)).containsExactly("DOCUMENT_ORGHD_R");
 
         tokenContextHolder.setToken("token-bob");
         PersonDef bob = storage.getPerson(2L);
 
         assertThat(privilegeNamesOf(bob))
             .as("Bob must not inherit Alice's DOCUMENT_ORGHD_R")
-            .containsExactlyInAnyOrder("DOCUMENT_ORG_R", "DOCUMENT_ORGHU_R");
+            .containsExactly("DOCUMENT_ORGHU_R");
     }
 
     @Test
@@ -119,8 +120,9 @@ class JwtDelegateIsolationTest {
         membership.parentPath = "|A|B|";
         person.organizationsMap.put(ORG_ID, membership);
 
-        when(claimsParser.parsePersonFromToken(token)).thenReturn(person);
-        when(claimsParser.getPositionRoleIds(token, ORG_ID)).thenReturn(List.of(positionRoleId));
+        when(claimsParser.parsePrincipalFromToken(token)).thenReturn(
+            new JwtClaimsParser.ParsedPrincipal(person, Map.of(ORG_ID, List.of(positionRoleId)))
+        );
 
         RoleDef positionRole = new RoleDef(positionRoleId, privilegeName + "_ROLE");
         positionRole.addBusinessRole(BUSINESS_ROLE);

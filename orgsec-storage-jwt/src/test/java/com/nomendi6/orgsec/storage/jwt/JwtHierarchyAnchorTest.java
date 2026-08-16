@@ -8,6 +8,7 @@ import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.storage.SecurityDataStorage;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.Test;
 class JwtHierarchyAnchorTest {
 
     private static final Long ORG_ID = 15L;
+    private static final Long COMPANY_ID = 1L;
     private static final Long PERSON_ID = 1L;
     private static final String TOKEN = "token-a";
 
@@ -53,8 +55,9 @@ class JwtHierarchyAnchorTest {
         delegateStorage = mock(SecurityDataStorage.class);
         storage = new JwtSecurityDataStorage(claimsParser, tokenContextHolder, delegateStorage);
 
-        when(claimsParser.parsePersonFromToken(TOKEN)).thenReturn(principalAnchoredByToken());
-        when(claimsParser.getPositionRoleIds(TOKEN, ORG_ID)).thenReturn(List.of());
+        when(claimsParser.parsePrincipalFromToken(TOKEN)).thenReturn(
+            new JwtClaimsParser.ParsedPrincipal(principalAnchoredByToken(), Map.of(ORG_ID, List.of()))
+        );
         tokenContextHolder.setToken(TOKEN);
     }
 
@@ -81,15 +84,32 @@ class JwtHierarchyAnchorTest {
 
     /** Without a delegate entry there is no trustworthy anchor, so neither may be left in place. */
     @Test
-    void clearsBothAnchorsWhenTheDelegateDoesNotKnowTheOrganization() {
+    void dropsMembershipWhenTheDelegateDoesNotKnowTheOrganization() {
         when(delegateStorage.getOrganization(ORG_ID)).thenReturn(null);
 
-        OrganizationDef membership = membershipOf(storage.getPerson(PERSON_ID));
+        PersonDef person = storage.getPerson(PERSON_ID);
 
-        assertThat(membership.parentPath)
-            .as("leaving the token-derived anchor would grant on a path known to be wrong by one level")
-            .isNull();
-        assertThat(membership.companyParentPath).isNull();
+        assertThat(person).isNotNull();
+        assertThat(person.organizationsMap)
+            .as("an unconfirmed id-only membership could still grant EXACT privileges")
+            .doesNotContainKey(ORG_ID);
+    }
+
+    @Test
+    void dropsMembershipWhenClaimedCompanyDoesNotMatchTheDelegate() {
+        PersonDef mismatched = principalAnchoredByToken();
+        mismatched.organizationsMap.get(ORG_ID).companyId = 999L;
+        when(claimsParser.parsePrincipalFromToken(TOKEN)).thenReturn(
+            new JwtClaimsParser.ParsedPrincipal(mismatched, Map.of(ORG_ID, List.of()))
+        );
+        when(delegateStorage.getOrganization(ORG_ID)).thenReturn(delegateOrganization());
+
+        PersonDef person = storage.getPerson(PERSON_ID);
+
+        assertThat(person).isNotNull();
+        assertThat(person.organizationsMap)
+            .as("an organization id cannot be trusted under a different claimed company")
+            .doesNotContainKey(ORG_ID);
     }
 
     // --- fixture ------------------------------------------------------------------------------
@@ -98,6 +118,7 @@ class JwtHierarchyAnchorTest {
         PersonDef person = new PersonDef(PERSON_ID, "Alice");
         OrganizationDef membership = new OrganizationDef();
         membership.organizationId = ORG_ID;
+        membership.companyId = COMPANY_ID;
         membership.pathId = DELEGATE_ORG_PATH;
         membership.parentPath = TOKEN_DERIVED_ORG_PATH;
         person.organizationsMap.put(ORG_ID, membership);
@@ -107,6 +128,7 @@ class JwtHierarchyAnchorTest {
     private static OrganizationDef delegateOrganization() {
         OrganizationDef organization = new OrganizationDef();
         organization.organizationId = ORG_ID;
+        organization.companyId = COMPANY_ID;
         organization.organizationName = "Org 15";
         organization.parentPath = DELEGATE_ORG_PATH;
         organization.companyParentPath = DELEGATE_COMPANY_PATH;

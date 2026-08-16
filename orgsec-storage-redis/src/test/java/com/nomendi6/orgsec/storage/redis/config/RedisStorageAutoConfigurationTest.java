@@ -114,6 +114,7 @@ class RedisStorageAutoConfigurationTest {
         assertThat(configuration.personL1Cache(properties).getMaxSize()).isEqualTo(7);
         assertThat(configuration.organizationL1Cache(properties).getMaxSize()).isEqualTo(7);
         assertThat(configuration.roleL1Cache(properties).getMaxSize()).isEqualTo(7);
+        assertThat(configuration.positionRoleL1Cache(properties).getMaxSize()).isEqualTo(7);
         assertThat(configuration.privilegeL1Cache(properties).getMaxSize()).isEqualTo(7);
     }
 
@@ -149,7 +150,8 @@ class RedisStorageAutoConfigurationTest {
         InvalidationEventPublisher publisher = configuration.invalidationEventPublisher(
                 template, topic, instanceId, properties, objectMapperFactory);
         InvalidationEventListener listener = configuration.invalidationEventListener(
-                new L1Cache<>(2), new L1Cache<>(2), new L1Cache<>(2), instanceId, objectMapperFactory);
+                new L1Cache<>(2), new L1Cache<>(2), new L1Cache<>(2), new L1Cache<>(2),
+                new L1Cache<>(2), instanceId, objectMapperFactory);
         RedisMessageListenerContainer container = configuration.redisMessageListenerContainer(
                 mock(RedisConnectionFactory.class), listener, topic);
 
@@ -170,6 +172,7 @@ class RedisStorageAutoConfigurationTest {
 
         RedisSecurityDataStorage storage = configuration.redisSecurityDataStorage(
                 properties,
+                new L1Cache<>(10),
                 new L1Cache<>(10),
                 new L1Cache<>(10),
                 new L1Cache<>(10),

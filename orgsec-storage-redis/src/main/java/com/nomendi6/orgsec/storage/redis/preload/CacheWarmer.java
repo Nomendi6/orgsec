@@ -28,12 +28,18 @@ public class CacheWarmer {
     // Batch store callbacks (set by RedisSecurityDataStorage)
     private Consumer<Map<Long, PersonDef>> personBatchStore;
     private Consumer<Map<Long, OrganizationDef>> organizationBatchStore;
+    /** Legacy untyped role store, retained for applications using the pre-2.0 preload API. */
     private Consumer<Map<Long, RoleDef>> roleBatchStore;
+    private Consumer<Map<Long, RoleDef>> partyRoleBatchStore;
+    private Consumer<Map<Long, RoleDef>> positionRoleBatchStore;
 
     // Data loaders (to be set by application)
     private DataLoader<Long, PersonDef> personLoader;
     private DataLoader<Long, OrganizationDef> organizationLoader;
+    /** Legacy untyped role loader, retained for applications using the pre-2.0 preload API. */
     private DataLoader<Long, RoleDef> roleLoader;
+    private DataLoader<Long, RoleDef> partyRoleLoader;
+    private DataLoader<Long, RoleDef> positionRoleLoader;
 
     /**
      * Functional interface for loading data from source.
@@ -109,12 +115,36 @@ public class CacheWarmer {
     }
 
     /**
-     * Sets the batch store callback for roles.
+     * Sets the legacy batch store callback for an untyped role map.
+     *
+     * <p>New integrations should configure separate party-role and position-role stores so the
+     * two independent ID namespaces can contain different roles with the same numeric ID.</p>
      *
      * @param roleBatchStore the callback
+     * @deprecated use {@link #setPartyRoleBatchStore(Consumer)} and
+     * {@link #setPositionRoleBatchStore(Consumer)}
      */
+    @Deprecated(since = "2.0.0")
     public void setRoleBatchStore(Consumer<Map<Long, RoleDef>> roleBatchStore) {
         this.roleBatchStore = roleBatchStore;
+    }
+
+    /**
+     * Sets the batch store callback for party roles.
+     *
+     * @param partyRoleBatchStore the callback
+     */
+    public void setPartyRoleBatchStore(Consumer<Map<Long, RoleDef>> partyRoleBatchStore) {
+        this.partyRoleBatchStore = partyRoleBatchStore;
+    }
+
+    /**
+     * Sets the batch store callback for position roles.
+     *
+     * @param positionRoleBatchStore the callback
+     */
+    public void setPositionRoleBatchStore(Consumer<Map<Long, RoleDef>> positionRoleBatchStore) {
+        this.positionRoleBatchStore = positionRoleBatchStore;
     }
 
     /**
@@ -136,12 +166,35 @@ public class CacheWarmer {
     }
 
     /**
-     * Sets the data loader for roles.
+     * Sets the legacy data loader for an untyped role map.
+     *
+     * <p>The legacy loader is used only when neither typed role loader is configured.</p>
      *
      * @param roleLoader the loader
+     * @deprecated use {@link #setPartyRoleLoader(DataLoader)} and
+     * {@link #setPositionRoleLoader(DataLoader)}
      */
+    @Deprecated(since = "2.0.0")
     public void setRoleLoader(DataLoader<Long, RoleDef> roleLoader) {
         this.roleLoader = roleLoader;
+    }
+
+    /**
+     * Sets the data loader for party roles.
+     *
+     * @param partyRoleLoader the loader
+     */
+    public void setPartyRoleLoader(DataLoader<Long, RoleDef> partyRoleLoader) {
+        this.partyRoleLoader = partyRoleLoader;
+    }
+
+    /**
+     * Sets the data loader for position roles.
+     *
+     * @param positionRoleLoader the loader
+     */
+    public void setPositionRoleLoader(DataLoader<Long, RoleDef> positionRoleLoader) {
+        this.positionRoleLoader = positionRoleLoader;
     }
 
     /**
@@ -251,7 +304,15 @@ public class CacheWarmer {
     public int warmupRoles() {
         log.debug("Warming up roles cache using {} strategy...", warmingStrategy.getName());
 
-        int count = warmingStrategy.warm(roleLoader, roleBatchStore);
+        int count;
+        if (partyRoleLoader == null && positionRoleLoader == null) {
+            // Preserve the pre-2.0 contract for callers that still supply one untyped role map.
+            count = warmingStrategy.warm(roleLoader, roleBatchStore);
+        } else {
+            int partyRoleCount = warmingStrategy.warm(partyRoleLoader, partyRoleBatchStore);
+            int positionRoleCount = warmingStrategy.warm(positionRoleLoader, positionRoleBatchStore);
+            count = partyRoleCount + positionRoleCount;
+        }
         if (count > 0) {
             log.info("Warmed up {} roles using {} strategy", count, warmingStrategy.getName());
         }

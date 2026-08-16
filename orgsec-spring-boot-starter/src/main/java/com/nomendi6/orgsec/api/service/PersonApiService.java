@@ -8,7 +8,6 @@ import com.nomendi6.orgsec.model.RoleDef;
 import com.nomendi6.orgsec.provider.SecurityQueryProvider;
 import com.nomendi6.orgsec.storage.SecurityDataStorage;
 import com.nomendi6.orgsec.storage.inmemory.loader.PersonLoader;
-import com.nomendi6.orgsec.storage.inmemory.store.AllPersonsStore;
 import jakarta.persistence.Tuple;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,16 +30,13 @@ public class PersonApiService {
     private final SecurityDataStorage securityDataStorage;
     private final SecurityQueryProvider queryProvider;
     private final PersonLoader personLoader;
-    private final AllPersonsStore personsStore;
 
     public PersonApiService(SecurityDataStorage securityDataStorage,
                             SecurityQueryProvider queryProvider,
-                            PersonLoader personLoader,
-                            AllPersonsStore personsStore) {
+                            PersonLoader personLoader) {
         this.securityDataStorage = securityDataStorage;
         this.queryProvider = queryProvider;
         this.personLoader = personLoader;
-        this.personsStore = personsStore;
     }
 
     /**
@@ -83,7 +79,7 @@ public class PersonApiService {
             return null;
         }
 
-        PersonDef cached = personsStore.getPerson(personId);
+        PersonDef cached = securityDataStorage.getPerson(personId);
         if (cached != null) {
             return cached;
         }
@@ -96,8 +92,9 @@ public class PersonApiService {
 
         personLoader.syncPerson(personId, persons, personParties, personPartyRoles, personPositionRoles);
 
-        // Get the loaded person from store
-        return personsStore.getPerson(personId);
+        // Read through the explicitly selected delegate. In JWT mode the primary storage would
+        // resolve the mapper service account from its token instead of the requested user.
+        return securityDataStorage.getPerson(personId);
     }
 
     /**

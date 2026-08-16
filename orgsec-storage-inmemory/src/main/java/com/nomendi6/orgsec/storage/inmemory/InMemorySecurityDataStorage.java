@@ -231,6 +231,45 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
         }
     }
 
+    @Override
+    public void updatePartyRole(Long roleId, RoleDef role) {
+        cacheLock.writeLock().lock();
+        try {
+            if (!isReady() || roleId == null || role == null) {
+                return;
+            }
+            rolesStore.putOrganizationRole(roleId, role);
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public void updatePositionRole(Long roleId, RoleDef role) {
+        cacheLock.writeLock().lock();
+        try {
+            if (!isReady() || roleId == null || role == null) {
+                return;
+            }
+            rolesStore.putPositionRole(roleId, role);
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public void updatePrivilege(String privilegeIdentifier, PrivilegeDef privilege) {
+        cacheLock.writeLock().lock();
+        try {
+            if (!isReady() || privilegeIdentifier == null || privilegeIdentifier.isBlank() || privilege == null) {
+                return;
+            }
+            privilegesStore.putPrivilege(privilegeIdentifier, privilege);
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
+    }
+
     // ========== LIFECYCLE OPERATIONS ==========
 
     @Override

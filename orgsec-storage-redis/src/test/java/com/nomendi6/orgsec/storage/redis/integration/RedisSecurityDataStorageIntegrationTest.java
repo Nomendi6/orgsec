@@ -16,6 +16,8 @@ import com.nomendi6.orgsec.storage.redis.testutil.TestDataBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.*;
 
 /**
@@ -27,6 +29,10 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
     private CacheKeyBuilder keyBuilder;
     private L1Cache<Long, PersonDef> personL1Cache;
     private L2RedisCache<PersonDef> personL2Cache;
+    private L1Cache<Long, RoleDef> partyRoleL1Cache;
+    private L1Cache<Long, RoleDef> positionRoleL1Cache;
+    private L2RedisCache<RoleDef> roleL2Cache;
+    private L2RedisCache<PrivilegeDef> privilegeL2Cache;
 
     @BeforeEach
     void setUp() {
@@ -46,14 +52,15 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
         // L1 caches
         personL1Cache = new L1Cache<>(100);
         L1Cache<Long, OrganizationDef> organizationL1Cache = new L1Cache<>(100);
-        L1Cache<Long, RoleDef> roleL1Cache = new L1Cache<>(100);
+        partyRoleL1Cache = new L1Cache<>(100);
+        positionRoleL1Cache = new L1Cache<>(100);
         L1Cache<String, PrivilegeDef> privilegeL1Cache = new L1Cache<>(100);
 
         // L2 caches
         personL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(PersonDef.class), keyBuilder);
         L2RedisCache<OrganizationDef> organizationL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(OrganizationDef.class), keyBuilder);
-        L2RedisCache<RoleDef> roleL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(RoleDef.class), keyBuilder);
-        L2RedisCache<PrivilegeDef> privilegeL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(PrivilegeDef.class), keyBuilder);
+        roleL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(RoleDef.class), keyBuilder);
+        privilegeL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(PrivilegeDef.class), keyBuilder);
 
         // Invalidation publisher
         InvalidationEventPublisher publisher = new InvalidationEventPublisher(redisTemplate, "test:invalidation", true, "test-instance");
@@ -66,7 +73,8 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
             properties,
             personL1Cache,
             organizationL1Cache,
-            roleL1Cache,
+            partyRoleL1Cache,
+            positionRoleL1Cache,
             privilegeL1Cache,
             personL2Cache,
             organizationL2Cache,
@@ -163,6 +171,63 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
         PersonDef fromL2 = personL2Cache.get(key);
         assertThat(fromL2).isNotNull();
         assertThat(fromL2.personName).isEqualTo("Updated Person");
+    }
+
+    @Test
+    void publicLocalClearForcesTheNextReadThroughRedisL2() {
+        PersonDef person = TestDataBuilder.buildPerson(1L, "Redis round trip");
+        storage.updatePerson(1L, person);
+
+        storage.clearLocalCaches();
+        assertThat(personL1Cache.get(1L)).isNull();
+
+        PersonDef fromL2 = storage.getPerson(1L);
+        assertThat(fromL2).isNotNull();
+        assertThat(fromL2.personName).isEqualTo("Redis round trip");
+        assertThat(personL1Cache.get(1L)).isNotNull();
+    }
+
+    @Test
+    void publicTypedRoleAndPrivilegeUpdatesRoundTripThroughDistinctL2Keys() {
+        RoleDef partyRole = new RoleDef(7L, "Party role");
+        RoleDef positionRole = new RoleDef(7L, "Position role");
+        PrivilegeDef privilege = new PrivilegeDef("DOCUMENT_ORG_R", "DOCUMENT");
+
+        storage.updatePartyRole(7L, partyRole);
+        storage.updatePositionRole(7L, positionRole);
+        storage.updatePrivilege("DOCUMENT_ORG_R", privilege);
+
+        assertThat(roleL2Cache.get(keyBuilder.buildPartyRoleKey(7L)).name).isEqualTo("Party role");
+        assertThat(roleL2Cache.get(keyBuilder.buildPositionRoleKey(7L)).name).isEqualTo("Position role");
+        assertThat(privilegeL2Cache.get(keyBuilder.buildPrivilegeKey("DOCUMENT_ORG_R"))).isEqualTo(privilege);
+
+        storage.clearLocalCaches();
+
+        assertThat(storage.getPartyRole(7L).name).isEqualTo("Party role");
+        assertThat(storage.getPositionRole(7L).name).isEqualTo("Position role");
+        assertThat(storage.getPrivilege("DOCUMENT_ORG_R")).isEqualTo(privilege);
+    }
+
+    @Test
+    void typedRolePreloadPreservesSameIdRolesAfterL1ClearAndL2Read() {
+        RoleDef partyRole = new RoleDef(11L, "Preloaded party role");
+        RoleDef positionRole = new RoleDef(11L, "Preloaded position role");
+        CacheWarmer warmer = storage.getCacheWarmer();
+        warmer.setPartyRoleLoader(() -> Map.of(11L, partyRole));
+        warmer.setPositionRoleLoader(() -> Map.of(11L, positionRole));
+
+        assertThat(warmer.warmupRoles()).isEqualTo(2);
+        assertThat(roleL2Cache.get(keyBuilder.buildPartyRoleKey(11L)).name)
+            .isEqualTo("Preloaded party role");
+        assertThat(roleL2Cache.get(keyBuilder.buildPositionRoleKey(11L)).name)
+            .isEqualTo("Preloaded position role");
+
+        storage.clearLocalCaches();
+        assertThat(partyRoleL1Cache.size()).isZero();
+        assertThat(positionRoleL1Cache.size()).isZero();
+
+        assertThat(storage.getPartyRole(11L).name).isEqualTo("Preloaded party role");
+        assertThat(storage.getPositionRole(11L).name).isEqualTo("Preloaded position role");
     }
 
     @Test
