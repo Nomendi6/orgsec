@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -745,10 +746,15 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
     public void notifyPartyRoleChanged(Long roleId) {
         log.debug("Redis storage notified: party role {} changed - invalidating cache", roleId);
 
-        // Invalidate L1 cache
+        // Delete the shared value before dropping the local copy. Otherwise this process and
+        // peers that receive the Pub/Sub event immediately refill L1 from the revoked L2 value.
+        roleL2Cache.multiDelete(List.of(
+            cacheKeyBuilder.buildPartyRoleKey(roleId),
+            cacheKeyBuilder.buildRoleKey(roleId)
+        ));
         roleL1Cache.invalidate(roleId);
 
-        // Publish distributed invalidation event (will also invalidate L2)
+        // Tell peers to drop their process-local copy after the shared value is gone.
         invalidationPublisher.publishRoleChanged(roleId);
     }
 
@@ -759,7 +765,10 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
     public void notifyPositionRoleChanged(Long roleId) {
         log.debug("Redis storage notified: position role {} changed - invalidating cache", roleId);
 
-        // Invalidate L1 cache
+        roleL2Cache.multiDelete(List.of(
+            cacheKeyBuilder.buildPositionRoleKey(roleId),
+            cacheKeyBuilder.buildRoleKey(roleId)
+        ));
         positionRoleL1Cache.invalidate(roleId);
 
         // Publish distributed invalidation event
@@ -773,7 +782,7 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
     public void notifyOrganizationChanged(Long orgId) {
         log.debug("Redis storage notified: organization {} changed - invalidating cache", orgId);
 
-        // Invalidate L1 cache
+        organizationL2Cache.delete(cacheKeyBuilder.buildOrganizationKey(orgId));
         organizationL1Cache.invalidate(orgId);
 
         // Publish distributed invalidation event
@@ -787,7 +796,7 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
     public void notifyPersonChanged(Long personId) {
         log.debug("Redis storage notified: person {} changed - invalidating cache", personId);
 
-        // Invalidate L1 cache
+        personL2Cache.delete(cacheKeyBuilder.buildPersonKey(personId));
         personL1Cache.invalidate(personId);
 
         // Publish distributed invalidation event

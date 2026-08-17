@@ -742,6 +742,7 @@ class RedisSecurityDataStorageTest {
         void shouldInvalidateL1CacheOnPersonChanged() {
             storage.notifyPersonChanged(1L);
 
+            verify(personL2Cache).delete("orgsec:p:1");
             verify(personL1Cache).invalidate(1L);
             verify(invalidationPublisher).publishPersonChanged(1L);
         }
@@ -750,6 +751,7 @@ class RedisSecurityDataStorageTest {
         void shouldInvalidateL1CacheOnOrganizationChanged() {
             storage.notifyOrganizationChanged(1L);
 
+            verify(organizationL2Cache).delete("orgsec:o:1");
             verify(organizationL1Cache).invalidate(1L);
             verify(invalidationPublisher).publishOrganizationChanged(1L);
         }
@@ -758,6 +760,7 @@ class RedisSecurityDataStorageTest {
         void shouldInvalidateL1CacheOnPartyRoleChanged() {
             storage.notifyPartyRoleChanged(1L);
 
+            verify(roleL2Cache).multiDelete(List.of("orgsec:r:party:1", "orgsec:r:1"));
             verify(roleL1Cache).invalidate(1L);
             verify(invalidationPublisher).publishRoleChanged(1L);
         }
@@ -766,6 +769,7 @@ class RedisSecurityDataStorageTest {
         void shouldInvalidateL1CacheOnPositionRoleChanged() {
             storage.notifyPositionRoleChanged(1L);
 
+            verify(roleL2Cache).multiDelete(List.of("orgsec:r:position:1", "orgsec:r:1"));
             verify(positionRoleL1Cache).invalidate(1L);
             verify(invalidationPublisher).publishRoleChanged(1L);
         }
