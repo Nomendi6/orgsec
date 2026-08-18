@@ -10,6 +10,9 @@ import java.util.List;
  */
 public class PersonApiDTO {
 
+    @JsonProperty("version")
+    private String version = PersonApiErrorCodes.API_VERSION;
+
     @JsonProperty("id")
     private Long id;
 
@@ -32,6 +35,14 @@ public class PersonApiDTO {
     private List<OrganizationMembershipApiDTO> memberships;
 
     public PersonApiDTO() {
+    }
+
+    public String getVersion() {
+        return version;
+    }
+
+    public void setVersion(String version) {
+        this.version = version;
     }
 
     public Long getId() {

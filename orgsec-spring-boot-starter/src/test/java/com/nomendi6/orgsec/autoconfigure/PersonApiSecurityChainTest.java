@@ -66,7 +66,10 @@ class PersonApiSecurityChainTest {
 
     @Test
     void anonymousRequestIs401() throws Exception {
-        mockMvc.perform(get(byUser(EXISTING_USER))).andExpect(status().isUnauthorized());
+        mockMvc
+            .perform(get(byUser(EXISTING_USER)))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("CALLBACK_UNAUTHENTICATED"));
     }
 
     @ParameterizedTest
@@ -74,14 +77,16 @@ class PersonApiSecurityChainTest {
     void invalidBearerTokenIs401(String token) throws Exception {
         mockMvc
             .perform(get(byUser(EXISTING_USER)).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
-            .andExpect(status().isUnauthorized());
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("CALLBACK_UNAUTHENTICATED"));
     }
 
     @Test
     void authenticatedCallerWithoutRequiredRealmRoleIs403() throws Exception {
         mockMvc
             .perform(get(byUser(EXISTING_USER)).header(HttpHeaders.AUTHORIZATION, "Bearer without-role"))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("CALLBACK_FORBIDDEN"));
     }
 
     @Test
@@ -89,6 +94,7 @@ class PersonApiSecurityChainTest {
         mockMvc
             .perform(get(byUser(EXISTING_USER)).header(HttpHeaders.AUTHORIZATION, "Bearer with-role"))
             .andExpect(status().isOk())
+            .andExpect(jsonPath("$.version").value("1.0"))
             .andExpect(jsonPath("$.name").value("inmemory-delegate"));
     }
 
@@ -96,7 +102,8 @@ class PersonApiSecurityChainTest {
     void serviceAccountRealmRoleAndUnknownUserReturn404() throws Exception {
         mockMvc
             .perform(get(byUser(MISSING_USER)).header(HttpHeaders.AUTHORIZATION, "Bearer with-role"))
-            .andExpect(status().isNotFound());
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("PERSON_NOT_FOUND"));
     }
 
     private static String byUser(String userId) {

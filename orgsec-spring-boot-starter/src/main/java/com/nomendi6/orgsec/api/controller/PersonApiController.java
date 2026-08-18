@@ -1,10 +1,14 @@
 package com.nomendi6.orgsec.api.controller;
 
 import com.nomendi6.orgsec.api.dto.PersonApiDTO;
+import com.nomendi6.orgsec.api.dto.PersonApiErrorCodes;
+import com.nomendi6.orgsec.api.dto.PersonApiErrorDTO;
 import com.nomendi6.orgsec.api.service.PersonApiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,7 +39,7 @@ public class PersonApiController {
      * @return PersonApiDTO or 404 if not found
     */
     @GetMapping("/by-user/{userId}")
-    public ResponseEntity<PersonApiDTO> getPersonByUserId(@PathVariable("userId") String userId) {
+    public ResponseEntity<?> getPersonByUserId(@PathVariable("userId") String userId) {
         long startTime = System.currentTimeMillis();
         log.debug("GET /api/orgsec/person/by-user/{}", userId);
 
@@ -44,7 +48,7 @@ public class PersonApiController {
 
             if (person == null) {
                 log.warn("Person not found for userId: {}", userId);
-                return ResponseEntity.notFound().build();
+                return notFound();
             }
 
             long duration = System.currentTimeMillis() - startTime;
@@ -65,7 +69,7 @@ public class PersonApiController {
      * @return PersonApiDTO or 404 if not found
     */
     @GetMapping("/{personId}")
-    public ResponseEntity<PersonApiDTO> getPersonById(@PathVariable("personId") Long personId) {
+    public ResponseEntity<?> getPersonById(@PathVariable("personId") Long personId) {
         long startTime = System.currentTimeMillis();
         log.debug("GET /api/orgsec/person/{}", personId);
 
@@ -74,7 +78,7 @@ public class PersonApiController {
 
             if (person == null) {
                 log.warn("Person not found for personId: {}", personId);
-                return ResponseEntity.notFound().build();
+                return notFound();
             }
 
             long duration = System.currentTimeMillis() - startTime;
@@ -86,5 +90,11 @@ public class PersonApiController {
             log.error("Error fetching person for personId: {}", personId, e);
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    private static ResponseEntity<PersonApiErrorDTO> notFound() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(new PersonApiErrorDTO(PersonApiErrorCodes.PERSON_NOT_FOUND));
     }
 }

@@ -45,6 +45,7 @@ class PersonApiServiceTest {
         PersonApiDTO result = service.getPersonById(100L);
 
         assertThat(result).isNotNull();
+        assertThat(result.getVersion()).isEqualTo("1.0");
         assertThat(result.getRelatedUserId()).isEqualTo("keycloak-user-id");
         assertThat(result.getMemberships()).singleElement().satisfies(mapped -> {
             assertThat(mapped.getOrganizationId()).isEqualTo(1L);

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Person API successful responses now include payload `"version": "1.0"`. `404` returns `{"code":"PERSON_NOT_FOUND"}`; `401`/`403` on the Person chain return `CALLBACK_UNAUTHENTICATED` / `CALLBACK_FORBIDDEN`. A status without the matching code is a mapper contract break.
 - Upgraded the baseline to Java 21 and Spring Boot 4.0.6, bringing Spring Security 7 and Jakarta EE 11 managed dependencies through the Spring Boot BOM.
 - Added a Java 25 supported build profile. The profile requires JDK 25 for the Maven process but keeps the compiled bytecode at `--release 21`.
 - Migrated Jackson databind usage to Jackson 3 `tools.jackson.*` APIs while keeping Jackson annotations in the `com.fasterxml.jackson.annotation.*` namespace.

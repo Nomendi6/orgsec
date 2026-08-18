@@ -2,6 +2,7 @@ package com.nomendi6.orgsec.api.service;
 
 import com.nomendi6.orgsec.api.dto.OrganizationMembershipApiDTO;
 import com.nomendi6.orgsec.api.dto.PersonApiDTO;
+import com.nomendi6.orgsec.api.dto.PersonApiErrorCodes;
 import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.model.RoleDef;
@@ -121,6 +122,7 @@ public class PersonApiService {
      */
     private PersonApiDTO mapToApiDTO(PersonDef personDef) {
         PersonApiDTO dto = new PersonApiDTO();
+        dto.setVersion(PersonApiErrorCodes.API_VERSION);
         dto.setId(personDef.personId);
         dto.setName(personDef.personName);
         dto.setRelatedUserId(personDef.relatedUserId);
