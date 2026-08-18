@@ -62,7 +62,7 @@ class RsqlFilterBuilderTest {
 
         String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
-        assertThat(filter).isEqualTo("(ownerCompanyPath=*'|1|10|*')");
+        assertThat(filter).isEqualTo("(ownerCompanyPath=^*'|1|10|*')");
     }
 
     @Test
@@ -102,7 +102,7 @@ class RsqlFilterBuilderTest {
 
         String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
-        assertThat(filter).isEqualTo("(ownerOrgPath=*'|1|10|*')");
+        assertThat(filter).isEqualTo("(ownerOrgPath=^*'|1|10|*')");
     }
 
     @Test
@@ -158,8 +158,8 @@ class RsqlFilterBuilderTest {
 
         String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
-        // A subtree IS expressible as a prefix pattern, so HIERARCHY_DOWN is unchanged.
-        assertThat(filter).isEqualTo("(ownerOrgPath=*'|A|B|C|*')");
+        // A subtree is a prefix pattern. =^* stays case-sensitive so the path index remains usable.
+        assertThat(filter).isEqualTo("(ownerOrgPath=^*'|A|B|C|*')");
     }
 
     @Test
@@ -237,7 +237,7 @@ class RsqlFilterBuilderTest {
         String orgFilter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
         assertThat(companyFilter).isEqualTo("(ownerCompanyHierarchy=in=('|1|','|1|10|'))");
-        assertThat(orgFilter).isEqualTo("(ownerOrganizationHierarchy=*'|1|10|*')");
+        assertThat(orgFilter).isEqualTo("(ownerOrganizationHierarchy=^*'|1|10|*')");
     }
 
     @Test
@@ -286,7 +286,7 @@ class RsqlFilterBuilderTest {
 
         String filter = builder.buildRsqlFilterForReadPrivileges(RESOURCE, null, CURRENT_PERSON);
 
-        assertThat(filter).contains("ownerOrgPath=*'|A|B|*'");
+        assertThat(filter).contains("ownerOrgPath=^*'|A|B|*'");
         assertThat(filter).contains("ownerOrgPath=in=('|A|','|A|B|')");
         assertThat(filter).contains(",");
     }

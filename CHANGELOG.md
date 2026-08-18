@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - Unreleased
+
+This is a minor release on the Spring Boot 3.5 / Java 17 line. It is source- and binary-compatible
+with 1.0.5 for the japicmp-guarded public types. It is **not** drop-in for Redis deployments or
+for handwritten RSQL that assumed `=*`.
+
+### Security
+
+- **Redis `<= 1.0.5` can serve a stale authorization view.** The previous L1/L2 + Pub/Sub path
+  was a cache, not a generation-checked snapshot. A revoke that missed a notify, or a peer that
+  rebuilt L1 from an older L2 value, could keep a grant that the source database no longer has.
+  1.1.0 replaces managed GET/LIST with a lease-fenced immutable snapshot of all six families.
+  Upgrade every Redis instance together; mixed 1.0.x / 1.1.0 Redis processes are unsupported.
+- **List filters now use case-sensitive `=^*`.** On 1.0.x, `HIERARCHY_DOWN` emitted `=*`, which
+  most JPA/RSQL stacks compile to `lower(col) LIKE ...` while `PrivilegeChecker` compares paths
+  case-sensitively. Path segments are usually numeric, so the two agreed in practice; if your
+  paths contain letters, a list endpoint could return a row that a direct GET would deny.
+
+### Added
+
+- **Managed Redis snapshot protocol.** One standalone Redis primary, one lease-elected writer,
+  a full copy-on-write snapshot, and a local view that GET/LIST re-check against the current
+  READY generation. Pub/Sub remains a hint only. Cluster, Sentinel, replicas, WAIT and capacity
+  ledgers are out of scope.
+- **`SecurityEventPublisher` after-commit notify.** Producer methods (`partyRoleChanged`,
+  `personChanged`, ...) apply storage notify (and the Kafka publish attempt) once after the
+  surrounding transaction commits. Rollback applies nothing. With no transaction the notify
+  runs immediately. `apply*` stays the consumer/internal path and is never deferred. A failure
+  after commit is `SecurityNotifyAfterCommitException` and does not hide that the source change
+  already landed.
+
+### Changed
+
+- Person API successful responses now include payload `"version": "1.0"`. `404` returns `{"code":"PERSON_NOT_FOUND"}`; `401`/`403` on the Person chain return `CALLBACK_UNAUTHENTICATED` / `CALLBACK_FORBIDDEN`.
+- **`RsqlFilterBuilder` emits `=^*` for `HIERARCHY_DOWN`** and folds identical or subsumed
+  subtree clauses on the same selector. `EXACT` and `HIERARCHY_UP` (`=in=` of ancestor prefixes)
+  are unchanged. The 1.x empty-`privilegesList` aggregate fallback remains; it is removed in 2.x.
+
+### Migration Notes
+
+- Change handwritten `ownerOrgPath=*'|...|*'` / `ownerCompanyPath=*'|...|*'` filters to `=^*`.
+- Call `SecurityEventPublisher` producer methods from the service that mutates security data;
+  do not call `storage.notify*` from inside an open transaction if a rollback is still possible.
+- Redis: set `orgsec.storage.redis.enabled=true` and a stable `orgsec.storage.redis.security-dataset-id`.
+  Provide `SecurityDatasetFenceStore` and `RedisSnapshotLoader`. `update*` on a managed Redis
+  storage is rejected.
+
 ## [1.0.5] - 2026-08-16
 
 This is a patch release: it is source- and binary-compatible with 1.0.4. It is **not** drop-in.

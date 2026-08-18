@@ -106,6 +106,7 @@ Successful response (HTTP 200):
 
 ```json
 {
+  "version": "1.0",
   "id": 42,
   "name": "Alice Smith",
   "relatedUserId": "kc-user-uuid-here",
@@ -128,11 +129,13 @@ the database - not the full path. The mapper copies this field into the token ve
 backend still accepts a full path for compatibility, but new deployments should emit the segment.
 See [Storage / JWT - `pathId`](../storage/04-jwt.md#pathid-the-organizations-own-segment).
 
-Error responses:
+Error responses (JSON `{"code":"..."}`; a status without the matching code is a contract break):
 
-- `404 Not Found` - no person row exists for the given Keycloak user. The mapper logs and skips the claim.
-- `401 / 403` - the service account does not have `ROLE_ORGSEC_API_CLIENT`. Fix the realm-role assignment.
-- `500` - the application errored. Check the application logs.
+- `200` must include `"version": "1.0"`. Missing or unknown version is invalid.
+- `404 Not Found` + `PERSON_NOT_FOUND` — no person row for the Keycloak user.
+- `401 Unauthorized` + `CALLBACK_UNAUTHENTICATED` — missing or invalid Bearer token.
+- `403 Forbidden` + `CALLBACK_FORBIDDEN` — authenticated caller lacks `ROLE_ORGSEC_API_CLIENT`.
+- `500` — the application errored. Check the application logs.
 
 The contract is implemented by `PersonApiController` (`/api/orgsec/person/by-user/{userId}` and `/api/orgsec/person/{personId}`) in `orgsec-spring-boot-starter`.
 

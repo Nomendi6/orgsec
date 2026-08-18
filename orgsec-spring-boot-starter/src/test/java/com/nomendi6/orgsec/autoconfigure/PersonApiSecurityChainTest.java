@@ -75,23 +75,31 @@ class PersonApiSecurityChainTest {
 
     @Test
     void shouldRejectAnonymousCallerWith401() throws Exception {
-        mockMvc.perform(get(PERSON_BY_ID)).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(PERSON_BY_ID))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("CALLBACK_UNAUTHENTICATED"));
     }
 
     @Test
     void shouldRejectGarbageTokenWith401() throws Exception {
-        bearer("not-a-token").andExpect(status().isUnauthorized());
+        bearer("not-a-token")
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("CALLBACK_UNAUTHENTICATED"));
     }
 
     @Test
     void shouldRejectTokenTheApplicationDecoderRefusesWith401() throws Exception {
         // Stands in for a JHipster-style AudienceValidator wired into the application's decoder.
-        bearer("wrong-audience").andExpect(status().isUnauthorized());
+        bearer("wrong-audience")
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("CALLBACK_UNAUTHENTICATED"));
     }
 
     @Test
     void shouldRejectAuthenticatedCallerWithoutTheRequiredRoleWith403() throws Exception {
-        bearer("without-role").andExpect(status().isForbidden());
+        bearer("without-role")
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("CALLBACK_FORBIDDEN"));
     }
 
     @Test
@@ -104,7 +112,9 @@ class PersonApiSecurityChainTest {
         // In JWT mode the @Primary storage resolves the person from the token of the request in
         // flight - here, the mapper's own service-account token. The Person API must answer from
         // the database instead, or the mapper gets its own identity back for every user.
-        bearer("with-role").andExpect(status().isOk()).andExpect(jsonPath("$.name").value("inmemory-delegate"));
+        bearer("with-role").andExpect(status().isOk())
+            .andExpect(jsonPath("$.version").value("1.0"))
+            .andExpect(jsonPath("$.name").value("inmemory-delegate"));
 
         SecurityDataStorage bound = (SecurityDataStorage) ReflectionTestUtils.getField(
             context.getBean(PersonApiService.class),
@@ -122,7 +132,8 @@ class PersonApiSecurityChainTest {
         mockMvc
             .perform(get("/api/orgsec/person/by-user/8f2b1c34-0000-4000-8000-000000000001")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer with-role"))
-            .andExpect(status().isNotFound());
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("PERSON_NOT_FOUND"));
     }
 
     private ResultActions bearer(String token) throws Exception {

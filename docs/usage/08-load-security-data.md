@@ -61,7 +61,15 @@ If storage cannot find required data, OrgSec fails closed. JWT storage does not 
 
 ## Notify Hooks
 
-When security data changes, call the appropriate notify/update hooks so caches refresh. Common triggers are:
+When security data changes, call `SecurityEventPublisher` producer methods (`partyRoleChanged`,
+`personChanged`, `partyChanged`, ...) so the local apply and the Kafka publish attempt run once
+after the surrounding transaction commits. A rollback notifies nobody. With no transaction the
+notify runs immediately. Kafka consumers and other internal paths use the `apply*` methods, which
+notify storage at once and never republish.
+
+Do not call `storage.notify*` from an application service that still has an open transaction.
+
+Common triggers are:
 
 - person changed
 - organization changed or moved

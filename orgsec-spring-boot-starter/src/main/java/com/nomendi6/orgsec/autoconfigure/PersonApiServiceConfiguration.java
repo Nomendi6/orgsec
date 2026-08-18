@@ -1,6 +1,8 @@
 package com.nomendi6.orgsec.autoconfigure;
 
+import com.nomendi6.orgsec.api.PersonApiErrorWriter;
 import com.nomendi6.orgsec.api.controller.PersonApiController;
+import com.nomendi6.orgsec.api.dto.PersonApiErrorCodes;
 import com.nomendi6.orgsec.api.service.PersonApiService;
 import com.nomendi6.orgsec.exceptions.OrgsecConfigurationException;
 import com.nomendi6.orgsec.provider.SecurityQueryProvider;
@@ -95,6 +97,22 @@ public class PersonApiServiceConfiguration {
             .authorizeHttpRequests(authorize -> authorize.anyRequest().hasRole(requiredRole))
             .oauth2ResourceServer(oauth2 ->
                 oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(KeycloakRealmRoleConverter.jwtAuthenticationConverter()))
+                    .authenticationEntryPoint((request, response, exception) ->
+                        PersonApiErrorWriter.write(
+                            response,
+                            401,
+                            PersonApiErrorCodes.CALLBACK_UNAUTHENTICATED
+                        )
+                    )
+            )
+            .exceptionHandling(exceptions ->
+                exceptions.accessDeniedHandler((request, response, exception) ->
+                    PersonApiErrorWriter.write(
+                        response,
+                        403,
+                        PersonApiErrorCodes.CALLBACK_FORBIDDEN
+                    )
+                )
             )
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

@@ -42,9 +42,9 @@ The backend has three lifecycle methods inherited from `SecurityDataStorage`:
 
 - **`initialize()`** - called once at startup. Calls each loader, populates the four stores. After this call, `isReady()` returns `true`.
 - **`refresh()`** - reloads the entire dataset from your `SecurityQueryProvider`. Use it when you have a reason to re-read everything (configuration change, external bulk import). For incremental updates, prefer the notify hooks.
-- **`notifyPartyRoleChanged(Long roleId)` / `notifyPositionRoleChanged(Long roleId)` / `notifyPersonChanged(Long personId)` / `notifyOrganizationChanged(Long orgId)`** - reload only the affected entity and any aggregated views that depend on it.
+- **`notifyPartyRoleChanged(Long roleId)` / `notifyPositionRoleChanged(Long roleId)` / `notifyPersonChanged(Long personId)` / `notifyOrganizationChanged(Long orgId)`** - reload the in-memory view from `SecurityQueryProvider`. Party/position/organization notifies run a full refresh; person notify syncs that person.
 
-In a single-instance deployment the notify hooks keep the cache in sync with your database. Call them from the place where the data changes - usually a domain event listener or a service that performs the role assignment. There is no JPA listener hooked in by default; if your team prefers automatic invalidation, see [Usage / Load security data](../usage/08-load-security-data.md).
+In a single-instance deployment the notify hooks keep the cache in sync with your database. Call them through `SecurityEventPublisher` (`partyRoleChanged`, `personChanged`, ...) so the reload runs after the surrounding transaction commits. A rollback then leaves the previous view in place. Calling `storage.notify*` directly from inside an open transaction can reload uncommitted source data, or skip a reload that a later rollback needed. There is no JPA listener hooked in by default; if your team prefers automatic invalidation, see [Usage / Load security data](../usage/08-load-security-data.md).
 
 ## When to use it
 
@@ -129,7 +129,7 @@ The `takeSnapshot()` and `restore()` helpers are not currently published as part
 - **No persistence.** Restart the JVM and the cache is empty; the next startup runs a full load. For a single instance with reasonable warmup time this is fine. For a tight SLO on cold-start, prefer Redis.
 - **No spill-over.** The four maps live entirely in heap.
 - **No cross-instance coordination.** Documented above; this is the main reason to switch to Redis.
-- **Refresh is global.** `refresh()` re-reads everything. Notify hooks are the granular alternative.
+- **Refresh is global.** `refresh()` re-reads everything. Party, position and organization notifies do the same full reload; only person notify is targeted.
 - **Defensive-copy cost.** Reads pay the price of copying `PersonDef` / `OrganizationDef` instances. The cost is small (these are small objects), but it appears on every privilege check. If your profiler points here, switch to Redis where the L1 returns shared references.
 
 ## Where to go next

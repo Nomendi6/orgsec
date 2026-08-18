@@ -125,14 +125,14 @@ String filter = rsqlFilterBuilder.buildRsqlFilterForReadPrivileges(
     new PersonData(1L, "Alice")
 );
 
-assertThat(filter).isEqualTo("(ownerOrgPath=*'|1|10|22|*')");
+assertThat(filter).isEqualTo("(ownerOrgPath=^*'|1|10|22|*')");
 ```
 
-For `DOCUMENT_ORGHD_R`, the generated filter targets `ownerOrgPath` with `|1|10|22|` - Alice's own organization, which is the hierarchy anchor `parentPath` holds. The subtree branch is expressed as a prefix pattern so the comparison stays sargable.
+For `DOCUMENT_ORGHD_R`, the generated filter targets `ownerOrgPath` with `|1|10|22|` - Alice's own organization, which is the hierarchy anchor `parentPath` holds. The subtree branch is expressed as a case-sensitive prefix pattern (`=^*`) so the comparison stays sargable.
 
-> On the 1.0.x line the list filter uses RSQL `=*`, which most JPA/RSQL stacks translate to a
-> case-insensitive `LIKE`, while `PrivilegeChecker` compares paths case-sensitively. Path segments
-> are normally numeric ids, so the two agree in practice - but if your organizational paths contain
-> letters, a list endpoint can return a row that a direct `GET` on the same row would deny.
+> On the 1.0.x line the list filter used RSQL `=*`, which most JPA/RSQL stacks translate to a
+> case-insensitive `LIKE`, while `PrivilegeChecker` compares paths case-sensitively. 1.1.0 emits
+> `=^*` so both evaluators agree on case. If you still have handwritten filters with `=*`, change
+> them or a list endpoint can return a row that a direct `GET` on the same row would deny.
 
 Next: [Security-enabled entity](../usage/01-security-enabled-entity.md).

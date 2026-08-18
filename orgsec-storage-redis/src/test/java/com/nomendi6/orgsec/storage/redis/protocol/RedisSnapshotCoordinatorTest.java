@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 class RedisSnapshotCoordinatorTest {
@@ -56,5 +57,19 @@ class RedisSnapshotCoordinatorTest {
         assertThat(coordinator.isReady()).isFalse();
         PersonDef person = coordinator.person(9L);
         assertThat(person).isNull();
+    }
+
+    @Test
+    void writerLeaseDurationMustBePositive() {
+        RedisStorageProperties properties = new RedisStorageProperties();
+        properties.setSecurityDatasetId("orgsec-test");
+        assertThatThrownBy(() -> new RedisSnapshotCoordinator(
+            properties,
+            mock(RedisConnectionFactory.class),
+            mock(SecurityDatasetFenceStore.class),
+            mock(RedisSnapshotLoader.class),
+            java.time.Duration.ZERO
+        )).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("writerLeaseDuration");
     }
 }

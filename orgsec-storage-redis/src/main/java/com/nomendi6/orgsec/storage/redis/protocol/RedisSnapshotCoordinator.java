@@ -40,6 +40,7 @@ public final class RedisSnapshotCoordinator {
     private final RedisConnectionFactory connectionFactory;
     private final SecurityDatasetFenceStore fenceStore;
     private final RedisSnapshotLoader loader;
+    private final Duration writerLeaseDuration;
     private final AtomicReference<RedisAuthorizationSnapshot> view = new AtomicReference<>();
     private final AtomicReference<Runnable> readinessListener = new AtomicReference<>();
 
@@ -49,6 +50,16 @@ public final class RedisSnapshotCoordinator {
         SecurityDatasetFenceStore fenceStore,
         RedisSnapshotLoader loader
     ) {
+        this(properties, connectionFactory, fenceStore, loader, WRITER_LEASE_DURATION);
+    }
+
+    public RedisSnapshotCoordinator(
+        RedisStorageProperties properties,
+        RedisConnectionFactory connectionFactory,
+        SecurityDatasetFenceStore fenceStore,
+        RedisSnapshotLoader loader,
+        Duration writerLeaseDuration
+    ) {
         this.properties = Objects.requireNonNull(properties, "properties must not be null");
         this.connectionFactory = Objects.requireNonNull(
             connectionFactory,
@@ -56,6 +67,10 @@ public final class RedisSnapshotCoordinator {
         );
         this.fenceStore = Objects.requireNonNull(fenceStore, "fenceStore must not be null");
         this.loader = Objects.requireNonNull(loader, "loader must not be null");
+        if (writerLeaseDuration == null || writerLeaseDuration.isZero() || writerLeaseDuration.isNegative()) {
+            throw new IllegalArgumentException("writerLeaseDuration must be positive");
+        }
+        this.writerLeaseDuration = writerLeaseDuration;
     }
 
     public void onReadinessChanged(Runnable listener) {
@@ -182,7 +197,7 @@ public final class RedisSnapshotCoordinator {
             new RedisStandaloneCoordinatorLeaseManager(connectionFactory);
         try {
             Optional<RedisStandaloneCoordinatorLeaseSession> acquired =
-                leases.tryAcquire(primary, WRITER_LEASE_DURATION);
+                leases.tryAcquire(primary, writerLeaseDuration);
             if (acquired.isEmpty()) {
                 log.info("Another instance holds the Redis writer lease; remaining NOT_READY");
                 return;
