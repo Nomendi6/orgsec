@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Builder for Redis cache keys.
@@ -38,7 +40,21 @@ public class CacheKeyBuilder {
     private static final String PERSON_PATTERN = KEY_PREFIX + ":p:*";
     private static final String ORGANIZATION_PATTERN = KEY_PREFIX + ":o:*";
     private static final String ROLE_PATTERN = KEY_PREFIX + ":r:*";
+    private static final String PRIVILEGE_PATTERN = KEY_PREFIX + ":priv:*";
+    private static final String OBFUSCATED_KEY_PREFIX = KEY_PREFIX + ":";
+    private static final String OBFUSCATED_KEY_PATTERN =
+        OBFUSCATED_KEY_PREFIX + "?".repeat(64);
     private static final String ALL_PATTERN = KEY_PREFIX + ":*";
+    private static final Pattern OBFUSCATED_LEGACY_KEY = Pattern.compile(
+        "^" + OBFUSCATED_KEY_PREFIX + "[0-9a-f]{64}$"
+    );
+    private static final List<String> LEGACY_DATA_KEY_PATTERNS = List.of(
+        PERSON_PATTERN,
+        ORGANIZATION_PATTERN,
+        ROLE_PATTERN,
+        PRIVILEGE_PATTERN,
+        OBFUSCATED_KEY_PATTERN
+    );
 
     private final boolean obfuscateKeys;
 
@@ -174,12 +190,42 @@ public class CacheKeyBuilder {
     }
 
     /**
-     * Returns the pattern for matching all OrgSec cache keys.
+     * Returns the broad pattern for matching every OrgSec key.
+     *
+     * <p>This is a diagnostic compatibility API. It must never be used for deletion because it
+     * also matches versioned durable protocol keys. Legacy L2 clearing uses the closed allow-list
+     * returned by {@link #legacyDataKeyPatterns()} instead.</p>
      *
      * @return the all keys pattern
      */
     public String allKeysPattern() {
         return ALL_PATTERN;
+    }
+
+    /**
+     * Returns only the closed legacy L2 data-key pattern allow-list.
+     *
+     * <p>The broad {@code orgsec:*} pattern is deliberately excluded because it also contains
+     * versioned durable protocol keys such as control, lease and future protocol records.</p>
+     */
+    List<String> legacyDataKeyPatterns() {
+        return LEGACY_DATA_KEY_PATTERNS;
+    }
+
+    /**
+     * Defense-in-depth validation for keys returned by a legacy clear scan.
+     */
+    boolean isLegacyDataKey(String key) {
+        if (key == null) {
+            return false;
+        }
+        return hasCanonicalLongSuffix(key, PERSON_PREFIX)
+            || hasCanonicalLongSuffix(key, ORGANIZATION_PREFIX)
+            || hasCanonicalLongSuffix(key, ROLE_PREFIX)
+            || hasCanonicalLongSuffix(key, PARTY_ROLE_PREFIX)
+            || hasCanonicalLongSuffix(key, POSITION_ROLE_PREFIX)
+            || hasNonBlankSuffix(key, PRIVILEGE_PREFIX)
+            || OBFUSCATED_LEGACY_KEY.matcher(key).matches();
     }
 
     /**
@@ -193,6 +239,23 @@ public class CacheKeyBuilder {
             return hashKey(plainKey);
         }
         return plainKey;
+    }
+
+    private static boolean hasCanonicalLongSuffix(String key, String prefix) {
+        if (!key.startsWith(prefix)) {
+            return false;
+        }
+        String suffix = key.substring(prefix.length());
+        try {
+            long value = Long.parseLong(suffix);
+            return Long.toString(value).equals(suffix);
+        } catch (NumberFormatException exception) {
+            return false;
+        }
+    }
+
+    private static boolean hasNonBlankSuffix(String key, String prefix) {
+        return key.startsWith(prefix) && !key.substring(prefix.length()).trim().isEmpty();
     }
 
     /**

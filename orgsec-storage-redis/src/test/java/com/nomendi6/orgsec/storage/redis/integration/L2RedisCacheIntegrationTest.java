@@ -7,7 +7,10 @@ import com.nomendi6.orgsec.storage.redis.serialization.JsonSerializer;
 import com.nomendi6.orgsec.storage.redis.testutil.TestDataBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.*;
@@ -181,5 +184,43 @@ class L2RedisCacheIntegrationTest extends AbstractRedisIntegrationTest {
         assertThat(cache.get(key1)).isNull();
         assertThat(cache.get(key2)).isNotNull();
         assertThat(cache.get(key2).personName).isEqualTo("Person 2");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void clearDeletesOnlyLegacyDataKeysAndPreservesVersionedDurableKeys(boolean obfuscated) {
+        CacheKeyBuilder scopedKeyBuilder = new CacheKeyBuilder(obfuscated);
+        L2RedisCache<PersonDef> scopedCache = new L2RedisCache<>(
+            redisTemplate,
+            serializer,
+            scopedKeyBuilder
+        );
+        List<String> legacyKeys = List.of(
+            scopedKeyBuilder.buildPersonKey(1L),
+            scopedKeyBuilder.buildOrganizationKey(2L),
+            scopedKeyBuilder.buildRoleKey(3L),
+            scopedKeyBuilder.buildPartyRoleKey(4L),
+            scopedKeyBuilder.buildPositionRoleKey(5L),
+            scopedKeyBuilder.buildPrivilegeKey("document_READ"),
+            scopedKeyBuilder.buildPrivilegeKey("literal:*?[]:name")
+        );
+        List<String> preservedKeys = List.of(
+            "orgsec:v1:{dataset}:control",
+            "orgsec:v1:{dataset}:lease",
+            "orgsec:v1:{dataset}:lease-counter",
+            "orgsec:v999:{dataset}:control",
+            "orgsec:p:01",
+            "orgsec:r:party:01",
+            "orgsec:r:future:1",
+            "orgsec:" + "A".repeat(64),
+            "orgsec:" + "g".repeat(64)
+        );
+        legacyKeys.forEach(key -> redisTemplate.opsForValue().set(key, "legacy"));
+        preservedKeys.forEach(key -> redisTemplate.opsForValue().set(key, "preserved"));
+
+        scopedCache.clear();
+
+        assertThat(legacyKeys).noneMatch(key -> Boolean.TRUE.equals(redisTemplate.hasKey(key)));
+        assertThat(preservedKeys).allMatch(key -> Boolean.TRUE.equals(redisTemplate.hasKey(key)));
     }
 }

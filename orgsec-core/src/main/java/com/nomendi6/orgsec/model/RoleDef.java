@@ -38,6 +38,7 @@ public class RoleDef {
         this.name = name;
         this.securityPrivilegeSet = new HashSet<>();
         this.securityPrivilegeSet.addAll(securityPrivilegeSet);
+        this.resourcesMap = new HashMap<>();
     }
 
     public RoleDef addSecurityPrivilege(String privilege) {

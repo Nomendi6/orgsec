@@ -5,6 +5,7 @@ import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.model.PrivilegeDef;
 import com.nomendi6.orgsec.model.RoleDef;
 import com.nomendi6.orgsec.storage.redis.RedisSecurityDataStorage;
+import com.nomendi6.orgsec.storage.redis.RedisTestStorageFactory;
 import com.nomendi6.orgsec.storage.redis.cache.CacheKeyBuilder;
 import com.nomendi6.orgsec.storage.redis.cache.L1Cache;
 import com.nomendi6.orgsec.storage.redis.cache.L2RedisCache;
@@ -72,7 +73,7 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
         CacheWarmer warmer = new CacheWarmer(properties.getPreload());
 
         // Create storage
-        storage = new RedisSecurityDataStorage(
+        storage = RedisTestStorageFactory.createLegacyUnfenced(
             properties,
             personL1Cache,
             organizationL1Cache,
@@ -180,7 +181,7 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
 
         RedisStorageProperties peerProperties = new RedisStorageProperties();
         peerProperties.getPreload().setEnabled(false);
-        RedisSecurityDataStorage peerStorage = new RedisSecurityDataStorage(
+        RedisSecurityDataStorage peerStorage = RedisTestStorageFactory.createLegacyUnfenced(
             peerProperties,
             peerPersonL1Cache,
             peerOrganizationL1Cache,

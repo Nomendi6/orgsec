@@ -95,7 +95,7 @@ class RedisSecurityDataStorageTest {
         when(cacheKeyBuilder.buildPositionRoleKey(anyLong())).thenAnswer(inv -> "orgsec:r:position:" + inv.getArgument(0));
         when(cacheKeyBuilder.buildPrivilegeKey(anyString())).thenAnswer(inv -> "orgsec:priv:" + inv.getArgument(0));
 
-        storage = new RedisSecurityDataStorage(
+        storage = RedisTestStorageFactory.createLegacyUnfenced(
                 properties,
                 personL1Cache,
                 organizationL1Cache,

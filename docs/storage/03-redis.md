@@ -51,7 +51,7 @@ Redis is opt-in - add the dependency:
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-storage-redis</artifactId>
-    <version>1.0.4</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
@@ -68,9 +68,11 @@ orgsec:
       redis-enabled: true                   # in-memory storage stands down from @Primary
     redis:
       enabled: true                         # auto-configures the Redis beans
+      security-dataset-id: my-service-prod  # stable across this dataset's instances/restarts
 ```
 
 - **`orgsec.storage.redis.enabled: true`** - the only switch that activates the backend. It gates `RedisStorageAutoConfiguration`; without it no Redis bean is created.
+- **`orgsec.storage.redis.security-dataset-id`** - required stable name for this security dataset. Use the exact same value on every instance that shares its source database and Redis snapshot, and keep it unchanged across normal restarts and rolling deployments. It has no default and is not the Redis database number.
 - **`orgsec.storage.features.redis-enabled: true`** - does *not* activate anything. It only tells the in-memory storage to stop claiming `@Primary`, so that the Redis storage can take over.
 
 Because the two do different jobs, setting only one produces a broken context: `redis.enabled` alone leaves two beans competing for `@Primary`, and `features.redis-enabled` alone leaves the application with no primary storage at all. Since 1.0.5 OrgSec checks the pair before the context is built and **refuses to start** on a mismatch:

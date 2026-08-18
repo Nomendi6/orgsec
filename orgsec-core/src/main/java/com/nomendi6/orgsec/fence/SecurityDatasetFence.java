@@ -13,7 +13,7 @@ public final class SecurityDatasetFence {
     /**
      * Creates a source-database fence value.
      *
-     * @param identity exact release compatibility identity stored with the source data
+     * @param identity exact dataset and protocol identity stored with the source data
      * @param securityContentVersion monotonic source-data content version
      */
     public SecurityDatasetFence(
@@ -33,6 +33,19 @@ public final class SecurityDatasetFence {
 
     public long getSecurityContentVersion() {
         return securityContentVersion;
+    }
+
+    /**
+     * Returns the next monotonic content fence for the same dataset identity.
+     *
+     * @return a fence whose content version is exactly one greater
+     * @throws ArithmeticException when the current version cannot be incremented
+     */
+    public SecurityDatasetFence nextContentVersion() {
+        if (securityContentVersion == Long.MAX_VALUE) {
+            throw new ArithmeticException("securityContentVersion overflow");
+        }
+        return new SecurityDatasetFence(identity, securityContentVersion + 1);
     }
 
     @Override

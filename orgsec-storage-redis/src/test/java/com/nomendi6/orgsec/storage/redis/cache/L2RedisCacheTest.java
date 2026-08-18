@@ -11,11 +11,16 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -53,6 +58,8 @@ class L2RedisCacheTest {
     void setUp() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(keyBuilder.allKeysPattern()).thenReturn("orgsec:*");
+        when(keyBuilder.legacyDataKeyPatterns()).thenReturn(List.of("orgsec:p:*"));
+        when(keyBuilder.isLegacyDataKey(anyString())).thenReturn(true);
 
         cache = new L2RedisCache<>(redisTemplate, serializer, keyBuilder, circuitBreakerService);
     }
@@ -628,34 +635,265 @@ class L2RedisCacheTest {
     class ClearOperationTests {
 
         @Test
-        void shouldDeleteAllMatchingKeys() {
-            Set<String> keys = Set.of("orgsec:p:1", "orgsec:o:1");
-            when(redisTemplate.keys("orgsec:*")).thenReturn(keys);
+        void shouldDeleteAllMatchingKeysAndCloseCursor() {
+            List<String> keys = List.of("orgsec:p:1", "orgsec:o:1");
+            Cursor<String> cursor = cursor(keys);
+            stubSinglePatternScan(cursor);
             when(redisTemplate.delete(keys)).thenReturn(2L);
 
             cache.clear();
 
             verify(redisTemplate).delete(keys);
+            verify(cursor).close();
+            verify(redisTemplate, never()).keys("orgsec:*");
         }
 
         @Test
-        void shouldNotDeleteWhenNoMatchingKeys() {
-            when(redisTemplate.keys("orgsec:*")).thenReturn(Set.of());
+        void shouldNotDeleteWhenNoMatchingKeysAndCloseCursor() {
+            Cursor<String> cursor = cursor(Set.of());
+            stubSinglePatternScan(cursor);
 
             cache.clear();
 
             verify(redisTemplate, never()).delete(anyCollection());
+            verify(cursor).close();
         }
 
         @Test
-        void shouldThrowRedisConnectionExceptionWhenClearFails() {
-            Set<String> keys = Set.of("orgsec:p:1");
-            when(redisTemplate.keys("orgsec:*")).thenReturn(keys);
+        void shouldWrapDeleteExceptionAndCloseCursor() {
+            List<String> keys = legacyPersonKeys(500);
+            Cursor<String> cursor = cursor(keys);
+            stubSinglePatternScan(cursor);
             when(redisTemplate.delete(keys)).thenThrow(new IllegalStateException("unexpected"));
 
-            assertThatThrownBy(() -> cache.clear())
-                    .isInstanceOf(RedisConnectionException.class)
-                    .hasMessageContaining("Failed to clear Redis cache");
+            assertClearFailure("unexpected");
+
+            verify(cursor).close();
+        }
+
+        @Test
+        void shouldTreatNullDeleteResultAsFailureAndCloseCursor() {
+            List<String> keys = legacyPersonKeys(500);
+            Cursor<String> cursor = cursor(keys);
+            stubSinglePatternScan(cursor);
+            when(redisTemplate.delete(keys)).thenReturn(null);
+
+            assertClearFailure("Redis delete returned no result for a legacy batch");
+
+            verify(cursor).close();
+        }
+
+        @Test
+        void shouldWrapScanException() {
+            when(redisTemplate.scan(any(ScanOptions.class)))
+                .thenThrow(new IllegalStateException("scan failed"));
+
+            assertClearFailure("scan failed");
+        }
+
+        @Test
+        void shouldWrapHasNextExceptionAndCloseCursor() {
+            Cursor<String> cursor = cursor(Set.of());
+            when(cursor.hasNext()).thenThrow(new IllegalStateException("hasNext failed"));
+            stubSinglePatternScan(cursor);
+
+            assertClearFailure("hasNext failed");
+
+            verify(cursor).close();
+        }
+
+        @Test
+        void shouldWrapNextExceptionAndCloseCursor() {
+            Cursor<String> cursor = cursor(List.of("orgsec:p:1"));
+            when(cursor.hasNext()).thenReturn(true);
+            when(cursor.next()).thenThrow(new IllegalStateException("next failed"));
+            stubSinglePatternScan(cursor);
+
+            assertClearFailure("next failed");
+
+            verify(cursor).close();
+        }
+
+        @Test
+        void shouldWrapCloseException() {
+            Cursor<String> cursor = cursor(Set.of());
+            doThrow(new IllegalStateException("close failed")).when(cursor).close();
+            stubSinglePatternScan(cursor);
+
+            assertClearFailure("close failed");
+
+            verify(cursor).close();
+        }
+
+        @Test
+        void shouldDeleteAcceptedKeysInBatchesOfAtMostFiveHundred() {
+            CacheKeyBuilder realKeyBuilder = new CacheKeyBuilder(false);
+            List<String> keys = new ArrayList<>();
+            for (long id = 1; id <= 501; id++) {
+                keys.add(realKeyBuilder.buildPersonKey(id));
+            }
+            List<String> scannedPatterns = new ArrayList<>();
+            List<Cursor<String>> cursors = new ArrayList<>();
+            List<Integer> batchSizes = new ArrayList<>();
+            when(redisTemplate.scan(any(ScanOptions.class))).thenAnswer(invocation -> {
+                ScanOptions options = invocation.getArgument(0);
+                assertAllowedScanOptions(options, realKeyBuilder.legacyDataKeyPatterns());
+                scannedPatterns.add(options.getPattern());
+                Cursor<String> cursor = cursor(
+                    "orgsec:p:*".equals(options.getPattern()) ? keys : List.of()
+                );
+                cursors.add(cursor);
+                return cursor;
+            });
+            when(redisTemplate.delete(anyCollection())).thenAnswer(invocation -> {
+                Collection<String> batch = invocation.getArgument(0);
+                batchSizes.add(batch.size());
+                assertThat(batch).hasSizeLessThanOrEqualTo(500);
+                return (long) batch.size();
+            });
+            L2RedisCache<TestEntity> realCache = new L2RedisCache<>(
+                redisTemplate,
+                serializer,
+                realKeyBuilder,
+                circuitBreakerService
+            );
+
+            realCache.clear();
+
+            assertThat(batchSizes).containsExactly(500, 1);
+            assertThat(scannedPatterns)
+                .containsExactlyElementsOf(realKeyBuilder.legacyDataKeyPatterns());
+            cursors.forEach(cursor -> verify(cursor).close());
+        }
+
+        @Test
+        void plainClearDeletesLegacyFamiliesButPreservesEveryVersionedDurableSentinel() {
+            assertLegacyClearPreservesDurableKeys(false);
+        }
+
+        @Test
+        void obfuscatedClearDeletesLegacyHashesButPreservesEveryVersionedDurableSentinel() {
+            assertLegacyClearPreservesDurableKeys(true);
+        }
+
+        private void assertLegacyClearPreservesDurableKeys(boolean obfuscated) {
+            CacheKeyBuilder realKeyBuilder = new CacheKeyBuilder(obfuscated);
+            Set<String> legacyKeys = Set.of(
+                realKeyBuilder.buildPersonKey(1L),
+                realKeyBuilder.buildOrganizationKey(2L),
+                realKeyBuilder.buildRoleKey(3L),
+                realKeyBuilder.buildPartyRoleKey(4L),
+                realKeyBuilder.buildPositionRoleKey(5L),
+                realKeyBuilder.buildPrivilegeKey("document_READ"),
+                realKeyBuilder.buildPrivilegeKey("literal:*?[]:name")
+            );
+            Set<String> preservedKeys = Set.of(
+                "orgsec:v1:{dataset}:control",
+                "orgsec:v1:{dataset}:lease",
+                "orgsec:v1:{dataset}:lease-counter",
+                "orgsec:v999:{dataset}:control",
+                "orgsec:p:01",
+                "orgsec:r:party:01",
+                "orgsec:r:future:1",
+                "orgsec:" + "A".repeat(64),
+                "orgsec:" + "g".repeat(64)
+            );
+            Set<String> redisKeys = new HashSet<>(legacyKeys);
+            redisKeys.addAll(preservedKeys);
+            List<String> scannedPatterns = new ArrayList<>();
+            List<Cursor<String>> cursors = new ArrayList<>();
+
+            when(redisTemplate.scan(any(ScanOptions.class))).thenAnswer(invocation -> {
+                ScanOptions options = invocation.getArgument(0);
+                assertAllowedScanOptions(options, realKeyBuilder.legacyDataKeyPatterns());
+                scannedPatterns.add(options.getPattern());
+                List<String> matchingKeys = redisKeys.stream()
+                    .filter(key -> matchesScanPattern(options.getPattern(), key))
+                    .toList();
+                Cursor<String> cursor = cursor(matchingKeys);
+                cursors.add(cursor);
+                return cursor;
+            });
+            when(redisTemplate.delete(anyCollection())).thenAnswer(invocation -> {
+                Collection<String> requested = invocation.getArgument(0);
+                assertThat(requested).hasSizeLessThanOrEqualTo(500);
+                assertThat(requested).doesNotContainAnyElementsOf(preservedKeys);
+                long before = redisKeys.size();
+                redisKeys.removeAll(requested);
+                return before - redisKeys.size();
+            });
+            L2RedisCache<TestEntity> realCache = new L2RedisCache<>(
+                redisTemplate,
+                serializer,
+                realKeyBuilder,
+                circuitBreakerService
+            );
+
+            realCache.clear();
+
+            assertThat(redisKeys).containsExactlyInAnyOrderElementsOf(preservedKeys);
+            assertThat(scannedPatterns)
+                .containsExactlyElementsOf(realKeyBuilder.legacyDataKeyPatterns());
+            cursors.forEach(cursor -> verify(cursor).close());
+            verify(redisTemplate, never()).keys(anyString());
+        }
+
+        private void stubSinglePatternScan(Cursor<String> cursor) {
+            when(redisTemplate.scan(any(ScanOptions.class))).thenAnswer(invocation -> {
+                assertAllowedScanOptions(invocation.getArgument(0), List.of("orgsec:p:*"));
+                return cursor;
+            });
+        }
+
+        private void assertAllowedScanOptions(
+            ScanOptions options,
+            Collection<String> allowedPatterns
+        ) {
+            assertThat(allowedPatterns).contains(options.getPattern());
+            assertThat(options.getCount()).isEqualTo(500L);
+        }
+
+        private boolean matchesScanPattern(String pattern, String key) {
+            if ("orgsec:p:*".equals(pattern)) {
+                return key.startsWith("orgsec:p:");
+            }
+            if ("orgsec:o:*".equals(pattern)) {
+                return key.startsWith("orgsec:o:");
+            }
+            if ("orgsec:r:*".equals(pattern)) {
+                return key.startsWith("orgsec:r:");
+            }
+            if ("orgsec:priv:*".equals(pattern)) {
+                return key.startsWith("orgsec:priv:");
+            }
+            if (("orgsec:" + "?".repeat(64)).equals(pattern)) {
+                return key.startsWith("orgsec:") && key.length() == 71;
+            }
+            throw new AssertionError("unexpected legacy scan pattern: " + pattern);
+        }
+
+        private void assertClearFailure(String rootCauseMessage) {
+            assertThatThrownBy(cache::clear)
+                .isInstanceOf(RedisConnectionException.class)
+                .hasMessageContaining("Failed to clear Redis cache")
+                .hasRootCauseMessage(rootCauseMessage);
+        }
+
+        private List<String> legacyPersonKeys(int count) {
+            List<String> keys = new ArrayList<>(count);
+            for (int id = 1; id <= count; id++) {
+                keys.add("orgsec:p:" + id);
+            }
+            return keys;
+        }
+
+        @SuppressWarnings("unchecked")
+        private Cursor<String> cursor(Collection<String> keys) {
+            Cursor<String> cursor = mock(Cursor.class);
+            Iterator<String> iterator = List.copyOf(keys).iterator();
+            when(cursor.hasNext()).thenAnswer(invocation -> iterator.hasNext());
+            when(cursor.next()).thenAnswer(invocation -> iterator.next());
+            return cursor;
         }
     }
 

@@ -41,7 +41,7 @@ Add the dependency to your `pom.xml`:
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-storage-redis</artifactId>
-    <version>1.0.4</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
@@ -60,8 +60,11 @@ spring:
 
 orgsec:
   storage:
+    features:
+      redis-enabled: true
     redis:
       enabled: true
+      security-dataset-id: my-service-prod
       ttl:
         person: 3600        # 1 hour
         organization: 3600
@@ -185,6 +188,7 @@ See [application-redis-example.yml](src/main/resources/application-redis-example
 | Property | Default | Description |
 |----------|---------|-------------|
 | `orgsec.storage.redis.enabled` | `false` | Enable Redis storage |
+| `orgsec.storage.redis.security-dataset-id` | - | Required stable ID shared by instances serving the same security dataset |
 | `orgsec.storage.redis.host` | `localhost` | Redis host |
 | `orgsec.storage.redis.port` | `6379` | Redis port |
 | `orgsec.storage.redis.password` | - | Redis password (optional) |
@@ -492,7 +496,9 @@ orgsec:
 2. Enable key obfuscation to reduce key size: `obfuscate-keys: true`
 3. Reduce L1 cache size
 4. Monitor Redis memory: `redis-cli info memory`
-5. Configure Redis maxmemory policy: `maxmemory-policy allkeys-lru`
+5. Size Redis with headroom for the active and staging snapshots, monitor memory, and configure
+   `maxmemory-policy noeviction`; an out-of-memory rebuild fails closed and requires operator
+   recovery
 
 ### Invalidation Not Working
 

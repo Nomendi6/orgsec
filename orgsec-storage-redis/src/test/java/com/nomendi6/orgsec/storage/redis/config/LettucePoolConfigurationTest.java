@@ -2,6 +2,8 @@ package com.nomendi6.orgsec.storage.redis.config;
 
 import io.lettuce.core.resource.ClientResources;
 import io.lettuce.core.api.StatefulConnection;
+import com.nomendi6.orgsec.fence.SecurityDatasetFenceStore;
+import com.nomendi6.orgsec.storage.redis.bootstrap.RedisSnapshotLoader;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -11,6 +13,7 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class LettucePoolConfigurationTest {
 
@@ -26,11 +29,20 @@ class LettucePoolConfigurationTest {
             ))
             .withPropertyValues(
                 "orgsec.storage.redis.enabled=true",
+                "orgsec.storage.redis.security-dataset-id=orgsec-test",
                 "orgsec.storage.redis.host=orgsec-redis.internal",
                 "orgsec.storage.redis.port=16379",
                 "orgsec.storage.redis.preload.enabled=false",
                 "spring.data.redis.host=boot-redis-should-not-win.internal",
                 "spring.data.redis.port=26379"
+            )
+            .withBean(
+                SecurityDatasetFenceStore.class,
+                () -> mock(SecurityDatasetFenceStore.class)
+            )
+            .withBean(
+                RedisSnapshotLoader.class,
+                () -> mock(RedisSnapshotLoader.class)
             )
             .run(context -> {
                 assertThat(context).hasNotFailed();

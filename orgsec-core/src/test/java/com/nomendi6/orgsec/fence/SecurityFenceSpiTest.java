@@ -9,21 +9,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SecurityFenceSpiTest {
 
-    private static final String SHA = "abcdef0123456789".repeat(4);
-
-    @Test
-    void releaseProviderIsUsableAsAFunctionalInterface() {
-        SecurityReleaseFence expected = new SecurityReleaseFence(
-            identity(),
-            "key-id",
-            "signature",
-            SHA
-        );
-        SecurityReleaseFenceProvider provider = () -> expected;
-
-        assertThat(provider.loadVerifiedFence()).isSameAs(expected);
-    }
-
     @Test
     void storeContractCanHoldTheLockForTheWholeCallback() {
         AtomicBoolean lockHeld = new AtomicBoolean();
@@ -96,6 +81,6 @@ class SecurityFenceSpiTest {
     }
 
     private SecurityDatasetIdentity identity() {
-        return new SecurityDatasetIdentity("dataset", 1, 2, SHA, 3, SHA);
+        return new SecurityDatasetIdentity("dataset", 1);
     }
 }

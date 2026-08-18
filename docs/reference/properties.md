@@ -1,6 +1,6 @@
 # Properties Reference
 
-This is the complete catalogue of OrgSec configuration properties for the **1.0.x** line. The list is generated from the five `@ConfigurationProperties` classes in the codebase and is verified by `PropertiesDocumentationCoverageTest` - if you add or remove a property in the source, the test will fail until this file is updated.
+This is the complete catalogue of OrgSec configuration properties for the **1.1.x** line. The list is generated from the five `@ConfigurationProperties` classes in the codebase and is verified by `PropertiesDocumentationCoverageTest` - if you add or remove a property in the source, the test will fail until this file is updated.
 
 If you are looking for the *narrative* explanation of a property, follow the link in the **See** column. If you are looking up "what does this property do?", the table on this page is authoritative.
 
@@ -141,7 +141,8 @@ Bound only when `orgsec-storage-redis` is on the classpath. All defaults apply p
 
 | Property                              | Type      | Default      | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `enabled`                             | `boolean` | `false`      | Gates `RedisStorageAutoConfiguration` via `@ConditionalOnProperty`. Must be `true` for any Redis bean to be created. Not bound on `RedisStorageProperties` - consumed directly by Spring. | [Storage / Redis](../storage/03-redis.md#activation) |
+| `enabled`                             | `boolean` | `false`      | Gates `RedisStorageAutoConfiguration` via `@ConditionalOnProperty`. Must be `true` for any Redis bean to be created and for `security-dataset-id` to be required. | [Storage / Redis](../storage/03-redis.md#activation) |
+| `security-dataset-id`                 | `String`  | (none)       | **Required when Redis is enabled.** Stable deployment-unique ID shared by all instances serving the same security dataset; maximum 256 UTF-8 bytes. | [Storage / Redis](../storage/03-redis.md#activation) |
 
 ### Connection - `orgsec.storage.redis.*`
 

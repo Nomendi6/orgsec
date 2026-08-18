@@ -5,6 +5,7 @@ import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.model.PrivilegeDef;
 import com.nomendi6.orgsec.model.RoleDef;
 import com.nomendi6.orgsec.storage.SecurityDataStorage;
+import com.nomendi6.orgsec.storage.StorageNotReadyException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -75,6 +76,24 @@ class SecurityDataStoreTest {
 
         // Then
         verify(mockStorage).updatePerson(personId, person);
+    }
+
+    @Test
+    void shouldPropagateNotReadyForEveryMutationWrapper() {
+        StorageNotReadyException notReady = new StorageNotReadyException("NOT_READY");
+        PersonDef person = new PersonDef(1L, "Test");
+        OrganizationDef organization = new OrganizationDef().setOrganizationId(2L);
+        RoleDef role = new RoleDef(3L, "Role");
+
+        doThrow(notReady).when(mockStorage).updatePerson(1L, person);
+        doThrow(notReady).when(mockStorage).updateOrganization(2L, organization);
+        doThrow(notReady).when(mockStorage).updateRole(3L, role);
+        doThrow(notReady).when(mockStorage).refresh();
+
+        assertThatThrownBy(() -> store.putPerson(1L, person)).isSameAs(notReady);
+        assertThatThrownBy(() -> store.putOrganization(2L, organization)).isSameAs(notReady);
+        assertThatThrownBy(() -> store.updateRole(3L, role)).isSameAs(notReady);
+        assertThatThrownBy(store::refresh).isSameAs(notReady);
     }
 
     @Test

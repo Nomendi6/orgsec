@@ -5,15 +5,17 @@ import com.nomendi6.orgsec.storage.redis.resilience.RedisConnectionException;
 import com.nomendi6.orgsec.storage.redis.serialization.JsonSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 /**
  * L2 (Redis) cache wrapper.
@@ -27,6 +29,8 @@ import java.util.stream.Collectors;
 public class L2RedisCache<T> {
 
     private static final Logger log = LoggerFactory.getLogger(L2RedisCache.class);
+    private static final long CLEAR_SCAN_COUNT = 500;
+    private static final int CLEAR_DELETE_BATCH_SIZE = 500;
 
     private final RedisTemplate<String, String> redisTemplate;
     private final JsonSerializer<T> serializer;
@@ -401,25 +405,57 @@ public class L2RedisCache<T> {
     }
 
     /**
-     * Clears all keys matching the OrgSec pattern.
+     * Clears only legacy L2 data keys.
      * <p>
-     * WARNING: This deletes all OrgSec cache entries. Use with caution.
+     * Durable versioned protocol keys (control, lease and snapshot families) are
+     * outside the allow-listed legacy namespaces and are never deleted.
      * </p>
      */
     public void clear() {
         try {
-            String pattern = keyBuilder.allKeysPattern();
-            Set<String> keysToDelete = keys(pattern);
-
-            if (!keysToDelete.isEmpty()) {
-                Long deleted = redisTemplate.delete(keysToDelete);
-                log.info("L2 cache cleared: {} keys deleted", deleted);
+            long deleted = 0;
+            for (String pattern : keyBuilder.legacyDataKeyPatterns()) {
+                deleted += scanAndDeleteLegacyKeys(pattern);
             }
-
+            log.info("Legacy L2 cache cleared: {} keys deleted", deleted);
         } catch (Exception e) {
             log.error("Failed to clear L2 cache", e);
             throw new RedisConnectionException("Failed to clear Redis cache", e);
         }
+    }
+
+    private long scanAndDeleteLegacyKeys(String pattern) {
+        ScanOptions options = ScanOptions.scanOptions()
+            .match(pattern)
+            .count(CLEAR_SCAN_COUNT)
+            .build();
+        List<String> batch = new ArrayList<>(CLEAR_DELETE_BATCH_SIZE);
+        long deleted = 0;
+
+        try (Cursor<String> cursor = redisTemplate.scan(options)) {
+            while (cursor.hasNext()) {
+                String key = cursor.next();
+                if (keyBuilder.isLegacyDataKey(key)) {
+                    batch.add(key);
+                    if (batch.size() == CLEAR_DELETE_BATCH_SIZE) {
+                        deleted += deleteLegacyBatch(batch);
+                    }
+                }
+            }
+        }
+        return deleted + deleteLegacyBatch(batch);
+    }
+
+    private long deleteLegacyBatch(List<String> batch) {
+        if (batch.isEmpty()) {
+            return 0;
+        }
+        Long deleted = redisTemplate.delete(List.copyOf(batch));
+        if (deleted == null) {
+            throw new IllegalStateException("Redis delete returned no result for a legacy batch");
+        }
+        batch.clear();
+        return deleted;
     }
 
     /**

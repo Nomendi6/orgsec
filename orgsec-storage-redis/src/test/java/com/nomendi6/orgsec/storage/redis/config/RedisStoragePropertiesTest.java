@@ -10,6 +10,8 @@ class RedisStoragePropertiesTest {
     void shouldExposeDefaultValues() {
         RedisStorageProperties properties = new RedisStorageProperties();
 
+        assertThat(properties.isEnabled()).isFalse();
+        assertThat(properties.getSecurityDatasetId()).isNull();
         assertThat(properties.getHost()).isEqualTo("localhost");
         assertThat(properties.getPort()).isEqualTo(6379);
         assertThat(properties.getTimeout()).isEqualTo(2000);
@@ -43,6 +45,8 @@ class RedisStoragePropertiesTest {
         RedisStorageProperties.SerializationConfig serialization = new RedisStorageProperties.SerializationConfig();
         RedisStorageProperties.AuditConfig audit = new RedisStorageProperties.AuditConfig();
 
+        properties.setEnabled(true);
+        properties.setSecurityDatasetId("orders-prod");
         properties.setHost("redis");
         properties.setPort(6380);
         properties.setPassword("secret");
@@ -57,6 +61,8 @@ class RedisStoragePropertiesTest {
         properties.setSerialization(serialization);
         properties.setAudit(audit);
 
+        assertThat(properties.isEnabled()).isTrue();
+        assertThat(properties.getSecurityDatasetId()).isEqualTo("orders-prod");
         assertThat(properties.getHost()).isEqualTo("redis");
         assertThat(properties.getPort()).isEqualTo(6380);
         assertThat(properties.getPassword()).isEqualTo("secret");

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nomendi6.orgsec.fence.SecurityDatasetFenceStore;
 import com.nomendi6.orgsec.provider.SecurityQueryProvider;
 import com.nomendi6.orgsec.storage.inmemory.InMemorySecurityDataStorage;
 import com.nomendi6.orgsec.storage.inmemory.StorageConfiguration;
@@ -16,6 +17,8 @@ import com.nomendi6.orgsec.storage.inmemory.store.AllPersonsStore;
 import com.nomendi6.orgsec.storage.inmemory.store.AllPrivilegesStore;
 import com.nomendi6.orgsec.storage.inmemory.store.AllRolesStore;
 import com.nomendi6.orgsec.storage.jwt.config.JwtStorageAutoConfiguration;
+import com.nomendi6.orgsec.storage.redis.RedisSecurityDataStorage;
+import com.nomendi6.orgsec.storage.redis.bootstrap.RedisSnapshotLoader;
 import com.nomendi6.orgsec.storage.redis.config.RedisStorageAutoConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -79,6 +82,7 @@ class StorageBeanGraphTest {
         contextRunner
             .withPropertyValues(
                 "orgsec.storage.redis.enabled=true",
+                "orgsec.storage.redis.security-dataset-id=orgsec-test",
                 "orgsec.storage.features.redis-enabled=true"
             )
             .run(context -> {
@@ -87,6 +91,9 @@ class StorageBeanGraphTest {
                 assertThat(context.getBean("orgsecPrimaryStorage"))
                     .as("an alias, never a decorator")
                     .isSameAs(context.getBean("redisSecurityDataStorage"));
+                assertThat(context.getBean(RedisSecurityDataStorage.class).isReady())
+                    .as("fenced Redis storage stays unavailable until a verified snapshot exists")
+                    .isFalse();
 
                 assertThat(context).doesNotHaveBean("primaryInMemoryStorage");
                 assertThat(context).hasBean("delegateSecurityDataStorage");
@@ -121,6 +128,16 @@ class StorageBeanGraphTest {
         RedisConnectionFactory redisConnectionFactory() {
             // The graph is what is under test; nothing here opens a connection.
             return mock(RedisConnectionFactory.class);
+        }
+
+        @Bean
+        SecurityDatasetFenceStore securityDatasetFenceStore() {
+            return mock(SecurityDatasetFenceStore.class);
+        }
+
+        @Bean
+        RedisSnapshotLoader redisSnapshotLoader() {
+            return mock(RedisSnapshotLoader.class);
         }
 
         @Bean

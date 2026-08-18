@@ -8,6 +8,7 @@ import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.model.PrivilegeDef;
 import com.nomendi6.orgsec.model.RoleDef;
 import com.nomendi6.orgsec.storage.SecurityDataStorage;
+import com.nomendi6.orgsec.storage.StorageNotReadyException;
 
 /**
  * Unified data store that provides access to security data through the SecurityDataStorage abstraction.
@@ -59,6 +60,8 @@ public class SecurityDataStore {
             log.debug("Person updated: {}", personId);
         } catch (UnsupportedOperationException e) {
             log.debug("Storage provider {} does not support person updates", storage.getProviderType());
+        } catch (StorageNotReadyException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error updating person: {}", personId, e);
         }
@@ -95,6 +98,8 @@ public class SecurityDataStore {
             log.debug("Organization updated: {}", orgId);
         } catch (UnsupportedOperationException e) {
             log.debug("Storage provider {} does not support organization updates", storage.getProviderType());
+        } catch (StorageNotReadyException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error updating organization: {}", orgId, e);
         }
@@ -149,6 +154,8 @@ public class SecurityDataStore {
             log.debug("Role updated: {}", roleId);
         } catch (UnsupportedOperationException e) {
             log.debug("Storage provider {} does not support role updates", storage.getProviderType());
+        } catch (StorageNotReadyException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error updating role: {}", roleId, e);
         }
@@ -192,6 +199,8 @@ public class SecurityDataStore {
             log.info("Refreshing security data store with provider: {}", storage.getProviderType());
             storage.refresh();
             log.info("Security data store refreshed successfully");
+        } catch (StorageNotReadyException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Failed to refresh security data store", e);
             throw new RuntimeException("Security data store refresh failed", e);

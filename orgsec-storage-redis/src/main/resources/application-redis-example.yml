@@ -18,9 +18,17 @@ spring:
 
 orgsec:
   storage:
+    features:
+      # Must match orgsec.storage.redis.enabled so in-memory storage does not remain primary.
+      redis-enabled: true
+
     redis:
       # Enable Redis storage (required)
       enabled: true
+
+      # Stable ID shared by every application instance serving this security dataset.
+      # Keep it unchanged across normal restarts and rolling deployments.
+      security-dataset-id: my-application-prod
 
       # Redis connection settings
       host: localhost
