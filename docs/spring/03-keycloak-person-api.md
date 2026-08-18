@@ -95,6 +95,11 @@ In production, also restrict the endpoint at the network layer - only Keycloak s
 
 ## Person API contract
 
+Wire artefacts (status **and** exact `code`) live in `contracts/`:
+`person-api-v1.schema.json`, `person-api-error-v1.schema.json`,
+`person-api-security-v1.contract.json`. A 401/403/404 without the matching
+code is a contract break, not a user deny.
+
 The mapper expects this exact endpoint:
 
 ```

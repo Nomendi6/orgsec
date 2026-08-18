@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orgsec.nomendi6.com/contracts/person-api-error-v1.schema.json",
+  "title": "OrgSec Person API error body",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["code"],
+  "properties": {
+    "code": {
+      "enum": [
+        "PERSON_NOT_FOUND",
+        "CALLBACK_UNAUTHENTICATED",
+        "CALLBACK_FORBIDDEN"
+      ]
+    }
+  }
+}
