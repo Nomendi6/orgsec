@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - Unreleased
+## [2.0.0] - 2026-08-18
 
 ### Added
 
@@ -36,8 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Call `SecurityEventPublisher` producer methods from the service that mutates security data; do not call `storage.notify*` from inside an open transaction if a rollback is still possible.
 - If an application uses OrgSec Redis or JWT internals directly, update imports from Jackson 2 `com.fasterxml.jackson.databind.*` to Jackson 3 `tools.jackson.databind.*`. Jackson *annotations* stay in the `com.fasterxml.jackson.annotation.*` namespace — Jackson 3 has no annotation package of its own and reads those directly.
 - `RedisStorageHealthIndicator` now implements `org.springframework.boot.health.contributor.HealthIndicator` instead of `org.springframework.boot.actuate.health.HealthIndicator`, following the Spring Boot 4 actuator split. Applications that reference the type directly must update the import; applications that only rely on the `/actuator/health` endpoint are unaffected.
-- The Keycloak custom mapper contract is unchanged: the JWT claim root is `orgsec`, with `version`, `person`, and `memberships`. Rebuild and smoke-test the mapper before releasing an application that depends on JWT storage.
-- Apgen integration is external to this repository. Generate and test one application with `organizationalSecurity=true` against `2.0.0-SNAPSHOT` before cutting the final 2.0.0 release.
+- The Keycloak custom mapper contract is unchanged: the JWT claim root is `orgsec`, with `version`, `person`, and `memberships`. JWT applications should use mapper `1.0.0`.
 
 ## [1.1.0] - Unreleased
 

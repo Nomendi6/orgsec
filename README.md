@@ -32,7 +32,7 @@ The full documentation lives in [`docs/`](./docs/index.md).
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-spring-boot-starter</artifactId>
-    <version>2.0.0-SNAPSHOT</version>
+    <version>2.0.0</version>
 </dependency>
 ```
 
@@ -63,9 +63,9 @@ Then implement `SecurityEnabledEntity` on your domain class, register your privi
 
 | OrgSec version | Spring Boot   | Spring Security | Java | Status                                                          |
 | -------------- | ------------- | --------------- | ---- | --------------------------------------------------------------- |
-| **2.0.x**      | 4.0.x         | 7.x             | 21   | Current development line; GA target                             |
+| **2.0.x**      | 4.0.x         | 7.x             | 21   | Current GA for Spring Boot 4                                    |
 | 1.1.x          | 3.5.x         | 6.x             | 17   | Upcoming Spring Boot 3 line (`release/1.1.0`; not yet on Central) |
-| 1.0.x          | 3.5.x         | 6.x             | 17   | Current published GA until 1.1.0 is released                    |
+| 1.0.x          | 3.5.x         | 6.x             | 17   | Current published Spring Boot 3 GA until 1.1.0 is released      |
 
 ## Building
 
@@ -78,6 +78,9 @@ mvn clean install -Pjava25
 
 # Build without tests
 mvn clean install -DskipTests
+
+# Publish this release to Maven Central (signs, uploads, auto-releases)
+mvn clean deploy -P release
 
 # Build a single module with its dependencies
 mvn clean install -pl orgsec-storage-redis -am
