@@ -7,7 +7,7 @@
 
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-parent</artifactId>
-    <version>1.0.5</version>
+    <version>1.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>OrgSec Parent</name>
@@ -77,12 +77,14 @@
         <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
         <maven-javadoc-plugin.version>3.7.0</maven-javadoc-plugin.version>
         <maven-gpg-plugin.version>3.2.4</maven-gpg-plugin.version>
-        <central-publishing-maven-plugin.version>0.10.0</central-publishing-maven-plugin.version>
+        <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
+        <!-- Publishing is opt-in. Candidate/release verification must never contact Central. -->
+        <skipPublishing>true</skipPublishing>
         <jacoco-maven-plugin.version>0.8.12</jacoco-maven-plugin.version>
         <japicmp-maven-plugin.version>0.25.6</japicmp-maven-plugin.version>
 
         <!-- Baseline the 1.x line is compared against at `verify`. Bump on every release. -->
-        <binary.compat.old.version>1.0.4</binary.compat.old.version>
+        <binary.compat.old.version>1.0.5</binary.compat.old.version>
     </properties>
 
     <dependencyManagement>
@@ -169,8 +171,9 @@
                     <extensions>true</extensions>
                     <configuration>
                         <publishingServerId>central</publishingServerId>
-                        <autoPublish>true</autoPublish>
-                        <waitUntil>published</waitUntil>
+                        <autoPublish>false</autoPublish>
+                        <waitUntil>validated</waitUntil>
+                        <skipPublishing>${skipPublishing}</skipPublishing>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -183,7 +186,6 @@
                     <artifactId>japicmp-maven-plugin</artifactId>
                     <version>${japicmp-maven-plugin.version}</version>
                     <configuration>
-                        <skipPomModules>true</skipPomModules>
                         <oldVersion>
                             <dependency>
                                 <groupId>${project.groupId}</groupId>
@@ -197,13 +199,278 @@
                                 <path>${project.build.directory}/${project.build.finalName}.jar</path>
                             </file>
                         </newVersion>
+                        <!--
+                            japicmp 0.25.6 does not resolve these entries transitively. Once
+                            separate classpaths are configured, it also stops using Maven's
+                            automatic compile classpath. These lists are therefore the explicit
+                            external API-resolving closure for the 1.0.5 and 1.1 sides. Keep the
+                            old pins frozen; update the new pins whenever the 1.1 dependency graph
+                            changes. Missing API types are a hard failure below.
+                        -->
+                        <oldClassPathDependencies combine.children="append">
+                            <oldClassPathDependency>
+                                <groupId>org.springframework</groupId>
+                                <artifactId>spring-context</artifactId>
+                                <version>6.2.18</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>jakarta.validation</groupId>
+                                <artifactId>jakarta.validation-api</artifactId>
+                                <version>3.0.2</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>jakarta.persistence</groupId>
+                                <artifactId>jakarta.persistence-api</artifactId>
+                                <version>3.1.0</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>com.fasterxml.jackson.core</groupId>
+                                <artifactId>jackson-annotations</artifactId>
+                                <version>2.21</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework.security</groupId>
+                                <artifactId>spring-security-core</artifactId>
+                                <version>6.5.10</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>jakarta.annotation</groupId>
+                                <artifactId>jakarta.annotation-api</artifactId>
+                                <version>2.1.1</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework</groupId>
+                                <artifactId>spring-beans</artifactId>
+                                <version>6.2.18</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework</groupId>
+                                <artifactId>spring-core</artifactId>
+                                <version>6.2.18</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework.boot</groupId>
+                                <artifactId>spring-boot</artifactId>
+                                <version>3.5.14</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework.boot</groupId>
+                                <artifactId>spring-boot-autoconfigure</artifactId>
+                                <version>3.5.14</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework</groupId>
+                                <artifactId>spring-tx</artifactId>
+                                <version>6.2.18</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework.data</groupId>
+                                <artifactId>spring-data-redis</artifactId>
+                                <version>3.5.11</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>io.lettuce</groupId>
+                                <artifactId>lettuce-core</artifactId>
+                                <version>6.6.0.RELEASE</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.apache.commons</groupId>
+                                <artifactId>commons-pool2</artifactId>
+                                <version>2.12.1</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>io.github.resilience4j</groupId>
+                                <artifactId>resilience4j-circuitbreaker</artifactId>
+                                <version>2.3.0</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>com.fasterxml.jackson.core</groupId>
+                                <artifactId>jackson-databind</artifactId>
+                                <version>2.21.2</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>com.fasterxml.jackson.core</groupId>
+                                <artifactId>jackson-core</artifactId>
+                                <version>2.21.2</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework.boot</groupId>
+                                <artifactId>spring-boot-actuator</artifactId>
+                                <version>3.5.14</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework</groupId>
+                                <artifactId>spring-web</artifactId>
+                                <version>6.2.18</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>jakarta.servlet</groupId>
+                                <artifactId>jakarta.servlet-api</artifactId>
+                                <version>6.0.0</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework.security</groupId>
+                                <artifactId>spring-security-config</artifactId>
+                                <version>6.5.10</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework.security</groupId>
+                                <artifactId>spring-security-web</artifactId>
+                                <version>6.5.10</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework.security</groupId>
+                                <artifactId>spring-security-oauth2-core</artifactId>
+                                <version>6.5.10</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework.security</groupId>
+                                <artifactId>spring-security-oauth2-jose</artifactId>
+                                <version>6.5.10</version>
+                            </oldClassPathDependency>
+                            <oldClassPathDependency>
+                                <groupId>org.springframework.security</groupId>
+                                <artifactId>spring-security-oauth2-resource-server</artifactId>
+                                <version>6.5.10</version>
+                            </oldClassPathDependency>
+                        </oldClassPathDependencies>
+                        <newClassPathDependencies combine.children="append">
+                            <newClassPathDependency>
+                                <groupId>org.springframework</groupId>
+                                <artifactId>spring-context</artifactId>
+                                <version>6.2.18</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>jakarta.validation</groupId>
+                                <artifactId>jakarta.validation-api</artifactId>
+                                <version>3.0.2</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>jakarta.persistence</groupId>
+                                <artifactId>jakarta.persistence-api</artifactId>
+                                <version>3.1.0</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>com.fasterxml.jackson.core</groupId>
+                                <artifactId>jackson-annotations</artifactId>
+                                <version>2.21</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework.security</groupId>
+                                <artifactId>spring-security-core</artifactId>
+                                <version>6.5.10</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>jakarta.annotation</groupId>
+                                <artifactId>jakarta.annotation-api</artifactId>
+                                <version>2.1.1</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework</groupId>
+                                <artifactId>spring-beans</artifactId>
+                                <version>6.2.18</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework</groupId>
+                                <artifactId>spring-core</artifactId>
+                                <version>6.2.18</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework.boot</groupId>
+                                <artifactId>spring-boot</artifactId>
+                                <version>3.5.14</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework.boot</groupId>
+                                <artifactId>spring-boot-autoconfigure</artifactId>
+                                <version>3.5.14</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework</groupId>
+                                <artifactId>spring-tx</artifactId>
+                                <version>6.2.18</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework.data</groupId>
+                                <artifactId>spring-data-redis</artifactId>
+                                <version>3.5.11</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>io.lettuce</groupId>
+                                <artifactId>lettuce-core</artifactId>
+                                <version>6.6.0.RELEASE</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.apache.commons</groupId>
+                                <artifactId>commons-pool2</artifactId>
+                                <version>2.12.1</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>io.github.resilience4j</groupId>
+                                <artifactId>resilience4j-circuitbreaker</artifactId>
+                                <version>2.3.0</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>com.fasterxml.jackson.core</groupId>
+                                <artifactId>jackson-databind</artifactId>
+                                <version>2.21.2</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>com.fasterxml.jackson.core</groupId>
+                                <artifactId>jackson-core</artifactId>
+                                <version>2.21.2</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework.boot</groupId>
+                                <artifactId>spring-boot-actuator</artifactId>
+                                <version>3.5.14</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework</groupId>
+                                <artifactId>spring-web</artifactId>
+                                <version>6.2.18</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>jakarta.servlet</groupId>
+                                <artifactId>jakarta.servlet-api</artifactId>
+                                <version>6.0.0</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework.security</groupId>
+                                <artifactId>spring-security-config</artifactId>
+                                <version>6.5.10</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework.security</groupId>
+                                <artifactId>spring-security-web</artifactId>
+                                <version>6.5.10</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework.security</groupId>
+                                <artifactId>spring-security-oauth2-core</artifactId>
+                                <version>6.5.10</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework.security</groupId>
+                                <artifactId>spring-security-oauth2-jose</artifactId>
+                                <version>6.5.10</version>
+                            </newClassPathDependency>
+                            <newClassPathDependency>
+                                <groupId>org.springframework.security</groupId>
+                                <artifactId>spring-security-oauth2-resource-server</artifactId>
+                                <version>6.5.10</version>
+                            </newClassPathDependency>
+                        </newClassPathDependencies>
                         <parameter>
                             <onlyModified>true</onlyModified>
+                            <accessModifier>protected</accessModifier>
                             <breakBuildOnModifications>false</breakBuildOnModifications>
-                            <breakBuildOnBinaryIncompatibleModifications>false</breakBuildOnBinaryIncompatibleModifications>
-                            <breakBuildOnSourceIncompatibleModifications>false</breakBuildOnSourceIncompatibleModifications>
+                            <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
+                            <breakBuildOnSourceIncompatibleModifications>true</breakBuildOnSourceIncompatibleModifications>
                             <includeSynthetic>false</includeSynthetic>
-                            <ignoreMissingClasses>true</ignoreMissingClasses>
+                            <ignoreMissingClasses>false</ignoreMissingClasses>
+                            <ignoreMissingOldVersion>false</ignoreMissingOldVersion>
+                            <ignoreMissingNewVersion>false</ignoreMissingNewVersion>
                         </parameter>
                     </configuration>
                 </plugin>
@@ -214,46 +481,118 @@
                 <groupId>com.github.siom79.japicmp</groupId>
                 <artifactId>japicmp-maven-plugin</artifactId>
                 <executions>
-                    <!--
-                        Informational: always produce the full API diff against the previous
-                        release. 1.0.5 is a patch, so the diff is expected to be additive only -
-                        but it must be visible and signed off before deploy (Faza D k.5).
-                    -->
+                    <!-- Each module runs exactly one tier with its internal old/new closure. -->
                     <execution>
-                        <id>api-diff-report</id>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>cmp</goal>
-                        </goals>
-                    </execution>
-                    <!--
-                        Enforcing: the types below are the contract the Applipress generator
-                        scaffolds against. Any incompatible change here fails the build.
-                    -->
-                    <execution>
-                        <id>enforce-stable-public-api</id>
+                        <id>api-compat-core-common</id>
                         <phase>verify</phase>
                         <goals>
                             <goal>cmp</goal>
                         </goals>
                         <configuration>
+                            <oldClassPathDependencies combine.children="append">
+                                <oldClassPathDependency>
+                                    <groupId>com.nomendi6.orgsec</groupId>
+                                    <artifactId>orgsec-core</artifactId>
+                                    <version>${binary.compat.old.version}</version>
+                                </oldClassPathDependency>
+                            </oldClassPathDependencies>
+                            <newClassPathDependencies combine.children="append">
+                                <newClassPathDependency>
+                                    <groupId>com.nomendi6.orgsec</groupId>
+                                    <artifactId>orgsec-core</artifactId>
+                                    <version>${project.version}</version>
+                                </newClassPathDependency>
+                            </newClassPathDependencies>
                             <parameter>
-                                <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
-                                <breakBuildOnSourceIncompatibleModifications>true</breakBuildOnSourceIncompatibleModifications>
-                                <includes>
-                                    <include>com.nomendi6.orgsec.storage.SecurityDataStorage</include>
-                                    <include>com.nomendi6.orgsec.interfaces.SecurityEnabledEntity</include>
-                                    <include>com.nomendi6.orgsec.api.PrivilegeRegistry</include>
-                                    <include>com.nomendi6.orgsec.api.PrivilegeDefinitionProvider</include>
-                                    <include>com.nomendi6.orgsec.provider.SecurityContextProvider</include>
-                                    <include>com.nomendi6.orgsec.common.service.SecurityEventPublisher</include>
-                                    <include>com.nomendi6.orgsec.model.PersonDef</include>
-                                    <include>com.nomendi6.orgsec.model.RoleDef</include>
-                                    <include>com.nomendi6.orgsec.model.PrivilegeDef</include>
-                                    <include>com.nomendi6.orgsec.model.OrganizationDef</include>
-                                    <include>com.nomendi6.orgsec.model.BusinessRoleDef</include>
-                                    <include>com.nomendi6.orgsec.model.ResourceDef</include>
-                                </includes>
+                                <includeModules>
+                                    <includeModule>orgsec-(core|common)</includeModule>
+                                </includeModules>
+                            </parameter>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>api-compat-core-common-dependents</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>cmp</goal>
+                        </goals>
+                        <configuration>
+                            <oldClassPathDependencies combine.children="append">
+                                <oldClassPathDependency>
+                                    <groupId>com.nomendi6.orgsec</groupId>
+                                    <artifactId>orgsec-core</artifactId>
+                                    <version>${binary.compat.old.version}</version>
+                                </oldClassPathDependency>
+                                <oldClassPathDependency>
+                                    <groupId>com.nomendi6.orgsec</groupId>
+                                    <artifactId>orgsec-common</artifactId>
+                                    <version>${binary.compat.old.version}</version>
+                                </oldClassPathDependency>
+                            </oldClassPathDependencies>
+                            <newClassPathDependencies combine.children="append">
+                                <newClassPathDependency>
+                                    <groupId>com.nomendi6.orgsec</groupId>
+                                    <artifactId>orgsec-core</artifactId>
+                                    <version>${project.version}</version>
+                                </newClassPathDependency>
+                                <newClassPathDependency>
+                                    <groupId>com.nomendi6.orgsec</groupId>
+                                    <artifactId>orgsec-common</artifactId>
+                                    <version>${project.version}</version>
+                                </newClassPathDependency>
+                            </newClassPathDependencies>
+                            <parameter>
+                                <includeModules>
+                                    <includeModule>orgsec-storage-(inmemory|redis)</includeModule>
+                                </includeModules>
+                            </parameter>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>api-compat-inmemory-dependents</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>cmp</goal>
+                        </goals>
+                        <configuration>
+                            <oldClassPathDependencies combine.children="append">
+                                <oldClassPathDependency>
+                                    <groupId>com.nomendi6.orgsec</groupId>
+                                    <artifactId>orgsec-core</artifactId>
+                                    <version>${binary.compat.old.version}</version>
+                                </oldClassPathDependency>
+                                <oldClassPathDependency>
+                                    <groupId>com.nomendi6.orgsec</groupId>
+                                    <artifactId>orgsec-common</artifactId>
+                                    <version>${binary.compat.old.version}</version>
+                                </oldClassPathDependency>
+                                <oldClassPathDependency>
+                                    <groupId>com.nomendi6.orgsec</groupId>
+                                    <artifactId>orgsec-storage-inmemory</artifactId>
+                                    <version>${binary.compat.old.version}</version>
+                                </oldClassPathDependency>
+                            </oldClassPathDependencies>
+                            <newClassPathDependencies combine.children="append">
+                                <newClassPathDependency>
+                                    <groupId>com.nomendi6.orgsec</groupId>
+                                    <artifactId>orgsec-core</artifactId>
+                                    <version>${project.version}</version>
+                                </newClassPathDependency>
+                                <newClassPathDependency>
+                                    <groupId>com.nomendi6.orgsec</groupId>
+                                    <artifactId>orgsec-common</artifactId>
+                                    <version>${project.version}</version>
+                                </newClassPathDependency>
+                                <newClassPathDependency>
+                                    <groupId>com.nomendi6.orgsec</groupId>
+                                    <artifactId>orgsec-storage-inmemory</artifactId>
+                                    <version>${project.version}</version>
+                                </newClassPathDependency>
+                            </newClassPathDependencies>
+                            <parameter>
+                                <includeModules>
+                                    <includeModule>(orgsec-storage-jwt|orgsec-spring-boot-starter)</includeModule>
+                                </includeModules>
                             </parameter>
                         </configuration>
                     </execution>
