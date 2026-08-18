@@ -1,65 +1,70 @@
 # Redis Storage
 
-The Redis backend is the answer to the in-memory backend's only structural problem: it is process-local. Add Redis and you get a distributed cache with multi-instance coherence, a circuit breaker for outages, and configurable preload strategies. The price is one external dependency - a Redis server - and a small pile of configuration knobs you should understand before going to production.
+The Redis backend is the answer to the in-memory backend's only structural problem: it is process-local. In 1.1.0 a managed Redis deployment publishes one lease-fenced, immutable snapshot of the whole authorization dataset. Every instance's GET/LIST reads a local view of that snapshot after re-checking the current READY generation.
 
-> **Important - how reads behave on cache miss.** The 1.0.x Redis backend is a *cache*, not a read-through facade. It serves whatever has been *put into the caches* - through the preload step at startup, through `notifyXxxChanged` calls from your domain code, or through Pub/Sub fan-out from another instance. On L1+L2 miss `getPerson` / `getOrganization` / etc. return `null`. There is no automatic database fall-through. Plan your warmup and your invalidation calls accordingly.
+> **Upgrade from `<= 1.0.5`.** The previous L1/L2 + Pub/Sub path was a cache. A revoke that missed a notify, or a peer that rebuilt L1 from an older L2 value, could keep a grant the source database no longer has. 1.1.0 refuses a dependency-only upgrade: enabling Redis without exactly one `SecurityDatasetFenceStore` and one `RedisSnapshotLoader` fails at context construction. Mixed 1.0.x / 1.1.0 Redis processes are unsupported. See [Migration](#migration-from-105).
 
 Redis stores the user-grant side of authorization. It does not set or repair Resource Security Context fields on ordinary protected rows.
+
+## Supported topology
+
+1.1.0 supports **one standalone Redis primary**. Several application instances may share it. At any moment only the lease-elected writer may publish a snapshot.
+
+Out of scope, and not a supported contract:
+
+- Redis Cluster, Sentinel, replicas, transparent failover
+- `WAIT` / replica barriers
+- a capacity ledger, reservation or quota
+- JWT + Redis (refused at startup)
+
+Pub/Sub may still be configured. It is a hint, not part of the correctness proof. GET/LIST do not consult L1 or L2.
+
+The operator must keep Redis on `noeviction` with enough memory and headroom. OrgSec does not track Redis capacity. An OOM or write failure leaves the dataset NOT_READY and requires [operator recovery](../operations/redis-recovery.md).
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Caller[Application caller]
-    L1[(L1 in-memory<br/>LRU per instance)]
-    L2[(L2 Redis<br/>shared)]
-    Loader[Preload / notifyXxxChanged<br/>writes to caches]
-    PubSub[(Pub/Sub<br/>orgsec:invalidation)]
+    Mutation[Security mutation]
+    Fence[DB fence + content version]
+    Loader[RedisSnapshotLoader]
+    Lease[Writer lease]
+    Ready[READY snapshot]
+    View[Local authorization view]
+    Get[GET / LIST]
 
-    Caller -->|getPerson| L1
-    L1 -- hit --> Caller
-    L1 -- miss --> L2
-    L2 -- hit --> L1
-    L2 -- miss --> Null[returns null]
-
-    Loader --> L1
-    Loader --> L2
-
-    Mutation[notifyXxxChanged] --> L2
-    Mutation --> PubSub
-    PubSub -.async.-> RemoteL1[L1 on other instances]
+    Mutation --> Fence
+    Fence --> Loader
+    Loader --> Lease
+    Lease --> Ready
+    Ready --> View
+    Get --> View
+    Get -->|recheck generation| Ready
 ```
 
-The read flow:
+1. Every security-source mutation takes the dataset fence in the same database transaction and increments `securityContentVersion` once.
+2. After commit, `SecurityEventPublisher` notify asks the coordinator to refresh.
+3. The coordinator either adopts the current READY snapshot (same fence version) or acquires the writer lease, loads all six families through `RedisSnapshotLoader`, and publishes a new READY generation.
+4. GET/LIST decode from the local view only if the Redis control generation still matches. A generation change, missing family, corrupt record, or Redis outage clears the view and denies.
 
-1. A read first hits the local L1 LRU. On hit, the cached value is returned.
-2. On L1 miss, the read falls through to L2 (Redis). On L2 hit, the value is also stored in L1.
-3. On L2 miss, the read returns `null`. Loading from your database is the responsibility of the application or higher-level service that calls `notifyXxxChanged` - *not* of the Redis storage itself.
+The six families are persons, organizations, party roles, position roles, roles and privileges. A snapshot is complete or it is not published.
 
-The write/warm flow:
+## Required application beans
 
-1. **Preload** at startup populates L2 (and optionally L1) for the configured strategy and mode (see [Preload strategies](#preload-strategies)).
-2. **`notifyXxxChanged`** updates L2, optionally updates L1, and publishes on `orgsec:invalidation` so other instances drop their L1 entries.
+Enabling Redis requires **exactly one** of each:
 
-The whole pipeline is wrapped in a Resilience4j circuit breaker. If Redis becomes unavailable, the circuit opens; subsequent reads fail fast (still returning `null` on miss) instead of stalling on Redis timeouts. When the circuit closes again, normal flow resumes.
+| Type | Role |
+| --- | --- |
+| `SecurityDatasetFenceStore` | Exclusive source-database fence. Mutations increment the content version in the same transaction. Bootstrap and read-only adopt do not. |
+| `RedisSnapshotLoader` | Writes one complete snapshot into the coordinator session from a **fresh** source read, not from process-wide `All*Store` state. Every family must be completed, including empty ones. |
 
-## Adding the dependency
+A generated 1.1 application registers both. A hand-written application must do the same. Missing or duplicate beans raise `RedisStorageMigrationRequiredException` before any storage bean is created.
 
-Redis is opt-in - add the dependency:
-
-```xml
-<dependency>
-    <groupId>com.nomendi6.orgsec</groupId>
-    <artifactId>orgsec-storage-redis</artifactId>
-    <version>1.1.0</version>
-</dependency>
-```
-
-The module pulls in `spring-boot-starter-data-redis` and the Lettuce client. You do not need to add `spring-boot-starter-data-redis` separately.
+`update*` on managed Redis storage is rejected. The only write path is a new snapshot.
 
 ## Activation
 
-Set both flags, to the same value:
+Set both flags to the same value, and give the dataset a stable id:
 
 ```yaml
 orgsec:
@@ -75,24 +80,24 @@ orgsec:
 - **`orgsec.storage.redis.security-dataset-id`** - required stable name for this security dataset. Use the exact same value on every instance that shares its source database and Redis snapshot, and keep it unchanged across normal restarts and rolling deployments. It has no default and is not the Redis database number.
 - **`orgsec.storage.features.redis-enabled: true`** - does *not* activate anything. It only tells the in-memory storage to stop claiming `@Primary`, so that the Redis storage can take over.
 
-Because the two do different jobs, setting only one produces a broken context: `redis.enabled` alone leaves two beans competing for `@Primary`, and `features.redis-enabled` alone leaves the application with no primary storage at all. Since 1.0.5 OrgSec checks the pair before the context is built and **refuses to start** on a mismatch:
+Because the two flags do different jobs, setting only one produces a broken context. Since 1.0.5 OrgSec checks the pair before the context is built and **refuses to start** on a mismatch:
 
 ```
 ORGSEC_STORAGE_REDIS_ACTIVATION_MISMATCH: orgsec.storage.redis.enabled=true but
 orgsec.storage.features.redis-enabled=false. Set both properties to the same value.
 ```
 
-This is not warned about and cannot be softened by configuration. A warning would let the application run with a different storage serving authorization than the operator selected, which is exactly the failure the check exists to prevent. Applications generated against 1.0.4 emit this combination, so **check your configuration before upgrading** - see the [1.0.5 migration notes](../../CHANGELOG.md).
+This cannot be softened by configuration. Applications generated against 1.0.4 emit this combination, so **check your configuration before upgrading**.
 
 Two further conditions are refused here: enabling Redis without `orgsec-storage-redis` on the classpath (`ORGSEC_STORAGE_REDIS_MODULE_REQUIRED`), and enabling Redis together with the JWT backend (`ORGSEC_STORAGE_JWT_REDIS_UNSUPPORTED`) - see [Hybrid storage](./05-hybrid.md).
 
-Keeping the Redis JAR on the classpath without activating it is still supported - just leave both flags unset.
+Keeping the Redis JAR on the classpath without activating it is still supported - leave both flags unset.
 
 `orgsec.storage.primary` is **not** part of activation and is not read by any code; see [properties reference](../reference/properties.md#storagefeatureflags---orgsecstorage).
 
 ## Connection settings
 
-The most-frequently-edited block is the connection. Source the values from environment variables, never commit them.
+Source the values from environment variables, never commit them.
 
 ```yaml
 orgsec:
@@ -100,118 +105,58 @@ orgsec:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}        # optional but expected in production
-      ssl: true                            # MANDATORY in production
-      timeout: 2000                        # connect timeout in milliseconds
+      password: ${REDIS_PASSWORD:}
+      ssl: true
+      timeout: 2000
 ```
 
-`ssl: true` is **non-negotiable** for production. OrgSec carries the entire authorization state of your application; sending it across a network in clear text is the kind of finding that ends a production deployment. The default is `false` only because local-dev Redis containers usually run without TLS - the production checklist treats `ssl: false` outside `dev` profiles as a release blocker.
+`ssl: true` is **non-negotiable** for production. The default is `false` only because local-dev Redis containers usually run without TLS.
 
-## TTL configuration
+## Notify and refresh
 
-Each entity type has its own TTL. Short TTLs reduce staleness at the cost of more cache misses; long TTLs reduce database load at the cost of more reliance on `notifyXxxChanged` for freshness.
+Call `SecurityEventPublisher` producer methods from the service that mutates security data. After commit the publisher notifies storage; managed Redis then publishes a new snapshot (or stays on the previous READY generation if the fence version is unchanged).
 
-```yaml
-orgsec:
-  storage:
-    redis:
-      ttl:
-        person: 3600                       # seconds (1 hour)
-        organization: 7200                 # 2 hours
-        role: 7200
-        privilege: 7200
-        on-security-change: 300            # reserved; see note below
-```
+- Commit → one refresh.
+- Rollback → no refresh.
+- No transaction → refresh immediately.
+- Kafka / internal `apply*` → refresh immediately, no republish.
 
-`on-security-change` is **reserved** in 1.0.x - the current update path applies the per-type TTLs (`person`, `organization`, ...) regardless. Set it for forward compatibility; do not rely on it for security-sensitive freshness guarantees yet.
+Do not call `storage.notify*` from inside an open transaction if a rollback is still possible. See [Load security data](../usage/08-load-security-data.md).
 
-## L1 cache
+A peer that did not hold the writer lease adopts the READY snapshot on its next bootstrap or refresh. If another instance holds the lease, a cold instance stays NOT_READY until it can adopt.
 
-The L1 LRU lives inside each JVM instance. It is bounded by entry count, not by bytes; a `PersonDef` is small enough that you should size the L1 in the thousands.
+## Fail-closed reads
 
-```yaml
-orgsec:
-  storage:
-    redis:
-      cache:
-        l1-enabled: true                   # reserved; L1 is always created in 1.0.x
-        l1-max-size: 1000
-        obfuscate-keys: false              # SHA-256 hash on cache keys
-```
+GET/LIST return `null` / empty and `isReady()` is false when any of these hold:
 
-`l1-enabled` is **reserved** in 1.0.x - the L1 LRU is always created. Tune `l1-max-size` to bound memory; the entry count is per cache (persons, organizations, roles, privileges).
+- no READY snapshot is installed
+- the control generation no longer matches the local view
+- Redis is unreachable
+- the snapshot is incomplete or fails verification
+- the writer lease expired mid-publish
 
-Set `obfuscate-keys: true` if Redis is shared with other applications and you do not want your key namespace (`orgsec:person:42`) to leak organizational metadata. The trade-off is that you can no longer inspect cache contents with `redis-cli KEYS orgsec:*`.
+That is deny, not "try L2". A later successful bootstrap or refresh restores the view.
 
-## Pub/Sub invalidation
+## Migration from 1.0.5
 
-Cross-instance cache invalidation rides on Redis Pub/Sub. The default is **off** - turn it on once you have verified the channel name is unique in your Redis namespace.
+A jar-only bump is not enough.
 
-```yaml
-orgsec:
-  storage:
-    redis:
-      invalidation:
-        enabled: true
-        channel: orgsec:invalidation        # change for multi-tenant Redis
-        async: true
-```
+1. Upgrade every instance together. Do not run 1.0.x and 1.1.0 against the same Redis keys.
+2. Add the source-database fence table / row for `security-dataset-id` and protocol version 1.
+3. Register one `SecurityDatasetFenceStore` and one `RedisSnapshotLoader`.
+4. Stop calling `CacheWarmer.set*Loader` and `storage.update*` as the authorization write path.
+5. Set Redis `maxmemory-policy noeviction` and size memory for a full snapshot plus one staging copy.
+6. Confirm `orgsec.storage.redis.security-dataset-id` is identical on every instance.
 
-Enabling invalidation does not change the *write* path - that still calls `notifyXxxChanged` directly. It changes the *read* path on remote instances: when one instance publishes an invalidation, all subscribers drop their L1 entry. The next read on a remote instance falls through to L2; on L2 miss it returns `null` (the Redis backend never reads from your database directly).
+The auto-configuration migration gate fails startup until steps 3 is done.
 
-For a deeper recipe on the right places to call `notifyXxxChanged`, see [Usage / Load security data](../usage/08-load-security-data.md).
+## Recovery
 
-## Preload strategies
+When Redis is empty, evicted, or left NOT_READY after a write failure, follow [Redis recovery](../operations/redis-recovery.md). The short version: restore Redis if you have a backup, then bounce one instance so it can take the writer lease and publish a fresh snapshot from the database. Do not hand-edit protocol keys.
 
-> **Preload is a framework hook, not automatic database loading.** The Redis auto-configuration creates a `CacheWarmer` and the Redis storage wires its batch-store callbacks. OrgSec does **not** know how to read your database directly - you must register data loaders on the `CacheWarmer` (`setPersonLoader`, `setOrganizationLoader`, `setRoleLoader`) before warmup runs. Without those loaders, every warmup strategy logs "Loader or store not configured, skipping warmup" and Redis starts empty.
+## Connection pool, circuit breaker, health
 
-The configuration knobs control *how* warmup runs once loaders are present:
-
-```yaml
-orgsec:
-  storage:
-    redis:
-      preload:
-        enabled: true
-        on-startup: true
-        strategy: all                       # all | persons | organizations | roles
-        mode: eager                         # eager | progressive | lazy
-        batch-size: 100                     # for progressive
-        batch-delay-ms: 50                  # delay between batches
-        async: false                        # block startup or run in background
-        parallelism: 2                      # threads for parallel warmup
-```
-
-- **`eager`** - load everything during application startup. Spring's `ApplicationContext` is not considered ready until preload finishes. Predictable but slow on large datasets.
-- **`progressive`** - load in batches with a small delay between them. Smaller startup spike, but the cache is incomplete until preload finishes.
-- **`lazy`** - do not preload. The cache stays empty until something else (your `notifyXxxChanged` calls or a Pub/Sub invalidation followed by a populated `notify`) pushes entries in.
-
-Set `async: true` to detach preload from the startup path entirely - the application starts immediately and preload runs in the background.
-
-**Wiring the loaders.** In your application configuration, inject the `CacheWarmer` bean and register loaders that produce `Map<Long, PersonDef>` / `Map<Long, OrganizationDef>` / `Map<Long, RoleDef>` from your database. Until that wiring exists, treat preload as off regardless of `preload.enabled`.
-
-## Circuit breaker
-
-Resilience4j wraps every Redis call. If failures exceed the threshold the circuit opens, and Redis calls return immediately without waiting on TCP timeouts. While the circuit is open, reads simply behave as L2 misses (the L1 cache is still consulted first). After `wait-duration`, the circuit half-opens for a few probe calls; if those succeed, it closes.
-
-```yaml
-orgsec:
-  storage:
-    redis:
-      circuit-breaker:
-        enabled: true
-        failure-threshold: 50               # percentage; default 50%
-        wait-duration: 30000                # ms before half-open probe
-        sliding-window-size: 10
-        minimum-calls: 5
-        permitted-calls-in-half-open: 3
-```
-
-You almost never need to tune these; the defaults are fine. The most likely change is increasing `wait-duration` for environments where Redis flapping is common, so the circuit does not thrash.
-
-## Connection pool
-
-Lettuce uses a native connection pool through Apache Commons Pool 2:
+Lettuce pool, Resilience4j and the Actuator health indicator still wrap the Redis connection. They do not change the snapshot contract: an open circuit or a failed health check means GET/LIST deny.
 
 ```yaml
 orgsec:
@@ -219,54 +164,34 @@ orgsec:
     redis:
       pool:
         enabled: true
-        min-idle: 5
-        max-idle: 10
         max-active: 20
-        max-wait: 2000                      # ms; -1 = block forever
-        test-while-idle: true
-        time-between-eviction-runs: 30000
-```
-
-Defaults handle a moderate load. For high-traffic services, raise `max-active` until the pool stops throttling under peak load (you will see `Could not acquire connection in time` log lines).
-
-## Health and monitoring
-
-The Redis backend always creates a Spring Boot Actuator `RedisStorageHealthIndicator` when it is active. Add `spring-boot-starter-actuator` to your project to make the indicator visible at `/actuator/health`.
-
-```yaml
-orgsec:
-  storage:
-    redis:
+        max-wait: 2000
+      circuit-breaker:
+        enabled: true
       monitoring:
-        metrics-enabled: true               # reserved; no Micrometer export in 1.0.x
-        health-check-enabled: true          # reserved; indicator is always created
+        health-check-enabled: true
 ```
 
-Both `monitoring.*` flags are **reserved** in 1.0.x:
+Add `spring-boot-starter-actuator` to expose `/actuator/health`.
 
-- `metrics-enabled` - OrgSec does not ship a Micrometer `MeterBinder` in 1.0.x. You can still read internal counters programmatically through the cache classes if you want to wrap them in your own metrics.
-- `health-check-enabled` - the `RedisStorageHealthIndicator` bean is created unconditionally when the Redis backend is active.
+## Legacy cache plane
 
-See [Operations / Monitoring](../operations/monitoring.md).
+TTL, L1 size, Pub/Sub invalidation and `CacheWarmer` preload still bind. They are **not** the managed GET/LIST path in 1.1.0. Leave them at defaults unless you are debugging a mixed leftover. Do not treat `preload.enabled` or `invalidation.enabled` as the freshness mechanism.
 
-## Production hardening checklist
+## Production hardening
 
-The non-negotiables for a Redis-backed OrgSec deployment:
+- `ssl: true` and a password from the environment
+- `noeviction` and enough Redis memory for two full snapshots
+- a stable `security-dataset-id`
+- fence + loader beans present
+- notify through `SecurityEventPublisher` after commit
+- Actuator health on the readiness probe
 
-- `ssl: true`
-- `password` supplied via environment variable, not committed YAML
-- `invalidation.enabled: true` if you run more than one instance
-- A unique `invalidation.channel` per service if Redis is shared with other applications
-- Connection pool sized for peak load
-- Circuit breaker enabled (default is fine)
-- Spring Boot Actuator on the classpath, with the health indicator wired to your readiness probes
-- Audit logging on (`orgsec.storage.redis.audit.enabled: true`) so authorization decisions are observable through `DefaultSecurityAuditLogger`
-
-The full list with rationale is in [Operations / Production checklist](../operations/production-checklist.md).
+The full list is in [Operations / Production checklist](../operations/production-checklist.md).
 
 ## Where to go next
 
-- [Choose storage](./01-choose-storage.md) - the decision tree.
-- [Archive / Redis app](../archive/v1/examples/redis-app.md) - copy-paste-friendly project.
-- [Usage / Load security data](../usage/08-load-security-data.md) - when and where to call notify hooks.
-- [Operations / Production checklist](../operations/production-checklist.md) - pre-deployment checks.
+- [Choose storage](./01-choose-storage.md)
+- [Redis recovery](../operations/redis-recovery.md)
+- [Usage / Load security data](../usage/08-load-security-data.md)
+- [Operations / Production checklist](../operations/production-checklist.md)

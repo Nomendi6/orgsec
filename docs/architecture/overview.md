@@ -93,13 +93,13 @@ Spring Boot's startup orders beans by dependencies. For an OrgSec-backed applica
 7. **`@PostConstruct` on application's `PrivilegeDefinitionProvider`.** Calls `PrivilegeLoader.initializePrivileges(this)`. The registry now contains every privilege your application defined.
 8. **`SecurityDataStorage.initialize()` - backend-specific behavior:**
     - **In-memory.** Calls every loader (`PersonLoader.loadAll(...)`, `OrganizationLoader`, `RoleLoader`, `PrivilegeLoader`) which run your `SecurityQueryProvider` and populate the four stores. After this call, `isReady()` returns `true` *and* the cache holds your data.
-    - **Redis.** Wires `CacheWarmer` batch-store callbacks against the L1 / L2 update methods, runs `cacheWarmer.warmup()` if `preload.enabled: true`, and sets `ready=true`. **Reading from `SecurityQueryProvider` only happens if the application has registered `CacheWarmer` data loaders** (`setPersonLoader`, `setOrganizationLoader`, `setRoleLoader`); otherwise the warmup logs "Loader or store not configured, skipping warmup" and the cache starts empty. Subsequent reads on an empty cache return `null` until the application populates entries through `updateXxx` or `notifyXxxChanged` (followed by the application's own `update`).
+    - **Redis.** Requires one `SecurityDatasetFenceStore` and one `RedisSnapshotLoader`. An `ApplicationRunner` bootstraps the coordinator: adopt a READY snapshot or publish a new one under the writer lease. GET/LIST stay fail-closed until that view is installed. L1/L2 warmup is leftover and is not the authorization read path.
     - **JWT.** `initialize()` is effectively a no-op; the JWT backend is per-request and has no cache to populate at startup. The fail-fast on a missing `JwtDecoder` happens earlier, in `JwtStorageAutoConfiguration`'s bean creation (step 9 below).
 9. **JwtDecoder fail-fast (when applicable).** If `jwt-enabled: true` and no `JwtDecoder` bean is present, `JwtStorageAutoConfiguration` throws `IllegalStateException` and aborts startup. This happens during bean creation, not during `initialize()`.
 10. **Application's filter chain registers.** `oauth2ResourceServer`, `orgsecApiSecurityFilterChain`, your own `SecurityFilterChain`. OrgSec's chain has order `BASIC_AUTH_ORDER - 50` so it runs *before* the typical default chain; since 1.0.5 it installs its own `oauth2ResourceServer` on its match path, reusing the application's `JwtDecoder` bean, and is only registered when such a bean exists.
 11. **`ApplicationContext` is fully refreshed.** First HTTP request can now arrive.
 
-A failure in steps 6 / 7 / 8 / 9 aborts startup with a clear message. The Redis warmup inside step 8 is logged but non-fatal - the application is up, just with cold caches.
+A failure in steps 6 / 7 / 8 / 9 aborts startup with a clear message. A Redis bootstrap that cannot publish or adopt leaves GET/LIST deny until a later refresh succeeds.
 
 ## Threading model
 

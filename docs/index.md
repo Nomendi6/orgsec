@@ -56,15 +56,16 @@ The important split is simple: storage gives OrgSec the user's grants; the prote
 - **`spring/`** - Spring Boot starter, Spring Security, and Keycloak Person API integration.
 - **`reference/`** - precise API, property, privilege-model, exception, and glossary material.
 - **`architecture/`** - advanced internals and extension points.
-- **`operations/`** - production checks, monitoring, and troubleshooting.
+- **`operations/`** - production checks, monitoring, troubleshooting, and Redis recovery.
 - **`archive/v1/`** - previous documentation structure kept for historical reference.
 
 ## Compatibility
 
 | OrgSec version | Spring Boot | Spring Security | Java | Status |
 | --- | --- | --- | --- | --- |
-| **1.0.x** | 3.5.x | 6.x | 17 | Current GA; receives security and bug fixes |
-| 2.0.x | 4.x planned | 7.x planned | 21 | In development; not yet released |
+| **1.0.x** | 3.5.x | 6.x | 17 | Current published GA; Redis users should plan 1.1.0 |
+| 1.1.x | 3.5.x | 6.x | 17 | Unreleased; snapshot Redis + after-commit notify + `=^*` |
+| 2.0.x | 4.x | 7.x | 21 | In development; not yet released |
 
 ## License And Links
 

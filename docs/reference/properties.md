@@ -176,24 +176,25 @@ Bound only when `orgsec-storage-redis` is on the classpath. All defaults apply p
 
 | Property                              | Type      | Default                  | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ------------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `enabled`                | `boolean` | `false`                  | Publish/subscribe invalidation events. Default off.                                      | [Storage / Redis](../storage/03-redis.md#pubsub-invalidation)  |
-| `async`                  | `boolean` | `true`                   | Publish invalidation events asynchronously.                                              | [Storage / Redis](../storage/03-redis.md#pubsub-invalidation)  |
-| `channel`                | `String`  | `"orgsec:invalidation"`  | Redis channel name. Change for multi-tenant Redis.                                       | [Storage / Redis](../storage/03-redis.md#pubsub-invalidation)  |
+| `enabled`                | `boolean` | `false`                  | Publish/subscribe invalidation events. Default off. Not part of the 1.1 GET/LIST proof. | [Storage / Redis](../storage/03-redis.md#legacy-cache-plane)  |
+| `async`                  | `boolean` | `true`                   | Publish invalidation events asynchronously.                                              | [Storage / Redis](../storage/03-redis.md#legacy-cache-plane)  |
+| `channel`                | `String`  | `"orgsec:invalidation"`  | Redis channel name. Change for multi-tenant Redis.                                       | [Storage / Redis](../storage/03-redis.md#legacy-cache-plane)  |
 
 ### Preload - `orgsec.storage.redis.preload.*`
 
-> Redis preload is **not** automatic database loading. Applications must register `CacheWarmer` data loaders (`setPersonLoader`, `setOrganizationLoader`, `setRoleLoader`); without them, every preload call completes with 0 records.
+> 1.1.0 GET/LIST use the snapshot coordinator, not `CacheWarmer`. These properties still bind for
+> the leftover cache plane. Do not treat preload as the authorization load path.
 
 | Property                              | Type      | Default   | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | --------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `enabled`                     | `boolean` | `true`    | Run configured `CacheWarmer` loaders at startup. No-op unless the application registers loaders. | [Storage / Redis](../storage/03-redis.md#preload-strategies)   |
-| `on-startup`                  | `boolean` | `true`    | Trigger preload during `ApplicationContext` startup.                                     | [Storage / Redis](../storage/03-redis.md#preload-strategies)   |
-| `strategy`                    | `String`  | `"all"`   | One of `all`, `persons`, `organizations`, `roles`.                                       | [Storage / Redis](../storage/03-redis.md#preload-strategies)   |
-| `mode`                        | `String`  | `"eager"` | `eager` (single batch on startup), `progressive` (batched with delay), `lazy` (no startup warmup in 1.0.x; reads do not auto-warm). | [Storage / Redis](../storage/03-redis.md#preload-strategies)   |
-| `batch-size`                  | `int`     | `100`     | Items per batch in progressive mode.                                                     | [Storage / Redis](../storage/03-redis.md#preload-strategies)   |
-| `batch-delay-ms`              | `long`    | `50`      | Delay between batches in milliseconds.                                                   | [Storage / Redis](../storage/03-redis.md#preload-strategies)   |
-| `async`                       | `boolean` | `false`   | Detach preload from the startup path.                                                    | [Storage / Redis](../storage/03-redis.md#preload-strategies)   |
-| `parallelism`                 | `int`     | `2`       | Number of threads for parallel warmup.                                                   | [Storage / Redis](../storage/03-redis.md#preload-strategies)   |
+| `enabled`                     | `boolean` | `true`    | Run leftover `CacheWarmer` loaders at startup. Not the 1.1 snapshot load path. | [Storage / Redis](../storage/03-redis.md#legacy-cache-plane)   |
+| `on-startup`                  | `boolean` | `true`    | Trigger leftover preload during `ApplicationContext` startup.                  | [Storage / Redis](../storage/03-redis.md#legacy-cache-plane)   |
+| `strategy`                    | `String`  | `"all"`   | One of `all`, `persons`, `organizations`, `roles`.                              | [Storage / Redis](../storage/03-redis.md#legacy-cache-plane)   |
+| `mode`                        | `String`  | `"eager"` | `eager` / `progressive` / `lazy` leftover warmup modes.                        | [Storage / Redis](../storage/03-redis.md#legacy-cache-plane)   |
+| `batch-size`                  | `int`     | `100`     | Also used as the snapshot loader batch size.                                   | [Storage / Redis](../storage/03-redis.md#legacy-cache-plane)   |
+| `batch-delay-ms`              | `long`    | `50`      | Delay between leftover warmup batches.                    | [Storage / Redis](../storage/03-redis.md#legacy-cache-plane)   |
+| `async`                       | `boolean` | `false`   | Detach leftover preload from the startup path.            | [Storage / Redis](../storage/03-redis.md#legacy-cache-plane)   |
+| `parallelism`                 | `int`     | `2`       | Threads for leftover parallel warmup.                     | [Storage / Redis](../storage/03-redis.md#legacy-cache-plane)   |
 
 ### Circuit breaker - `orgsec.storage.redis.circuit-breaker.*`
 

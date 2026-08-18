@@ -272,7 +272,7 @@ flowchart LR
     Jwt -.->|delegates org/role| Redis
 ```
 
-The `SecurityDataStore` facade keeps `PrivilegeChecker` agnostic to the active backend. A request always asks `Store.getPerson(personId)`; behind that call the inmemory backend reads from a `ConcurrentHashMap` snapshot, the Redis backend reads from L1-then-L2, and the JWT backend reads from a parsed token claim.
+The `SecurityDataStore` facade keeps `PrivilegeChecker` agnostic to the active backend. A request always asks `Store.getPerson(personId)`; behind that call the inmemory backend reads from a `ConcurrentHashMap` snapshot, the Redis backend reads a generation-checked READY snapshot, and the JWT backend reads from a parsed token claim.
 
 There is **no per-data-type router** at this or any other layer. Exactly one `SecurityDataStorage` is `@Primary` and answers every call. The dashed edges above are the JWT backend forwarding to its single delegate - not configurable per type. `orgsec.storage.data-sources.*` binds but is read by nothing; see [properties reference](./properties.md#per-data-type-routing---orgsecstoragedata-sources).
 
@@ -280,7 +280,7 @@ For backend-specific behavior - how data is loaded, when caches are invalidated,
 
 ## Cache layers in one paragraph
 
-The Redis backend keeps a local L1 LRU cache for hot reads and a Redis L2 cache for cross-instance coherence. The caches are populated by a startup preload step and by `notifyXxxChanged()` calls from your domain code; on L1+L2 miss the backend returns `null` rather than reading from your database. Mutations go through the same `notifyXxxChanged()` hooks, which publish on `orgsec:invalidation` so other instances drop their L1 entries. The L1 cap is configurable; the L2 entries are TTL-bounded per entity type. A circuit breaker protects against Redis outages by failing fast on Redis calls. The full picture is in [Cache Architecture](../architecture/cache-architecture.md).
+The Redis backend in 1.1.0 publishes one lease-fenced immutable snapshot of all six authorization families. GET/LIST decode a local view after re-checking the READY generation. A miss, generation change or Redis outage denies. L1/L2 and Pub/Sub still exist in the bean graph but are not the managed read path. The full picture is in [Storage / Redis](../storage/03-redis.md).
 
 ## Where to go next
 

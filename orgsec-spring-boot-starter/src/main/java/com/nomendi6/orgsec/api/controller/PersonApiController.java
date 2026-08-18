@@ -10,6 +10,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,7 +42,7 @@ public class PersonApiController {
     // Path variables are named explicitly: this class ships compiled inside the starter jar, so
     // it must not depend on the consuming application's compiler settings to resolve them.
     @GetMapping("/by-user/{userId}")
-    public ResponseEntity<?> getPersonByUserId(@PathVariable("userId") String userId) {
+    public ResponseEntity<PersonApiDTO> getPersonByUserId(@PathVariable("userId") String userId) {
         long startTime = System.currentTimeMillis();
         log.debug("GET /api/orgsec/person/by-user/{}", userId);
 
@@ -50,7 +51,7 @@ public class PersonApiController {
 
             if (person == null) {
                 log.warn("Person not found for userId: {}", userId);
-                return notFound();
+                throw new PersonApiNotFoundException();
             }
 
             long duration = System.currentTimeMillis() - startTime;
@@ -58,6 +59,8 @@ public class PersonApiController {
 
             return ResponseEntity.ok(person);
 
+        } catch (PersonApiNotFoundException notFound) {
+            throw notFound;
         } catch (Exception e) {
             log.error("Error fetching person for userId: {}", userId, e);
             return ResponseEntity.internalServerError().build();
@@ -71,7 +74,7 @@ public class PersonApiController {
      * @return PersonApiDTO or 404 if not found
      */
     @GetMapping("/{personId}")
-    public ResponseEntity<?> getPersonById(@PathVariable("personId") Long personId) {
+    public ResponseEntity<PersonApiDTO> getPersonById(@PathVariable("personId") Long personId) {
         long startTime = System.currentTimeMillis();
         log.debug("GET /api/orgsec/person/{}", personId);
 
@@ -80,7 +83,7 @@ public class PersonApiController {
 
             if (person == null) {
                 log.warn("Person not found for personId: {}", personId);
-                return notFound();
+                throw new PersonApiNotFoundException();
             }
 
             long duration = System.currentTimeMillis() - startTime;
@@ -88,15 +91,23 @@ public class PersonApiController {
 
             return ResponseEntity.ok(person);
 
+        } catch (PersonApiNotFoundException notFound) {
+            throw notFound;
         } catch (Exception e) {
             log.error("Error fetching person for personId: {}", personId, e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
-    private static ResponseEntity<PersonApiErrorDTO> notFound() {
+    @ExceptionHandler(PersonApiNotFoundException.class)
+    public ResponseEntity<PersonApiErrorDTO> handlePersonNotFound() {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
             .contentType(MediaType.APPLICATION_JSON)
             .body(new PersonApiErrorDTO(PersonApiErrorCodes.PERSON_NOT_FOUND));
+    }
+
+    static final class PersonApiNotFoundException extends RuntimeException {
+
+        private static final long serialVersionUID = 1L;
     }
 }

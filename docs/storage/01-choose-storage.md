@@ -13,7 +13,7 @@ All backends serve the same authorization API:
 | Backend | Use when | Important behavior |
 | --- | --- | --- |
 | In-memory | Single JVM, development, tests, small production deployments. | Loads a local snapshot through `SecurityQueryProvider`. |
-| Redis | Multiple JVM instances need coherent security data. | Cache only; on L1+L2 miss it returns `null`, it does not query your database. |
+| Redis | Multiple JVM instances need coherent security data. | One standalone primary; GET/LIST read a generation-checked snapshot. A miss or inconsistency denies. |
 | JWT | Current person identity comes from a trusted OAuth2/JWT flow. | Reads `PersonDef` from the token and delegates organizations, roles, and privileges. |
 | Hybrid | Different data types should come from different sources. | Example: person from JWT, organizations/roles from Redis, privileges from memory. |
 
@@ -59,17 +59,17 @@ orgsec:
       jwt-enabled: true
 ```
 
-The delegate defaults to in-memory. **JWT and Redis cannot be enabled together** - the combination is refused at startup, because a cache is not a safe delegate for the JWT backend. To put a different authoritative store behind JWT, declare a `jwtDelegateStorage` bean. See [Hybrid storage](./05-hybrid.md).
+The delegate defaults to in-memory. **JWT and Redis cannot be enabled together** - the combination is refused at startup. To put a different authoritative store behind JWT, declare a `jwtDelegateStorage` bean. See [Hybrid storage](./05-hybrid.md).
 
-> `orgsec.storage.primary`, `hybrid-mode-enabled` and `data-sources.*` appear in older examples but are inert - no code reads them. There is no per-data-type router in 1.0.x.
+> `orgsec.storage.primary`, `hybrid-mode-enabled` and `data-sources.*` appear in older examples but are inert - no code reads them. There is no per-data-type router on this line.
 
 ## Migration Notes
 
 Switching storage is mostly configuration and classpath. The risk is data readiness:
 
 - Memory must be loaded from `SecurityQueryProvider`.
-- Redis must be preloaded or updated through notify hooks before reads are expected to succeed.
-- JWT claims must already contain valid OrgSec person data before `person: jwt` is enabled.
+- Redis 1.1.0 needs a `SecurityDatasetFenceStore`, a `RedisSnapshotLoader`, and a stable `security-dataset-id`. A jar-only bump from `<= 1.0.5` is refused.
+- JWT claims must already contain valid OrgSec person data before JWT storage is enabled.
 
 ## Next
 

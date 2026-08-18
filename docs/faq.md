@@ -116,8 +116,8 @@ No. OrgSec **reads** from your database through the `SecurityQueryProvider` you 
 
 The exact call depends on your storage backend:
 
-- **In-memory.** Call `notifyXxxChanged(...)` from the place where the change happens. The backend reloads the affected entity through `SecurityQueryProvider`, so the cache is correct on the next request.
-- **Redis.** `notifyXxxChanged` only invalidates L1 and publishes the invalidation event - it does *not* refresh L2. For immediate freshness (typical revocation flows), reload the entity from your database after commit and call `updateXxx(id, freshDef)` instead; the Redis backend writes through to L1 + L2 and publishes the invalidation. Reserve `notify` for cases where TTL-bounded staleness is acceptable.
+- **In-memory.** Call `SecurityEventPublisher` producer methods after commit. Party/org/position notifies reload everything through `SecurityQueryProvider`; person notify syncs that person.
+- **Redis.** The same publisher methods refresh the managed snapshot after commit. `update*` is rejected. A rollback leaves the previous READY generation in place.
 
 There is no JPA listener wired by default. The recipes with concrete patterns - including the in-memory and Redis variants of the service-method approach - are in [Usage / Load security data](./usage/08-load-security-data.md).
 

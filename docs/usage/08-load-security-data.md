@@ -53,9 +53,9 @@ Production data should usually come from providers or storage adapters, not fixt
 | Storage | What it does |
 | --- | --- |
 | In-memory | Loads a local snapshot through `SecurityQueryProvider`; refreshes through notify hooks. |
-| Redis | Uses Redis as shared L2 cache plus local L1 cache; it is not a read-through database adapter. |
-| JWT | Reads the current person from a trusted token claim; other data can be delegated to another backend. |
-| Hybrid | Routes different data types to different storage sources, such as person from JWT and roles from Redis. |
+| Redis | Publishes a lease-fenced READY snapshot; GET/LIST use the local view after a generation recheck. |
+| JWT | Reads the current person from a trusted token claim; other data is delegated to one other backend. |
+| Hybrid | Only JWT-plus-delegate exists. Per-data-type routing properties are inert. JWT+Redis is refused. |
 
 If storage cannot find required data, OrgSec fails closed. JWT storage does not magically load a missing organization from the database unless a configured delegate storage already has it.
 

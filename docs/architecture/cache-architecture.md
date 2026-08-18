@@ -1,6 +1,8 @@
 # Cache Architecture
 
-This page describes the internals of the Redis backend's two-tier cache: how the L1 LRU works inside each JVM, how the L2 cache lives in Redis, and how Pub/Sub keeps the two coherent across instances. The audience is contributors and operators who already use [Storage / Redis](../storage/03-redis.md) and want the design behind the configuration knobs.
+> **1.1.0 managed GET/LIST do not use this plane.** Authorization reads go through the lease-fenced READY snapshot described in [Storage / Redis](../storage/03-redis.md). This page documents the leftover L1/L2 + Pub/Sub implementation that still ships in the module. Do not treat it as the freshness or recovery mechanism.
+
+This page describes the internals of that leftover two-tier cache: how the L1 LRU works inside each JVM, how the L2 cache lives in Redis, and how Pub/Sub keeps the two coherent across instances.
 
 ## Two layers, four caches
 

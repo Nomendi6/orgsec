@@ -8,11 +8,12 @@ The table below shows which OrgSec versions currently receive security fixes. Ol
 
 | Version | Supported          | Notes                                                                                                   |
 | ------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
-| 1.0.x   | :white_check_mark: | Current GA line. Targets Spring Boot 3.5.x and Java 17. Receives security and bug fixes. **Upgrade to 1.0.5**: every earlier patch carries authorization defects fixed since, listed under `### Security` in the [CHANGELOG](./CHANGELOG.md). 1.0.5 is not drop-in - read its migration notes first. |
+| 1.1.x   | :hourglass:        | Next 1.x line (unreleased). Targets Spring Boot 3.5.x and Java 17. Redis deployments must upgrade here: `<= 1.0.5` can serve a stale authorization view. Mixed 1.0.x / 1.1.x Redis processes are unsupported. |
+| 1.0.x   | :white_check_mark: | Current published GA. Targets Spring Boot 3.5.x and Java 17. **Upgrade to 1.0.5** for the authorization defects listed under `### Security` in the [CHANGELOG](./CHANGELOG.md). Once 1.1.0 is published this line is superseded; Redis users should not stay on it. 1.0.5 is not drop-in - read its migration notes first. |
 | 2.0.x   | :hourglass:        | In development. Targets Spring Boot 4.x and Java 21. Will become the supported line at GA.              |
 | < 1.0.0 | :x:                | Pre-release / never published. No support.                                                              |
 
-When 2.0.x reaches GA, 1.0.x will continue to receive security fixes for at least six months to give downstream applications time to migrate.
+When 2.0.x reaches GA, the current 1.x line will continue to receive security fixes for at least six months to give downstream applications time to migrate.
 
 ## Reporting a Vulnerability
 
@@ -42,7 +43,7 @@ The following classes of issues are considered security vulnerabilities in OrgSe
 - **Privilege escalation** — any input that causes OrgSec to evaluate a higher operation level (`READ` -> `WRITE` / `EXECUTE`) or a wider direction (`EXACT` -> `HIERARCHY_DOWN` / `HIERARCHY_UP`) than the configuration grants.
 - **Cross-tenant data leakage** — collisions, cache poisoning, or shared-state issues that allow one organization to observe or affect another.
 - **Token mishandling** — JWT signature, issuer, audience, or expiry checks that can be bypassed in `orgsec-storage-jwt`, or token contents accepted before validation.
-- **Cache invalidation correctness** — Pub/Sub or L1/L2 cache flaws that let stale authorization data persist after revocation.
+- **Cache / snapshot correctness** — a published authorization view that outlives a source revocation, including the 1.0.x L1/L2 + Pub/Sub path and a 1.1 snapshot that is adopted against the wrong fence version.
 - **Insecure defaults** — out-of-the-box configuration that violates the production checklist in [`docs/operations/production-checklist.md`](./docs/operations/production-checklist.md) (once published) and is not loudly documented.
 - **Vulnerable transitive dependencies** that OrgSec itself pins or recommends, when no upgrade path is available.
 
@@ -89,4 +90,4 @@ If GitHub or the maintainer's email becomes unavailable for an extended period a
 
 ---
 
-*This policy is reviewed at every minor release. Last reviewed for OrgSec 1.0.5.*
+*This policy is reviewed at every minor release. Last reviewed for OrgSec 1.1.0-SNAPSHOT.*

@@ -215,10 +215,9 @@ You should still:
 Enabling `orgsec.storage.features.jwt-enabled` together with `orgsec.storage.redis.enabled` stops
 startup since 1.0.5, with `ORGSEC_STORAGE_JWT_REDIS_UNSUPPORTED`. Enable exactly one backend.
 
-The reason is availability, not packaging. Redis serves only what preload or `notifyXxxChanged` has
-put into the caches - it does not load from your database on a miss, it returns `null` - and the JWT
-backend reads a missing organization as an unproven membership and drops it. A cold cache after a
-deployment therefore denies every request rather than slowing it down. See
+The reason is availability, not packaging. Redis GET/LIST deny unless a READY snapshot is installed,
+and the JWT backend reads a missing organization as an unproven membership and drops it. Combining
+the two would deny every token principal after a cold start rather than slowing it down. See
 [Hybrid storage](./05-hybrid.md) for what to do instead if you need shared organization data across
 instances.
 

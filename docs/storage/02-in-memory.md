@@ -130,7 +130,7 @@ The `takeSnapshot()` and `restore()` helpers are not currently published as part
 - **No spill-over.** The four maps live entirely in heap.
 - **No cross-instance coordination.** Documented above; this is the main reason to switch to Redis.
 - **Refresh is global.** `refresh()` re-reads everything. Party, position and organization notifies do the same full reload; only person notify is targeted.
-- **Defensive-copy cost.** Reads pay the price of copying `PersonDef` / `OrganizationDef` instances. The cost is small (these are small objects), but it appears on every privilege check. If your profiler points here, switch to Redis where the L1 returns shared references.
+- **Defensive-copy cost.** Reads pay the price of copying `PersonDef` / `OrganizationDef` instances. The cost is small (these are small objects), but it appears on every privilege check.
 
 ## Where to go next
 

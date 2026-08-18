@@ -62,7 +62,7 @@ Most common causes, in order:
 
 1. **The path columns on the entity are null.** A `_COMPHD` / `_ORGHD` privilege fails closed when the entity returns `null` for `COMPANY_PATH` / `ORG_PATH`. Check that your `getSecurityField(role, COMPANY_PATH)` returns the pipe-delimited path (`|1|10|22|`), not `null` - and that you denormalize the path on entity write.
 2. **The business role's `supported-fields` list is wrong.** A role declared as `supported-fields: [COMPANY]` cannot evaluate hierarchical privileges - OrgSec will not even ask for `COMPANY_PATH`. See [Business roles](../usage/04-business-roles.md).
-3. **The cache holds a stale `PersonDef`.** Especially likely on Redis - calling `notifyPersonChanged` only invalidates L1, not L2. For revocations use `updatePerson` after commit (see [Usage / Load security data](../usage/08-load-security-data.md)).
+3. **The authorization view is stale.** On Redis 1.1, a mutation that skipped the dataset fence or that notified before commit can leave the previous READY snapshot in place. Call `SecurityEventPublisher` after commit and increment the fence in the same database transaction (see [Usage / Load security data](../usage/08-load-security-data.md)).
 4. **`personId` mismatch.** If `SecurityContextProvider.getCurrentUserLogin()` returns the OAuth2 `sub` (a UUID) and your `PersonDataProvider` looks up by login (a username), the lookup may fail silently and yield no `PersonDef`. Add a debug log to check what is actually being passed.
 5. **`anonymousUser` slipped through.** Spring Security populates `Authentication` with principal `"anonymousUser"` for `permitAll()` paths. `SpringSecurityContextProvider` filters this out, but a custom provider may not. Replicate the filter (`!"anonymousUser".equals(principal)`).
 
@@ -86,36 +86,25 @@ Most common causes, in order:
 
 **Fix.** Verify the caller's `OrganizationDef.companyParentPath` in the cached `PersonDef`. Hierarchy-down means "this organization and any descendant" - if the caller is anchored at the root company, that is the entire tree by design.
 
-## Cache invalidation issues
+## Snapshot / notify issues
 
-### Cache invalidation does not propagate across instances
+### A peer instance stays NOT_READY
 
-**Cause.** `invalidation.enabled: false` (the default), or different channel names, or no Pub/Sub listener wired.
+**Cause.** It could not adopt the READY snapshot (wrong `security-dataset-id`, Redis unreachable, or the fence version is newer than the published snapshot) or another instance still holds the writer lease.
 
-**Fix.** On every instance:
+**Fix.** Confirm the same dataset id and Redis primary, then follow [Redis recovery](./redis-recovery.md). Do not delete the lease key.
 
-```yaml
-orgsec:
-  storage:
-    redis:
-      invalidation:
-        enabled: true
-        channel: orgsec:invalidation     # must be identical across instances
-```
+### Remote instances still grant a revoked role
 
-Then turn on `DEBUG` logging for `com.nomendi6.orgsec.storage.redis.invalidation` and verify the receiving instance logs `Received invalidation message` after the publishing instance's `notify` / `update`.
+**Cause.** The mutation did not increment the dataset fence, or notify ran inside a transaction that rolled back, or a peer has not refreshed since the new generation was published.
 
-### Remote instances see stale data after `notifyPersonChanged`
-
-**Cause.** `notify` clears L1 across instances but does **not** refresh L2. Remote instances re-read from L2 and see the *old* value.
-
-**Fix.** For revocations and other immediate-freshness changes, use `updatePerson` (write-through) after the database commit. See [Usage / Load security data - Recipe 3 Redis variant](../usage/08-load-security-data.md).
+**Fix.** Increment the fence in the same database transaction as the source change and call `SecurityEventPublisher` after commit. Bounce a writer if the fence moved and no snapshot was published. `update*` is rejected on managed Redis.
 
 ### `notifyXxxChanged` not called on a domain change
 
-**Symptom.** A role assignment does not show up until the cache is restarted or TTL expires.
+**Symptom.** A role assignment does not show up until an instance is restarted.
 
-**Fix.** Find the place in domain code that mutates the underlying data and add the corresponding notify (or, for Redis with immediate freshness, an `update` after commit). The most common offenders are admin endpoints that bypass the service layer and bulk-import jobs.
+**Fix.** Find the place in domain code that mutates the underlying data and call the matching `SecurityEventPublisher` producer method after commit. The most common offenders are admin endpoints that bypass the service layer and bulk-import jobs.
 
 ## Redis-specific issues
 
@@ -137,11 +126,11 @@ If the circuit stays open forever, your Redis password / TLS / network is miscon
 
 **Fix.** Increase `orgsec.storage.redis.pool.max-active` to match your peak concurrent OrgSec calls. Default is 20; high-traffic services typically run 50-200.
 
-### L1 is bigger than expected (memory pressure)
+### GET/LIST empty after Redis restart
 
-**Cause.** `cache.l1-max-size` is set per cache type. Four caches (persons, organizations, roles, privileges) each at the configured size means a JVM with `l1-max-size: 10000` can hold 40 000 entries total.
+**Cause.** The READY snapshot is gone. 1.1.0 does not fall through to L1/L2 leftovers.
 
-**Fix.** Lower `l1-max-size`, or increase JVM heap. The defaults (1000 per type) are sized for small-to-medium deployments.
+**Fix.** [Redis recovery](./redis-recovery.md): start one writer so it publishes from the database, then start peers.
 
 ## Person API issues
 
