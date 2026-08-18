@@ -35,6 +35,10 @@ for handwritten RSQL that assumed `=*`.
   runs immediately. `apply*` stays the consumer/internal path and is never deferred. A failure
   after commit is `SecurityNotifyAfterCommitException` and does not hide that the source change
   already landed.
+- **Optional ID-based `HIERARCHY_UP`.** `orgsec.hierarchy-up.strategy` is `PATH` (default, unchanged)
+  or `IDS`. `IDS` uses inclusive `orgLineageIds` / `companyLineageIds` built from party `parentId`
+  at load, on both GET and LIST. Missing lineage denies. This is a different source of truth than
+  the denormalized path on the record, not a faster encoding of `PATH`.
 
 ### Changed
 

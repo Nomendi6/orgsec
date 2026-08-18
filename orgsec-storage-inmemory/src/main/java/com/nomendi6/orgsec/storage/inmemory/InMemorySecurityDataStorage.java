@@ -11,6 +11,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import com.nomendi6.orgsec.helper.LineageBuilder;
 import com.nomendi6.orgsec.storage.inmemory.loader.OrganizationLoader;
 import com.nomendi6.orgsec.storage.inmemory.loader.PersonLoader;
 import com.nomendi6.orgsec.storage.inmemory.loader.PrivilegeLoader;
@@ -304,6 +305,7 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
             List<Tuple> personPositionRoles = queryProvider.loadAllPersonPositionRoles();
             personLoader.loadPersonsFromQueryResults(persons, personParties, personPartyRoles, personPositionRoles);
             log.debug("Persons loaded from database");
+            LineageBuilder.copyOntoMemberships(personsStore.getPersonsMap(), organizationsStore.getOrganizationMap());
 
             isInitialized = true;
 
@@ -381,6 +383,7 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
             List<Tuple> personPositionRoles = queryProvider.loadAllPersonPositionRoles();
             personLoader.loadPersonsFromQueryResults(persons, personParties, personPartyRoles, personPositionRoles);
             log.debug("Persons loaded from database");
+            LineageBuilder.copyOntoMemberships(personsStore.getPersonsMap(), organizationsStore.getOrganizationMap());
 
             isInitialized = true;
 
@@ -745,6 +748,9 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
         copy.parentPath = source.parentPath;
         copy.companyId = source.companyId;
         copy.companyParentPath = source.companyParentPath;
+        copy.parentId = source.parentId;
+        copy.orgLineageIds = LineageBuilder.copyLineage(source.orgLineageIds);
+        copy.companyLineageIds = LineageBuilder.copyLineage(source.companyLineageIds);
 
         // Deep copy role sets
         for (RoleDef role : source.positionRolesSet) {

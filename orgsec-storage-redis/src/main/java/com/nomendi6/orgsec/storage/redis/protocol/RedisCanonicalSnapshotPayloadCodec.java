@@ -98,6 +98,9 @@ final class RedisCanonicalSnapshotPayloadCodec {
     private static final String FIELD_PARENT_PATH = "parentPath";
     private static final String FIELD_COMPANY_ID = "companyId";
     private static final String FIELD_COMPANY_PARENT_PATH = "companyParentPath";
+    private static final String FIELD_PARENT_ID = "parentId";
+    private static final String FIELD_ORG_LINEAGE_IDS = "orgLineageIds";
+    private static final String FIELD_COMPANY_LINEAGE_IDS = "companyLineageIds";
     private static final String FIELD_POSITION_ROLES_SET = "positionRolesSet";
     private static final String FIELD_ORGANIZATION_ROLES_SET = "organizationRolesSet";
     private static final String FIELD_BUSINESS_ROLES_MAP = "businessRolesMap";
@@ -156,6 +159,9 @@ final class RedisCanonicalSnapshotPayloadCodec {
         FIELD_PARENT_PATH,
         FIELD_COMPANY_ID,
         FIELD_COMPANY_PARENT_PATH,
+        FIELD_PARENT_ID,
+        FIELD_ORG_LINEAGE_IDS,
+        FIELD_COMPANY_LINEAGE_IDS,
         FIELD_POSITION_ROLES_SET,
         FIELD_ORGANIZATION_ROLES_SET,
         FIELD_BUSINESS_ROLES_MAP
@@ -596,6 +602,9 @@ final class RedisCanonicalSnapshotPayloadCodec {
             validated.organizationRoles
         );
         writeBusinessRolesArray(generator, validated.businessRoles);
+        writeNullableLong(generator, FIELD_PARENT_ID, organization.parentId);
+        writeNullableLongList(generator, FIELD_ORG_LINEAGE_IDS, organization.orgLineageIds);
+        writeNullableLongList(generator, FIELD_COMPANY_LINEAGE_IDS, organization.companyLineageIds);
         generator.writeEndObject();
     }
 
@@ -627,7 +636,7 @@ final class RedisCanonicalSnapshotPayloadCodec {
         );
         requireField(parser, FIELD_BUSINESS_ROLES_MAP, ORGANIZATION_FIELDS);
         Map<String, BusinessRoleDef> businessRoles = readBusinessRolesMap(parser);
-        requireObjectEnd(parser, ORGANIZATION_FIELDS, "organization object");
+        OrganizationLineageTail tail = readOptionalOrganizationLineageTail(parser);
 
         OrganizationDef organization = new OrganizationDef();
         organization.organizationId = organizationId;
@@ -637,10 +646,46 @@ final class RedisCanonicalSnapshotPayloadCodec {
         organization.parentPath = parentPath;
         organization.companyId = companyId;
         organization.companyParentPath = companyParentPath;
+        organization.parentId = tail.parentId;
+        organization.orgLineageIds = tail.orgLineageIds;
+        organization.companyLineageIds = tail.companyLineageIds;
         organization.positionRolesSet.addAll(positionRoles);
         organization.organizationRolesSet.addAll(organizationRoles);
         organization.businessRolesMap.putAll(businessRoles);
         return organization;
+    }
+
+    private static OrganizationLineageTail readOptionalOrganizationLineageTail(JsonParser parser)
+        throws IOException {
+        JsonToken token = parser.nextToken();
+        if (token == JsonToken.END_OBJECT) {
+            return OrganizationLineageTail.absent();
+        }
+        if (token != JsonToken.FIELD_NAME) {
+            throw violation("expected parentId or the end of the organization object");
+        }
+        if (!FIELD_PARENT_ID.equals(parser.currentName())) {
+            throw violation(ORGANIZATION_FIELDS.contains(parser.currentName())
+                ? "field order is not canonical; expected parentId"
+                : "unknown field where parentId was required");
+        }
+        Long parentId = readNullableLong(parser, FIELD_PARENT_ID);
+        requireField(parser, FIELD_ORG_LINEAGE_IDS, ORGANIZATION_FIELDS);
+        List<Long> orgLineageIds = readNullableLongList(parser, FIELD_ORG_LINEAGE_IDS);
+        requireField(parser, FIELD_COMPANY_LINEAGE_IDS, ORGANIZATION_FIELDS);
+        List<Long> companyLineageIds = readNullableLongList(parser, FIELD_COMPANY_LINEAGE_IDS);
+        requireObjectEnd(parser, ORGANIZATION_FIELDS, "organization object");
+        return new OrganizationLineageTail(parentId, orgLineageIds, companyLineageIds);
+    }
+
+    private record OrganizationLineageTail(
+        Long parentId,
+        List<Long> orgLineageIds,
+        List<Long> companyLineageIds
+    ) {
+        static OrganizationLineageTail absent() {
+            return new OrganizationLineageTail(null, null, null);
+        }
     }
 
     private static ValidatedOrganization validateOrganizationForEncode(
@@ -1390,6 +1435,49 @@ final class RedisCanonicalSnapshotPayloadCodec {
         } else {
             generator.writeNumberField(field, value);
         }
+    }
+
+    private static void writeNullableLongList(
+        JsonGenerator generator,
+        String field,
+        List<Long> values
+    ) throws IOException {
+        if (values == null) {
+            generator.writeNullField(field);
+            return;
+        }
+        if (values.size() > MAX_COLLECTION_ENTRIES) {
+            throw new IllegalArgumentException(field + " exceeds " + MAX_COLLECTION_ENTRIES + " entries");
+        }
+        generator.writeArrayFieldStart(field);
+        for (Long value : values) {
+            if (value == null) {
+                throw new IllegalArgumentException(field + " must not contain null");
+            }
+            generator.writeNumber(value);
+        }
+        generator.writeEndArray();
+    }
+
+    private static List<Long> readNullableLongList(JsonParser parser, String field) throws IOException {
+        JsonToken token = parser.nextToken();
+        if (token == JsonToken.VALUE_NULL) {
+            return null;
+        }
+        if (token != JsonToken.START_ARRAY) {
+            throw violation(field + " must be a JSON array or explicit null");
+        }
+        List<Long> values = new ArrayList<>();
+        while (parser.nextToken() != JsonToken.END_ARRAY) {
+            if (values.size() >= MAX_COLLECTION_ENTRIES) {
+                throw violation(field + " exceeds " + MAX_COLLECTION_ENTRIES + " entries");
+            }
+            if (parser.currentToken() != JsonToken.VALUE_NUMBER_INT) {
+                throw violation(field + " entries must be canonical 64-bit JSON integers");
+            }
+            values.add(parser.getLongValue());
+        }
+        return List.copyOf(values);
     }
 
     private static String readNullableString(JsonParser parser, String field) throws IOException {

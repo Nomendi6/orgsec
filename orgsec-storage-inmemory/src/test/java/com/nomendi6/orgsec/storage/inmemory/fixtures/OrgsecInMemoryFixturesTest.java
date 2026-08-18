@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import com.nomendi6.orgsec.common.service.BusinessRoleConfiguration;
 import com.nomendi6.orgsec.common.service.PrivilegeChecker;
 import com.nomendi6.orgsec.constants.PrivilegeOperation;
+import com.nomendi6.orgsec.helper.LineageBuilder;
 import com.nomendi6.orgsec.model.BusinessRoleDef;
 import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.model.PrivilegeDef;
@@ -161,6 +162,10 @@ class OrgsecInMemoryFixturesTest {
             List.of(personPartyTuple(1L, 22L, "Shop-22", null, "22", "|1|10|22|", 1L, "|1|")),
             List.of(),
             List.of(personPositionRoleTuple(1L, 22L, 1L))
+        );
+        LineageBuilder.copyOntoMemberships(
+            loaderPersons.getPersonsMap(),
+            loaderOrganizations.getOrganizationMap()
         );
 
         assertThat(personsStore.getPersonsMap()).isEqualTo(loaderPersons.getPersonsMap());

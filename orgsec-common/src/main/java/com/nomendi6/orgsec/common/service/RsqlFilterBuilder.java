@@ -22,6 +22,7 @@ import com.nomendi6.orgsec.constants.PrivilegeOperation;
 import com.nomendi6.orgsec.constants.SecurityFieldType;
 import com.nomendi6.orgsec.dto.PersonData;
 import com.nomendi6.orgsec.exceptions.OrgsecSecurityException;
+import com.nomendi6.orgsec.helper.LineageBuilder;
 import com.nomendi6.orgsec.helper.PathSanitizer;
 import com.nomendi6.orgsec.model.BusinessRoleDef;
 import com.nomendi6.orgsec.model.OrganizationDef;
@@ -430,6 +431,15 @@ public class RsqlFilterBuilder {
                 return selector(alias, businessRoleName, SecurityFieldType.COMPANY_PATH) + "=^*'" + safeCompanyPath + "*'";
             }
             case HIERARCHY_UP: {
+                if (businessRoleConfiguration.hierarchyUpUsesIds()) {
+                    return buildLineageInClause(
+                        selector(alias, businessRoleName, SecurityFieldType.COMPANY),
+                        organizationDef.companyLineageIds,
+                        organizationDef.companyId,
+                        "companyLineageIds",
+                        organizationDef
+                    );
+                }
                 String anchor = anchorOrNull(organizationDef.companyParentPath, "companyParentPath", organizationDef, direction);
                 if (anchor == null) {
                     return null;
@@ -502,6 +512,15 @@ public class RsqlFilterBuilder {
                 return selector(alias, businessRoleName, SecurityFieldType.ORG_PATH) + "=^*'" + safeOrgPath + "*'";
             }
             case HIERARCHY_UP: {
+                if (businessRoleConfiguration.hierarchyUpUsesIds()) {
+                    return buildLineageInClause(
+                        selector(alias, businessRoleName, SecurityFieldType.ORG),
+                        organizationDef.orgLineageIds,
+                        organizationDef.organizationId,
+                        "orgLineageIds",
+                        organizationDef
+                    );
+                }
                 String anchor = anchorOrNull(organizationDef.parentPath, "parentPath", organizationDef, direction);
                 if (anchor == null) {
                     return null;
@@ -571,6 +590,31 @@ public class RsqlFilterBuilder {
         }
         if (elements.length() == 0) {
             return null;
+        }
+        return selectorExpr + "=in=(" + elements + ")";
+    }
+
+    private String buildLineageInClause(
+        String selectorExpr,
+        List<Long> lineage,
+        Long selfId,
+        String lineageName,
+        OrganizationDef organizationDef
+    ) {
+        if (!LineageBuilder.isUsable(lineage, selfId)) {
+            log.warn(
+                "Cannot build hierarchy-up RSQL filter: {} is not a usable lineage for organization {}",
+                lineageName,
+                organizationDef.organizationId
+            );
+            return null;
+        }
+        StringBuilder elements = new StringBuilder();
+        for (Long id : lineage) {
+            if (elements.length() > 0) {
+                elements.append(',');
+            }
+            elements.append(id);
         }
         return selectorExpr + "=in=(" + elements + ")";
     }

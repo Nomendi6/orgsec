@@ -332,6 +332,13 @@ public class JwtSecurityDataStorage implements SecurityDataStorage {
             // own segment and says nothing about its ancestry.
             orgDef.parentPath = fullOrgDef.parentPath;
             orgDef.companyParentPath = fullOrgDef.companyParentPath;
+            orgDef.parentId = fullOrgDef.parentId;
+            orgDef.orgLineageIds = fullOrgDef.orgLineageIds == null
+                ? null
+                : List.copyOf(fullOrgDef.orgLineageIds);
+            orgDef.companyLineageIds = fullOrgDef.companyLineageIds == null
+                ? null
+                : List.copyOf(fullOrgDef.companyLineageIds);
 
             List<Long> positionRoleIds = principal.positionRoleIdsByOrganization().getOrDefault(orgId, List.of());
             log.debug("Enriching organization {} with {} position roles", orgId, positionRoleIds.size());

@@ -36,7 +36,8 @@ class RedisCanonicalOrganizationPayloadCodecTest {
         "\"businessRolesMap\":[{\"key\":\"owner\",\"value\":{" +
         "\"businessRoleName\":\"owner\",\"resourcesMap\":[{" +
         "\"key\":\"invoice\",\"value\":" + EMPTY_RESOURCE + "}]," +
-        "\"filter\":\"status==ACTIVE\",\"allowAll\":false}}]}";
+        "\"filter\":\"status==ACTIVE\",\"allowAll\":false}}]," +
+        "\"parentId\":null,\"orgLineageIds\":null,\"companyLineageIds\":null}";
 
     private final RedisCanonicalSnapshotPayloadCodec codec =
         new RedisCanonicalSnapshotPayloadCodec();
@@ -57,6 +58,9 @@ class RedisCanonicalOrganizationPayloadCodecTest {
         assertThat(decoded.parentPath).isNull();
         assertThat(decoded.companyId).isEqualTo(1L);
         assertThat(decoded.companyParentPath).isEqualTo("|1|");
+        assertThat(decoded.parentId).isNull();
+        assertThat(decoded.orgLineageIds).isNull();
+        assertThat(decoded.companyLineageIds).isNull();
         assertThat(decoded.positionRolesSet).singleElement().satisfies(role -> {
             assertThat(role.getClass()).isEqualTo(RoleDef.class);
             assertThat(role.roleId).isEqualTo(2L);
@@ -82,7 +86,8 @@ class RedisCanonicalOrganizationPayloadCodecTest {
             "{\"organizationId\":1,\"organizationName\":null,\"positionId\":null," +
             "\"pathId\":null,\"parentPath\":null,\"companyId\":null," +
             "\"companyParentPath\":null,\"positionRolesSet\":[]," +
-            "\"organizationRolesSet\":[],\"businessRolesMap\":[]}"
+            "\"organizationRolesSet\":[],\"businessRolesMap\":[]," +
+            "\"parentId\":null,\"orgLineageIds\":null,\"companyLineageIds\":null}"
         );
         assertThat(codec.decodeOrganization(bytes(encoded))).isEqualTo(organization);
 

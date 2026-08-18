@@ -1,6 +1,7 @@
 package com.nomendi6.orgsec.storage.inmemory.loader;
 
 import jakarta.persistence.Tuple;
+import jakarta.persistence.TupleElement;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -8,6 +9,7 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import com.nomendi6.orgsec.helper.LineageBuilder;
 import com.nomendi6.orgsec.helper.PrivilegeSecurityHelper;
 import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.RoleDef;
@@ -44,6 +46,7 @@ public class OrganizationLoader {
         processParties(parties, workOrganizationMap);
         processPartyAssignedRoles(assignedRoles, workOrganizationMap);
         buildOrganizationBusinessRoles(workOrganizationMap);
+        LineageBuilder.assignLineages(workOrganizationMap);
 
         allOrganizationsStore.setOrganizationMap(workOrganizationMap);
         log.debug("Loaded {} organizations", workOrganizationMap.size());
@@ -108,6 +111,7 @@ public class OrganizationLoader {
                 party.get("companyId", Long.class),
                 party.get("companyParentPath", String.class)
             );
+            organization.parentId = optionalLong(party, "parentId");
             workOrganizationMap.put(organization.organizationId, organization);
         }
     }
@@ -163,6 +167,7 @@ public class OrganizationLoader {
                 party.get("companyId", Long.class),
                 party.get("companyParentPath", String.class)
             );
+            organization.parentId = optionalLong(party, "parentId");
 
             // Process assigned roles for this party
             processPartyAssignedRolesForSingleParty(assignedRoles, organization);
@@ -193,5 +198,21 @@ public class OrganizationLoader {
                 }
             }
         }
+    }
+
+    private static Long optionalLong(Tuple tuple, String alias) {
+        if (!hasAlias(tuple, alias)) {
+            return null;
+        }
+        return tuple.get(alias, Long.class);
+    }
+
+    private static boolean hasAlias(Tuple tuple, String alias) {
+        for (TupleElement<?> element : tuple.getElements()) {
+            if (alias.equals(element.getAlias())) {
+                return true;
+            }
+        }
+        return false;
     }
 }

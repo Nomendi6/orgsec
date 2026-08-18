@@ -23,7 +23,8 @@ class RedisCanonicalPersonPayloadCodecTest {
         "\"positionId\":null,\"pathId\":null,\"parentPath\":null," +
         "\"companyId\":null,\"companyParentPath\":null," +
         "\"positionRolesSet\":[],\"organizationRolesSet\":[]," +
-        "\"businessRolesMap\":[]}";
+        "\"businessRolesMap\":[],\"parentId\":null,\"orgLineageIds\":null," +
+        "\"companyLineageIds\":null}";
 
     private static final String FULL_GOLDEN =
         "{\"personId\":5,\"personName\":\"Ana 😀\",\"defaultCompanyId\":1," +
@@ -332,7 +333,8 @@ class RedisCanonicalPersonPayloadCodecTest {
             "\"positionId\":null,\"pathId\":null,\"parentPath\":null," +
             "\"companyId\":null,\"companyParentPath\":null," +
             "\"positionRolesSet\":[],\"organizationRolesSet\":[]," +
-            "\"businessRolesMap\":[]}";
+            "\"businessRolesMap\":[],\"parentId\":null,\"orgLineageIds\":null," +
+            "\"companyLineageIds\":null}";
     }
 
     private void assertEncodeFailure(PersonDef person, String... fragments) {
