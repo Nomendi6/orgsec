@@ -95,7 +95,7 @@ class RedisSecurityDataStorageTest {
         when(cacheKeyBuilder.buildPositionRoleKey(anyLong())).thenAnswer(inv -> "orgsec:r:position:" + inv.getArgument(0));
         when(cacheKeyBuilder.buildPrivilegeKey(anyString())).thenAnswer(inv -> "orgsec:priv:" + inv.getArgument(0));
 
-        storage = new RedisSecurityDataStorage(
+        storage = RedisTestStorageFactory.createLegacyUnfenced(
                 properties,
                 personL1Cache,
                 organizationL1Cache,
@@ -244,21 +244,35 @@ class RedisSecurityDataStorageTest {
         }
 
         @Test
-        void shouldReturnFromL2CacheAndPopulateL1() {
+        void shouldReadLegacy104KeyAndMigrateItToTypedNamespace() {
             RoleDef role = new RoleDef(1L, "Admin");
             when(roleL1Cache.get(1L)).thenReturn(null);
-            when(roleL2Cache.get("orgsec:r:party:1")).thenReturn(role);
+            when(roleL2Cache.get("orgsec:r:1")).thenReturn(role);
 
             RoleDef result = storage.getPartyRole(1L);
 
             assertThat(result).isEqualTo(role);
             verify(roleL1Cache).put(1L, role);
+            verify(roleL2Cache).set(eq("orgsec:r:party:1"), eq(role), anyLong());
+        }
+
+        @Test
+        void shouldKeepEqualPartyAndPositionIdsInDistinctNamespaces() {
+            RoleDef partyRole = new RoleDef(1L, "Party role");
+            RoleDef positionRole = new RoleDef(1L, "Position role");
+            when(roleL2Cache.get("orgsec:r:party:1")).thenReturn(partyRole);
+            when(roleL2Cache.get("orgsec:r:position:1")).thenReturn(positionRole);
+
+            assertThat(storage.getPartyRole(1L)).isSameAs(partyRole);
+            assertThat(storage.getPositionRole(1L)).isSameAs(positionRole);
+            verify(roleL1Cache).put(1L, partyRole);
+            verify(positionRoleL1Cache).put(1L, positionRole);
         }
 
         @Test
         void shouldReturnNullOnCacheMiss() {
             when(roleL1Cache.get(1L)).thenReturn(null);
-            when(roleL2Cache.get("orgsec:r:party:1")).thenReturn(null);
+            when(roleL2Cache.get("orgsec:r:1")).thenReturn(null);
 
             assertThat(storage.getPartyRole(1L)).isNull();
         }
@@ -390,11 +404,12 @@ class RedisSecurityDataStorageTest {
             verify(positionRoleL1Cache).put(1L, role);
             verify(roleL2Cache).set(eq("orgsec:r:party:1"), eq(role), anyLong());
             verify(roleL2Cache).set(eq("orgsec:r:position:1"), eq(role), anyLong());
+            verify(roleL2Cache).set(eq("orgsec:r:1"), eq(role), anyLong());
             verify(invalidationPublisher).publishRoleChanged(1L);
         }
 
         @Test
-        void explicitRoleUpdatesKeepEqualIdsInDistinctNamespaces() {
+        void typedWritesRemainDistinctAndDualWriteThe104Key() {
             RoleDef partyRole = new RoleDef(1L, "Party role");
             RoleDef positionRole = new RoleDef(1L, "Position role");
 
@@ -405,6 +420,8 @@ class RedisSecurityDataStorageTest {
             verify(positionRoleL1Cache).put(1L, positionRole);
             verify(roleL2Cache).set(eq("orgsec:r:party:1"), eq(partyRole), anyLong());
             verify(roleL2Cache).set(eq("orgsec:r:position:1"), eq(positionRole), anyLong());
+            verify(roleL2Cache).set(eq("orgsec:r:1"), eq(partyRole), anyLong());
+            verify(roleL2Cache).set(eq("orgsec:r:1"), eq(positionRole), anyLong());
         }
     }
 
@@ -412,7 +429,7 @@ class RedisSecurityDataStorageTest {
     class UpdatePrivilegeTests {
 
         @Test
-        void shouldUpdateBothCachesAndPublishCollisionFreeRefresh() {
+        void shouldWritePrivilegeAndPublishCollisionFreeRefresh() {
             PrivilegeDef privilege = new PrivilegeDef("DOCUMENT_ORG_R", "DOCUMENT");
 
             storage.updatePrivilege("DOCUMENT_ORG_R", privilege);
@@ -590,7 +607,7 @@ class RedisSecurityDataStorageTest {
         }
 
         @Test
-        void legacyUpdateShouldWriteBothNamespacesAndSkipInvalidEntries() {
+        void shouldUpdateBothCachesAndSkipInvalidEntries() {
             OrganizationDef org1 = new OrganizationDef().setOrganizationId(1L);
             OrganizationDef org2 = new OrganizationDef().setOrganizationId(2L);
             Map<Long, OrganizationDef> organizations = new HashMap<>();
@@ -627,7 +644,7 @@ class RedisSecurityDataStorageTest {
             RoleDef role2 = new RoleDef(2L, "Role 2");
             when(roleL1Cache.get(1L)).thenReturn(role1);
             when(roleL1Cache.get(2L)).thenReturn(null);
-            when(roleL2Cache.multiGet(any())).thenReturn(Map.of("orgsec:r:party:2", role2));
+            when(roleL2Cache.multiGet(any())).thenReturn(Map.of("orgsec:r:2", role2));
 
             Map<Long, RoleDef> result = storage.getRoles(List.of(1L, 2L));
 
@@ -684,33 +701,35 @@ class RedisSecurityDataStorageTest {
             verify(positionRoleL1Cache).put(1L, role1);
             verify(positionRoleL1Cache).put(2L, role2);
             verify(roleL2Cache).multiSet(argThat(entries ->
-                entries.size() == 2 &&
-                    entries.containsKey("orgsec:r:party:1") &&
-                    entries.containsKey("orgsec:r:party:2")
-            ), anyLong());
-            verify(roleL2Cache).multiSet(argThat(entries ->
-                entries.size() == 2 &&
-                    entries.containsKey("orgsec:r:position:1") &&
-                    entries.containsKey("orgsec:r:position:2")
-            ), anyLong());
+                    entries.size() == 6
+                        && entries.containsKey("orgsec:r:1")
+                        && entries.containsKey("orgsec:r:2")
+                        && entries.containsKey("orgsec:r:party:1")
+                        && entries.containsKey("orgsec:r:party:2")
+                        && entries.containsKey("orgsec:r:position:1")
+                        && entries.containsKey("orgsec:r:position:2")), anyLong());
         }
 
         @Test
-        void typedBatchUpdatesKeepEqualIdsInDistinctNamespaces() {
+        void typedBatchWritesKeepSameIdsDistinctAndRetainLegacyKeys() {
             RoleDef partyRole = new RoleDef(1L, "Party role");
             RoleDef positionRole = new RoleDef(1L, "Position role");
 
             storage.updatePartyRoles(Map.of(1L, partyRole));
             storage.updatePositionRoles(Map.of(1L, positionRole));
 
-            verify(roleL1Cache).put(1L, partyRole);
-            verify(positionRoleL1Cache).put(1L, positionRole);
             verify(roleL2Cache).multiSet(
-                argThat(entries -> entries.equals(Map.of("orgsec:r:party:1", partyRole))),
+                argThat(entries -> entries.equals(Map.of(
+                    "orgsec:r:party:1", partyRole,
+                    "orgsec:r:1", partyRole
+                ))),
                 anyLong()
             );
             verify(roleL2Cache).multiSet(
-                argThat(entries -> entries.equals(Map.of("orgsec:r:position:1", positionRole))),
+                argThat(entries -> entries.equals(Map.of(
+                    "orgsec:r:position:1", positionRole,
+                    "orgsec:r:1", positionRole
+                ))),
                 anyLong()
             );
         }
@@ -723,6 +742,7 @@ class RedisSecurityDataStorageTest {
         void shouldInvalidateL1CacheOnPersonChanged() {
             storage.notifyPersonChanged(1L);
 
+            verify(personL2Cache).delete("orgsec:p:1");
             verify(personL1Cache).invalidate(1L);
             verify(invalidationPublisher).publishPersonChanged(1L);
         }
@@ -731,6 +751,7 @@ class RedisSecurityDataStorageTest {
         void shouldInvalidateL1CacheOnOrganizationChanged() {
             storage.notifyOrganizationChanged(1L);
 
+            verify(organizationL2Cache).delete("orgsec:o:1");
             verify(organizationL1Cache).invalidate(1L);
             verify(invalidationPublisher).publishOrganizationChanged(1L);
         }
@@ -739,6 +760,7 @@ class RedisSecurityDataStorageTest {
         void shouldInvalidateL1CacheOnPartyRoleChanged() {
             storage.notifyPartyRoleChanged(1L);
 
+            verify(roleL2Cache).multiDelete(List.of("orgsec:r:party:1", "orgsec:r:1"));
             verify(roleL1Cache).invalidate(1L);
             verify(invalidationPublisher).publishRoleChanged(1L);
         }
@@ -747,6 +769,7 @@ class RedisSecurityDataStorageTest {
         void shouldInvalidateL1CacheOnPositionRoleChanged() {
             storage.notifyPositionRoleChanged(1L);
 
+            verify(roleL2Cache).multiDelete(List.of("orgsec:r:position:1", "orgsec:r:1"));
             verify(positionRoleL1Cache).invalidate(1L);
             verify(invalidationPublisher).publishRoleChanged(1L);
         }
@@ -843,19 +866,19 @@ class RedisSecurityDataStorageTest {
         }
 
         @Test
+        void shouldReturnPositionRoleL1Stats() {
+            L1Cache.CacheStats stats = new L1Cache.CacheStats(30, 25L, 5L, 1L);
+            when(positionRoleL1Cache.getStats()).thenReturn(stats);
+
+            assertThat(storage.getPositionRoleL1Stats()).isEqualTo(stats);
+        }
+
+        @Test
         void shouldReturnPrivilegeL1Stats() {
             L1Cache.CacheStats stats = new L1Cache.CacheStats(20, 15L, 5L, 0L);
             when(privilegeL1Cache.getStats()).thenReturn(stats);
 
             assertThat(storage.getPrivilegeL1Stats()).isEqualTo(stats);
-        }
-
-        @Test
-        void shouldReturnPositionRoleL1Stats() {
-            L1Cache.CacheStats stats = new L1Cache.CacheStats(12, 9L, 3L, 1L);
-            when(positionRoleL1Cache.getStats()).thenReturn(stats);
-
-            assertThat(storage.getPositionRoleL1Stats()).isEqualTo(stats);
         }
     }
 }

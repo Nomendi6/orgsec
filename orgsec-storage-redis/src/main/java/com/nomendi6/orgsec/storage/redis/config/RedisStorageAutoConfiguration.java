@@ -3,11 +3,13 @@ package com.nomendi6.orgsec.storage.redis.config;
 import com.nomendi6.orgsec.audit.DefaultSecurityAuditLogger;
 import com.nomendi6.orgsec.audit.NoOpSecurityAuditLogger;
 import com.nomendi6.orgsec.audit.SecurityAuditLogger;
+import com.nomendi6.orgsec.fence.SecurityDatasetFenceStore;
 import com.nomendi6.orgsec.model.OrganizationDef;
 import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.model.PrivilegeDef;
 import com.nomendi6.orgsec.model.RoleDef;
 import com.nomendi6.orgsec.storage.redis.RedisSecurityDataStorage;
+import com.nomendi6.orgsec.storage.redis.bootstrap.RedisSnapshotLoader;
 import com.nomendi6.orgsec.storage.redis.cache.CacheKeyBuilder;
 import com.nomendi6.orgsec.storage.redis.cache.L1Cache;
 import com.nomendi6.orgsec.storage.redis.cache.L2RedisCache;
@@ -16,10 +18,15 @@ import com.nomendi6.orgsec.storage.redis.invalidation.InvalidationEventListener;
 import com.nomendi6.orgsec.storage.redis.invalidation.InvalidationEventPublisher;
 import com.nomendi6.orgsec.storage.redis.preload.CacheWarmer;
 import com.nomendi6.orgsec.storage.redis.resilience.RedisCircuitBreakerService;
+import com.nomendi6.orgsec.storage.redis.resilience.RedisStorageMigrationRequiredException;
 import com.nomendi6.orgsec.storage.redis.serialization.JsonSerializer;
 import com.nomendi6.orgsec.storage.redis.serialization.OrgsecObjectMapperFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.BeanFactoryUtils;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -27,12 +34,18 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ImportSelector;
+import org.springframework.context.annotation.Role;
+import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -59,10 +72,87 @@ import java.util.UUID;
 @ConditionalOnClass(RedisConnectionFactory.class)
 @ConditionalOnProperty(prefix = "orgsec.storage.redis", name = "enabled", havingValue = "true")
 @EnableConfigurationProperties(RedisStorageProperties.class)
-@Import(LettucePoolConfiguration.class)
+@Import(RedisStorageAutoConfiguration.ManagedStorageConfigurationSelector.class)
 public class RedisStorageAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(RedisStorageAutoConfiguration.class);
+
+    static final String R110_MIGRATION_REQUIRED =
+        RedisStorageMigrationRequiredException.DIAGNOSTIC_CODE;
+
+    /** Loads the package-private managed storage factory without exposing a construction API. */
+    static final class ManagedStorageConfigurationSelector implements ImportSelector {
+
+        private static final String MANAGED_STORAGE_CONFIGURATION =
+            "com.nomendi6.orgsec.storage.redis.RedisManagedStorageConfiguration";
+
+        @Override
+        public String[] selectImports(AnnotationMetadata importingClassMetadata) {
+            return new String[] {MANAGED_STORAGE_CONFIGURATION};
+        }
+    }
+
+    /**
+     * Rejects the unsupported dependency-only upgrade before any Redis storage bean can be
+     * instantiated.
+     *
+     * <p>This is deliberately a static infrastructure post-processor rather than an ordinary
+     * validator singleton. Bean-factory post-processors run during context construction even when
+     * the application globally enables lazy initialization. Looking at bean definitions without
+     * eagerly creating them also guarantees that validation itself cannot enter a source-database
+     * transaction or start a snapshot.</p>
+     */
+    @Bean(name = "orgsecRedisR110MigrationGate")
+    @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+    static BeanFactoryPostProcessor orgsecRedisR110MigrationGate() {
+        return RedisStorageAutoConfiguration::validateR110ProtocolBeans;
+    }
+
+    private static void validateR110ProtocolBeans(
+            ConfigurableListableBeanFactory beanFactory) {
+        List<String> missing = new ArrayList<>();
+        List<String> ambiguous = new ArrayList<>();
+
+        requireExactlyOne(beanFactory, SecurityDatasetFenceStore.class, missing, ambiguous);
+        requireExactlyOne(beanFactory, RedisSnapshotLoader.class, missing, ambiguous);
+
+        if (!missing.isEmpty() || !ambiguous.isEmpty()) {
+            throw new RedisStorageMigrationRequiredException(
+                "orgsec.storage.redis.enabled=true requires exactly one bean of each "
+                    + "Redis 1.1.0 snapshot/fence SPI. Missing: " + describe(missing)
+                    + ". Ambiguous: " + describe(ambiguous)
+                    + ". A dependency-only upgrade from OrgSec <= 1.0.5 is unsupported. "
+                    + "Regenerate the application with the OrgSec 1.1.0-compatible generator or "
+                    + "apply the 1.1.0 Redis migration: add the source-database fence migration, "
+                    + "register the generated SecurityDatasetFenceStore adapter, and register "
+                    + "the generated RedisSnapshotLoader adapter."
+            );
+        }
+    }
+
+    private static void requireExactlyOne(
+            ConfigurableListableBeanFactory beanFactory,
+            Class<?> requiredType,
+            List<String> missing,
+            List<String> ambiguous) {
+        String[] beanNames = BeanFactoryUtils.beanNamesForTypeIncludingAncestors(
+            beanFactory,
+            requiredType,
+            true,
+            false
+        );
+        Arrays.sort(beanNames);
+
+        if (beanNames.length == 0) {
+            missing.add(requiredType.getSimpleName());
+        } else if (beanNames.length > 1) {
+            ambiguous.add(requiredType.getSimpleName() + "=" + Arrays.toString(beanNames));
+        }
+    }
+
+    private static String describe(List<String> problems) {
+        return problems.isEmpty() ? "none" : String.join(", ", problems);
+    }
 
     /**
      * Unique instance ID for this application instance.
@@ -325,10 +415,31 @@ public class RedisStorageAutoConfiguration {
     /**
      * Listener for receiving cache invalidation events.
      */
-    @Bean
+    public InvalidationEventListener invalidationEventListener(
+            L1Cache<Long, PersonDef> personL1Cache,
+            L1Cache<Long, OrganizationDef> organizationL1Cache,
+            L1Cache<Long, RoleDef> roleL1Cache,
+            String instanceId,
+            OrgsecObjectMapperFactory objectMapperFactory) {
+
+        log.info("Creating InvalidationEventListener for instance: {} with factory-managed ObjectMapper", instanceId);
+        return new InvalidationEventListener(
+            personL1Cache,
+            organizationL1Cache,
+            roleL1Cache,
+            instanceId,
+            objectMapperFactory.getEventObjectMapper()
+        );
+    }
+
+    /**
+     * Listener bean with all typed L1 caches. The legacy public factory method above remains
+     * available for applications compiled against 1.0.4.
+     */
+    @Bean("invalidationEventListener")
     @ConditionalOnMissingBean
     @ConditionalOnProperty(prefix = "orgsec.storage.redis.invalidation", name = "enabled", havingValue = "true")
-    public InvalidationEventListener invalidationEventListener(
+    public InvalidationEventListener typedInvalidationEventListener(
             L1Cache<Long, PersonDef> personL1Cache,
             L1Cache<Long, OrganizationDef> organizationL1Cache,
             @org.springframework.beans.factory.annotation.Qualifier("roleL1Cache")
@@ -339,7 +450,7 @@ public class RedisStorageAutoConfiguration {
             String instanceId,
             OrgsecObjectMapperFactory objectMapperFactory) {
 
-        log.info("Creating InvalidationEventListener for instance: {} with factory-managed ObjectMapper", instanceId);
+        log.info("Creating typed InvalidationEventListener for instance: {}", instanceId);
         return new InvalidationEventListener(
             personL1Cache,
             organizationL1Cache,
@@ -386,8 +497,6 @@ public class RedisStorageAutoConfiguration {
     /**
      * Health indicator for Redis storage.
      */
-    @Bean
-    @ConditionalOnMissingBean
     public RedisStorageHealthIndicator redisStorageHealthIndicator(
             RedisTemplate<String, String> orgsecRedisTemplate) {
 
@@ -395,24 +504,36 @@ public class RedisStorageAutoConfiguration {
         return new RedisStorageHealthIndicator(orgsecRedisTemplate);
     }
 
+    /** Readiness-aware health bean used by the managed fence-enabled Redis storage. */
+    @Bean("redisStorageHealthIndicator")
+    @ConditionalOnMissingBean
+    public RedisStorageHealthIndicator fencedRedisStorageHealthIndicator(
+            RedisTemplate<String, String> orgsecRedisTemplate,
+            RedisSecurityDataStorage redisSecurityDataStorage) {
+
+        log.info("Creating readiness-aware RedisStorageHealthIndicator");
+        return new RedisStorageHealthIndicator(
+            orgsecRedisTemplate,
+            redisSecurityDataStorage::isReady
+        );
+    }
+
     // ==================== Main Storage ====================
 
     /**
      * Main RedisSecurityDataStorage bean.
      *
-     * <p>The implementation bean itself is not primary. The conditional
-     * {@code orgsecPrimaryStorage} alias below carries that marker so a JWT storage can never race
-     * it for primary status.
+     * <p>Deliberately not {@code @Primary}. When JWT storage is also active it is
+     * {@code JwtSecurityDataStorage} that must be primary, and a {@code @Primary} marker on this
+     * implementation made that a race between two auto-configurations. The primary designation
+     * now lives on {@link #orgsecPrimaryStorage(RedisSecurityDataStorage)}, which is registered
+     * only when JWT is off.
      */
-    @Bean
     public RedisSecurityDataStorage redisSecurityDataStorage(
             RedisStorageProperties properties,
             L1Cache<Long, PersonDef> personL1Cache,
             L1Cache<Long, OrganizationDef> organizationL1Cache,
-            @org.springframework.beans.factory.annotation.Qualifier("roleL1Cache")
             L1Cache<Long, RoleDef> roleL1Cache,
-            @org.springframework.beans.factory.annotation.Qualifier("positionRoleL1Cache")
-            L1Cache<Long, RoleDef> positionRoleL1Cache,
             L1Cache<String, PrivilegeDef> privilegeL1Cache,
             L2RedisCache<PersonDef> personL2Cache,
             L2RedisCache<OrganizationDef> organizationL2Cache,
@@ -428,7 +549,6 @@ public class RedisStorageAutoConfiguration {
             personL1Cache,
             organizationL1Cache,
             roleL1Cache,
-            positionRoleL1Cache,
             privilegeL1Cache,
             personL2Cache,
             organizationL2Cache,
@@ -446,10 +566,54 @@ public class RedisStorageAutoConfiguration {
     }
 
     /**
-     * Public primary alias for a Redis-only profile.
+     * Main storage bean with independent role caches. The legacy public factory method above is
+     * retained so applications compiled against 1.0.4 keep linking.
+     */
+    public RedisSecurityDataStorage typedRedisSecurityDataStorage(
+            RedisStorageProperties properties,
+            L1Cache<Long, PersonDef> personL1Cache,
+            L1Cache<Long, OrganizationDef> organizationL1Cache,
+            @org.springframework.beans.factory.annotation.Qualifier("roleL1Cache")
+            L1Cache<Long, RoleDef> roleL1Cache,
+            @org.springframework.beans.factory.annotation.Qualifier("positionRoleL1Cache")
+            L1Cache<Long, RoleDef> positionRoleL1Cache,
+            L1Cache<String, PrivilegeDef> privilegeL1Cache,
+            L2RedisCache<PersonDef> personL2Cache,
+            L2RedisCache<OrganizationDef> organizationL2Cache,
+            L2RedisCache<RoleDef> roleL2Cache,
+            L2RedisCache<PrivilegeDef> privilegeL2Cache,
+            CacheKeyBuilder cacheKeyBuilder,
+            InvalidationEventPublisher invalidationPublisher,
+            CacheWarmer cacheWarmer) {
+
+        log.info("Creating RedisSecurityDataStorage with typed role caches");
+        RedisSecurityDataStorage storage = new RedisSecurityDataStorage(
+            properties,
+            personL1Cache,
+            organizationL1Cache,
+            roleL1Cache,
+            positionRoleL1Cache,
+            privilegeL1Cache,
+            personL2Cache,
+            organizationL2Cache,
+            roleL2Cache,
+            privilegeL2Cache,
+            cacheKeyBuilder,
+            invalidationPublisher,
+            cacheWarmer
+        );
+        storage.initialize();
+        return storage;
+    }
+
+    /**
+     * Marks the Redis storage as the primary {@link com.nomendi6.orgsec.storage.SecurityDataStorage}
+     * for Redis-only deployments.
      *
-     * <p>This returns the exact implementation instance; health, invalidation and application
-     * lookups therefore cannot accidentally observe different cache objects.
+     * <p>Strictly an alias: it returns the very same instance, undecorated, so
+     * {@code orgsecPrimaryStorage == redisSecurityDataStorage} holds. Anything else would give
+     * invalidation callbacks and the health indicator a different object than the one serving
+     * lookups.
      */
     @Bean("orgsecPrimaryStorage")
     @org.springframework.context.annotation.Primary
@@ -461,7 +625,8 @@ public class RedisStorageAutoConfiguration {
     )
     public com.nomendi6.orgsec.storage.SecurityDataStorage orgsecPrimaryStorage(
             RedisSecurityDataStorage redisSecurityDataStorage) {
-        log.info("Configuring RedisSecurityDataStorage as PRIMARY storage");
+
+        log.info("Configuring RedisSecurityDataStorage as PRIMARY storage (JWT storage not active)");
         return redisSecurityDataStorage;
     }
 }

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.nomendi6.orgsec.helper.LineageBuilder;
 import com.nomendi6.orgsec.common.service.BusinessRoleConfiguration;
 import com.nomendi6.orgsec.common.service.PrivilegeChecker;
 import com.nomendi6.orgsec.constants.PrivilegeOperation;
@@ -161,6 +162,10 @@ class OrgsecInMemoryFixturesTest {
             List.of(personPartyTuple(1L, 22L, "Shop-22", null, "22", "|1|10|22|", 1L, "|1|")),
             List.of(),
             List.of(personPositionRoleTuple(1L, 22L, 1L))
+        );
+        LineageBuilder.copyOntoMemberships(
+            loaderPersons.getPersonsMap(),
+            loaderOrganizations.getOrganizationMap()
         );
 
         assertThat(personsStore.getPersonsMap()).isEqualTo(loaderPersons.getPersonsMap());

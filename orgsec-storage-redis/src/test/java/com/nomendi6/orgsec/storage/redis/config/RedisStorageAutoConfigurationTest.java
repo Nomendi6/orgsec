@@ -16,6 +16,7 @@ import com.nomendi6.orgsec.storage.redis.invalidation.InvalidationEventListener;
 import com.nomendi6.orgsec.storage.redis.invalidation.InvalidationEventPublisher;
 import com.nomendi6.orgsec.storage.redis.preload.CacheWarmer;
 import com.nomendi6.orgsec.storage.redis.resilience.RedisCircuitBreakerService;
+import com.nomendi6.orgsec.storage.redis.resilience.RedisStorageMigrationRequiredException;
 import com.nomendi6.orgsec.storage.redis.serialization.JsonSerializer;
 import com.nomendi6.orgsec.storage.redis.serialization.OrgsecObjectMapperFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +28,7 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 class RedisStorageAutoConfigurationTest {
@@ -150,8 +152,7 @@ class RedisStorageAutoConfigurationTest {
         InvalidationEventPublisher publisher = configuration.invalidationEventPublisher(
                 template, topic, instanceId, properties, objectMapperFactory);
         InvalidationEventListener listener = configuration.invalidationEventListener(
-                new L1Cache<>(2), new L1Cache<>(2), new L1Cache<>(2), new L1Cache<>(2),
-                new L1Cache<>(2), instanceId, objectMapperFactory);
+                new L1Cache<>(2), new L1Cache<>(2), new L1Cache<>(2), instanceId, objectMapperFactory);
         RedisMessageListenerContainer container = configuration.redisMessageListenerContainer(
                 mock(RedisConnectionFactory.class), listener, topic);
 
@@ -164,30 +165,66 @@ class RedisStorageAutoConfigurationTest {
     }
 
     @Test
-    void shouldCreatePreloadHealthAndMainStorageBeans() {
+    void shouldCreatePreloadAndReadinessAwareHealthBeans() {
         RedisTemplate<String, String> template = new RedisTemplate<>();
         CacheWarmer warmer = configuration.cacheWarmer(properties);
         RedisStorageHealthIndicator healthIndicator = configuration.redisStorageHealthIndicator(template);
-        InvalidationEventPublisher publisher = mock(InvalidationEventPublisher.class);
-
-        RedisSecurityDataStorage storage = configuration.redisSecurityDataStorage(
-                properties,
-                new L1Cache<>(10),
-                new L1Cache<>(10),
-                new L1Cache<>(10),
-                new L1Cache<>(10),
-                new L1Cache<>(10),
-                mock(L2RedisCache.class),
-                mock(L2RedisCache.class),
-                mock(L2RedisCache.class),
-                mock(L2RedisCache.class),
-                new CacheKeyBuilder(false),
-                publisher,
-                warmer);
+        RedisSecurityDataStorage storage = mock(RedisSecurityDataStorage.class);
+        RedisStorageHealthIndicator managedHealth =
+            configuration.fencedRedisStorageHealthIndicator(template, storage);
 
         assertThat(warmer).isNotNull();
         assertThat(healthIndicator).isNotNull();
-        assertThat(storage.isReady()).isTrue();
-        assertThat(storage.getProviderType()).isEqualTo("redis");
+        assertThat(managedHealth).isNotNull();
+    }
+
+    @Test
+    void bothRetainedLegacyStorageFactoriesRejectDependencyOnlyMigration() {
+        CacheWarmer warmer = configuration.cacheWarmer(properties);
+        InvalidationEventPublisher publisher = mock(InvalidationEventPublisher.class);
+        L1Cache<Long, PersonDef> persons = new L1Cache<>(10);
+        L1Cache<Long, OrganizationDef> organizations = new L1Cache<>(10);
+        L1Cache<Long, RoleDef> partyRoles = new L1Cache<>(10);
+        L1Cache<Long, RoleDef> positionRoles = new L1Cache<>(10);
+        L1Cache<String, PrivilegeDef> privileges = new L1Cache<>(10);
+        L2RedisCache<PersonDef> personL2 = mock(L2RedisCache.class);
+        L2RedisCache<OrganizationDef> organizationL2 = mock(L2RedisCache.class);
+        L2RedisCache<RoleDef> roleL2 = mock(L2RedisCache.class);
+        L2RedisCache<PrivilegeDef> privilegeL2 = mock(L2RedisCache.class);
+
+        assertLegacyMigrationFailure(() -> configuration.redisSecurityDataStorage(
+                properties,
+                persons,
+                organizations,
+                partyRoles,
+                privileges,
+                personL2,
+                organizationL2,
+                roleL2,
+                privilegeL2,
+                new CacheKeyBuilder(false),
+                publisher,
+                warmer));
+
+        assertLegacyMigrationFailure(() -> configuration.typedRedisSecurityDataStorage(
+            properties,
+            persons,
+            organizations,
+            partyRoles,
+            positionRoles,
+            privileges,
+            personL2,
+            organizationL2,
+            roleL2,
+            privilegeL2,
+            new CacheKeyBuilder(false),
+            publisher,
+            warmer));
+    }
+
+    private static void assertLegacyMigrationFailure(Runnable factoryCall) {
+        assertThatThrownBy(factoryCall::run)
+            .isInstanceOf(RedisStorageMigrationRequiredException.class)
+            .hasMessageContaining(RedisStorageMigrationRequiredException.DIAGNOSTIC_CODE);
     }
 }

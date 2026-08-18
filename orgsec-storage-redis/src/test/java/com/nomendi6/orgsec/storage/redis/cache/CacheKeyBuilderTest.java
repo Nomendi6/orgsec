@@ -93,12 +93,13 @@ class CacheKeyBuilderTest {
     }
 
     @Test
-    void typedRoleKeysKeepEqualIdsInDistinctNamespaces() {
+    void typedRoleKeysUseDistinctNamespacesForTheSameId() {
         CacheKeyBuilder builder = new CacheKeyBuilder(false);
 
         assertThat(builder.buildPartyRoleKey(789L)).isEqualTo("orgsec:r:party:789");
         assertThat(builder.buildPositionRoleKey(789L)).isEqualTo("orgsec:r:position:789");
         assertThat(builder.buildPartyRoleKey(789L)).isNotEqualTo(builder.buildPositionRoleKey(789L));
+        assertThat(builder.buildRoleKey(789L)).isEqualTo("orgsec:r:789");
     }
 
     @Test
@@ -182,6 +183,43 @@ class CacheKeyBuilderTest {
 
         // Then
         assertThat(pattern).isEqualTo("orgsec:*");
+    }
+
+    @Test
+    void legacyClearPatternsAreLimitedToKnownPlainFamiliesAndExactObfuscatedShape() {
+        CacheKeyBuilder builder = new CacheKeyBuilder(false);
+
+        assertThat(builder.legacyDataKeyPatterns()).containsExactly(
+            "orgsec:p:*",
+            "orgsec:o:*",
+            "orgsec:r:*",
+            "orgsec:priv:*",
+            "orgsec:" + "?".repeat(64)
+        );
+        assertThat(builder.legacyDataKeyPatterns()).doesNotContain("orgsec:*");
+    }
+
+    @Test
+    void legacyClearValidatorAcceptsOnlyBuildableLegacyKeysInPlainAndObfuscatedModes() {
+        CacheKeyBuilder plain = new CacheKeyBuilder(false);
+        CacheKeyBuilder obfuscated = new CacheKeyBuilder(true);
+
+        assertThat(plain.isLegacyDataKey(plain.buildPersonKey(-1L))).isTrue();
+        assertThat(plain.isLegacyDataKey(plain.buildOrganizationKey(2L))).isTrue();
+        assertThat(plain.isLegacyDataKey(plain.buildRoleKey(3L))).isTrue();
+        assertThat(plain.isLegacyDataKey(plain.buildPartyRoleKey(4L))).isTrue();
+        assertThat(plain.isLegacyDataKey(plain.buildPositionRoleKey(5L))).isTrue();
+        assertThat(plain.isLegacyDataKey(plain.buildPrivilegeKey("document_READ"))).isTrue();
+        assertThat(plain.isLegacyDataKey(plain.buildPrivilegeKey("literal:*?[]:name"))).isTrue();
+        assertThat(obfuscated.isLegacyDataKey(obfuscated.buildPersonKey(1L))).isTrue();
+
+        assertThat(plain.isLegacyDataKey("orgsec:p:01")).isFalse();
+        assertThat(plain.isLegacyDataKey("orgsec:r:party:01")).isFalse();
+        assertThat(plain.isLegacyDataKey("orgsec:r:future-control")).isFalse();
+        assertThat(plain.isLegacyDataKey("orgsec:" + "A".repeat(64))).isFalse();
+        assertThat(plain.isLegacyDataKey("orgsec:" + "g".repeat(64))).isFalse();
+        assertThat(plain.isLegacyDataKey("orgsec:v1:{dataset}:control")).isFalse();
+        assertThat(plain.isLegacyDataKey("orgsec:v999:{dataset}:control")).isFalse();
     }
 
     @Test

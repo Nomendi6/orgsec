@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import com.nomendi6.orgsec.common.service.BusinessRoleConfiguration;
+import com.nomendi6.orgsec.helper.LineageBuilder;
 import com.nomendi6.orgsec.helper.PathSanitizer;
 import com.nomendi6.orgsec.helper.PrivilegeSecurityHelper;
 import com.nomendi6.orgsec.model.OrganizationDef;
@@ -402,6 +403,7 @@ public class OrgsecInMemoryFixtures {
                 OrganizationDef organization = toOrganizationDef(draft);
                 result.put(organization.organizationId, organization);
             }
+            LineageBuilder.assignLineages(result);
             return result;
         }
 
@@ -450,6 +452,7 @@ public class OrgsecInMemoryFixtures {
                 draft.companyId,
                 companyPath(draft)
             );
+            organization.parentId = draft.parentId;
             return organization;
         }
 

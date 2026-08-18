@@ -1,6 +1,7 @@
 package com.nomendi6.orgsec.common.service;
 
 import java.math.BigInteger;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -10,6 +11,7 @@ import com.nomendi6.orgsec.constants.SecurityFieldType;
 import com.nomendi6.orgsec.dto.OrganizationData;
 import com.nomendi6.orgsec.dto.PersonData;
 import com.nomendi6.orgsec.exceptions.OrgsecSecurityException;
+import com.nomendi6.orgsec.helper.LineageBuilder;
 import com.nomendi6.orgsec.helper.PathSanitizer;
 import com.nomendi6.orgsec.interfaces.SecurityEnabledDTO;
 import com.nomendi6.orgsec.model.BusinessRoleContext;
@@ -232,8 +234,10 @@ public class PrivilegeChecker {
             case EXACT:
                 return businessRoleCompanyId != null;
             case HIERARCHY_DOWN:
-            case HIERARCHY_UP:
                 return PathSanitizer.isUsableHierarchyAnchor(businessRoleCompanyPath);
+            case HIERARCHY_UP:
+                return businessRoleConfiguration.hierarchyUpUsesIds()
+                    || PathSanitizer.isUsableHierarchyAnchor(businessRoleCompanyPath);
             default:
                 return false;
         }
@@ -258,8 +262,10 @@ public class PrivilegeChecker {
             case EXACT:
                 return businessRoleOrgId != null;
             case HIERARCHY_DOWN:
-            case HIERARCHY_UP:
                 return PathSanitizer.isUsableHierarchyAnchor(businessRoleOrgPath);
+            case HIERARCHY_UP:
+                return businessRoleConfiguration.hierarchyUpUsesIds()
+                    || PathSanitizer.isUsableHierarchyAnchor(businessRoleOrgPath);
             default:
                 return false;
         }
@@ -290,6 +296,10 @@ public class PrivilegeChecker {
         if (resourceAggregatedPrivs.company == PrivilegeDirection.EXACT) {
             return organizationDef.companyId != null && organizationDef.companyId.equals(businessRoleCompanyId);
         }
+        if (resourceAggregatedPrivs.company == PrivilegeDirection.HIERARCHY_UP
+            && businessRoleConfiguration.hierarchyUpUsesIds()) {
+            return matchesLineage(organizationDef.companyLineageIds, organizationDef.companyId, businessRoleCompanyId);
+        }
         return matchesHierarchy(
             resourceAggregatedPrivs.company,
             organizationDef.companyParentPath,
@@ -308,6 +318,10 @@ public class PrivilegeChecker {
         if (resourceAggregatedPrivs.org == PrivilegeDirection.EXACT) {
             return organizationDef.organizationId != null && organizationDef.organizationId.equals(businessRoleOrgId);
         }
+        if (resourceAggregatedPrivs.org == PrivilegeDirection.HIERARCHY_UP
+            && businessRoleConfiguration.hierarchyUpUsesIds()) {
+            return matchesLineage(organizationDef.orgLineageIds, organizationDef.organizationId, businessRoleOrgId);
+        }
         return matchesHierarchy(
             resourceAggregatedPrivs.org,
             organizationDef.parentPath,
@@ -315,6 +329,11 @@ public class PrivilegeChecker {
             "parentPath",
             organizationDef
         );
+    }
+
+    private boolean matchesLineage(List<Long> principalLineage, Long principalSelfId, Long recordId) {
+        return recordId != null && LineageBuilder.isUsable(principalLineage, principalSelfId)
+            && principalLineage.contains(recordId);
     }
 
     /**

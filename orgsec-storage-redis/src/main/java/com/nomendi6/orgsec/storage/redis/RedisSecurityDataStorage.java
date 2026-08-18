@@ -12,14 +12,18 @@ import com.nomendi6.orgsec.storage.redis.config.RedisStorageProperties;
 import com.nomendi6.orgsec.storage.redis.invalidation.InvalidationEventPublisher;
 import com.nomendi6.orgsec.storage.redis.preload.CacheWarmer;
 import com.nomendi6.orgsec.storage.redis.preload.WarmupStats;
+import com.nomendi6.orgsec.storage.redis.protocol.RedisSnapshotCoordinator;
+import com.nomendi6.orgsec.storage.redis.resilience.RedisStorageMigrationRequiredException;
+import com.nomendi6.orgsec.storage.redis.resilience.RedisStorageNotReadyException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
 /**
  * Redis-based implementation of SecurityDataStorage.
@@ -65,6 +69,10 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
     // Cache warmer (for preload)
     private final CacheWarmer cacheWarmer;
 
+    // Managed 1.1 instances wait for the library-owned snapshot coordinator.
+    private final boolean managedSnapshotProtocol;
+    private volatile RedisSnapshotCoordinator snapshotCoordinator;
+
     // Ready state
     private final AtomicBoolean ready = new AtomicBoolean(false);
 
@@ -90,7 +98,7 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
             personL1Cache,
             organizationL1Cache,
             roleL1Cache,
-            new L1Cache<>(compatibleRoleCacheSize(roleL1Cache)),
+            new L1Cache<>(Math.max(1, roleL1Cache.getMaxSize())),
             privilegeL1Cache,
             personL2Cache,
             organizationL2Cache,
@@ -103,13 +111,13 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
     }
 
     /**
-     * Constructor with distinct party-role and position-role L1 caches.
+     * Constructor with independent party-role and position-role L1 caches.
      */
     public RedisSecurityDataStorage(
             RedisStorageProperties properties,
             L1Cache<Long, PersonDef> personL1Cache,
             L1Cache<Long, OrganizationDef> organizationL1Cache,
-            L1Cache<Long, RoleDef> partyRoleL1Cache,
+            L1Cache<Long, RoleDef> roleL1Cache,
             L1Cache<Long, RoleDef> positionRoleL1Cache,
             L1Cache<String, PrivilegeDef> privilegeL1Cache,
             L2RedisCache<PersonDef> personL2Cache,
@@ -120,10 +128,90 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
             InvalidationEventPublisher invalidationPublisher,
             CacheWarmer cacheWarmer) {
 
+        this(
+            properties,
+            personL1Cache,
+            organizationL1Cache,
+            roleL1Cache,
+            positionRoleL1Cache,
+            privilegeL1Cache,
+            personL2Cache,
+            organizationL2Cache,
+            roleL2Cache,
+            privilegeL2Cache,
+            cacheKeyBuilder,
+            invalidationPublisher,
+            cacheWarmer,
+            false
+        );
+
+        throw new RedisStorageMigrationRequiredException(
+            "direct construction through a legacy <= 1.0.5 constructor is unsupported. "
+                + "Register the 1.1 SecurityDatasetFenceStore and RedisSnapshotLoader and let "
+                + "RedisStorageAutoConfiguration create the fence-enabled storage."
+        );
+    }
+
+    /**
+     * Creates the managed 1.1 data plane in its fail-closed startup state.
+     *
+     * <p>Package-private by design: applications provide the migration-gated SPI beans, but only
+     * the library-owned coordinator may consume them and eventually publish a verified runtime
+     * view. This factory cannot create a ready instance.</p>
+     */
+    static RedisSecurityDataStorage managedWaiting(
+            RedisStorageProperties properties,
+            L1Cache<Long, PersonDef> personL1Cache,
+            L1Cache<Long, OrganizationDef> organizationL1Cache,
+            L1Cache<Long, RoleDef> roleL1Cache,
+            L1Cache<Long, RoleDef> positionRoleL1Cache,
+            L1Cache<String, PrivilegeDef> privilegeL1Cache,
+            L2RedisCache<PersonDef> personL2Cache,
+            L2RedisCache<OrganizationDef> organizationL2Cache,
+            L2RedisCache<RoleDef> roleL2Cache,
+            L2RedisCache<PrivilegeDef> privilegeL2Cache,
+            CacheKeyBuilder cacheKeyBuilder,
+            InvalidationEventPublisher invalidationPublisher,
+            CacheWarmer cacheWarmer) {
+
+        return new RedisSecurityDataStorage(
+            properties,
+            personL1Cache,
+            organizationL1Cache,
+            roleL1Cache,
+            positionRoleL1Cache,
+            privilegeL1Cache,
+            personL2Cache,
+            organizationL2Cache,
+            roleL2Cache,
+            privilegeL2Cache,
+            cacheKeyBuilder,
+            invalidationPublisher,
+            cacheWarmer,
+            true
+        );
+    }
+
+    private RedisSecurityDataStorage(
+            RedisStorageProperties properties,
+            L1Cache<Long, PersonDef> personL1Cache,
+            L1Cache<Long, OrganizationDef> organizationL1Cache,
+            L1Cache<Long, RoleDef> roleL1Cache,
+            L1Cache<Long, RoleDef> positionRoleL1Cache,
+            L1Cache<String, PrivilegeDef> privilegeL1Cache,
+            L2RedisCache<PersonDef> personL2Cache,
+            L2RedisCache<OrganizationDef> organizationL2Cache,
+            L2RedisCache<RoleDef> roleL2Cache,
+            L2RedisCache<PrivilegeDef> privilegeL2Cache,
+            CacheKeyBuilder cacheKeyBuilder,
+            InvalidationEventPublisher invalidationPublisher,
+            CacheWarmer cacheWarmer,
+            boolean managedSnapshotProtocol) {
+
         this.properties = properties;
         this.personL1Cache = personL1Cache;
         this.organizationL1Cache = organizationL1Cache;
-        this.roleL1Cache = partyRoleL1Cache;
+        this.roleL1Cache = roleL1Cache;
         this.positionRoleL1Cache = positionRoleL1Cache;
         this.privilegeL1Cache = privilegeL1Cache;
         this.personL2Cache = personL2Cache;
@@ -133,16 +221,28 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
         this.cacheKeyBuilder = cacheKeyBuilder;
         this.invalidationPublisher = invalidationPublisher;
         this.cacheWarmer = cacheWarmer;
+        this.managedSnapshotProtocol = managedSnapshotProtocol;
     }
 
-    private static int compatibleRoleCacheSize(L1Cache<Long, RoleDef> roleL1Cache) {
-        return Math.max(1, roleL1Cache.getMaxSize());
+    /**
+     * Attaches the library-owned snapshot coordinator and bootstraps the local authorization view.
+     */
+    public void attachSnapshotCoordinator(RedisSnapshotCoordinator coordinator) {
+        this.snapshotCoordinator = Objects.requireNonNull(coordinator, "coordinator must not be null");
+        coordinator.onReadinessChanged(() -> ready.set(coordinator.isReady()));
+        ready.set(coordinator.isReady());
     }
 
     // ========== GET OPERATIONS ==========
 
     @Override
     public PersonDef getPerson(Long personId) {
+        if (managedSnapshotProtocol) {
+            return snapshotCoordinator == null ? null : snapshotCoordinator.person(personId);
+        }
+        if (denyReadWhileWaiting("getPerson")) {
+            return null;
+        }
         if (personId == null) {
             return null;
         }
@@ -172,6 +272,12 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
 
     @Override
     public OrganizationDef getOrganization(Long orgId) {
+        if (managedSnapshotProtocol) {
+            return snapshotCoordinator == null ? null : snapshotCoordinator.organization(orgId);
+        }
+        if (denyReadWhileWaiting("getOrganization")) {
+            return null;
+        }
         if (orgId == null) {
             return null;
         }
@@ -209,10 +315,25 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
     }
 
     /**
-     * Internal typed role lookup. Party and position roles deliberately use separate L1 caches
-     * and Redis keys because their database IDs are independent namespaces.
+     * Gets a typed role, falling back to the 1.0.4 untyped Redis key during rolling upgrades.
+     * A legacy hit is copied into the typed namespace so subsequent reads are unambiguous.
      */
-    private RoleDef getRole(Long roleId, L1Cache<Long, RoleDef> localCache, boolean partyRole) {
+    private RoleDef getRole(
+        Long roleId,
+        L1Cache<Long, RoleDef> localCache,
+        boolean partyRole
+    ) {
+        if (managedSnapshotProtocol) {
+            if (snapshotCoordinator == null) {
+                return null;
+            }
+            return partyRole
+                ? snapshotCoordinator.partyRole(roleId)
+                : snapshotCoordinator.positionRole(roleId);
+        }
+        if (denyReadWhileWaiting(partyRole ? "getPartyRole" : "getPositionRole")) {
+            return null;
+        }
         if (roleId == null) {
             return null;
         }
@@ -224,25 +345,39 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
             return role;
         }
 
-        // L2 cache hit
-        String key = partyRole
+        String typedKey = partyRole
             ? cacheKeyBuilder.buildPartyRoleKey(roleId)
             : cacheKeyBuilder.buildPositionRoleKey(roleId);
-        role = roleL2Cache.get(key);
+        role = roleL2Cache.get(typedKey);
         if (role != null) {
             log.debug("L2 cache hit for {} role: {}", partyRole ? "party" : "position", roleId);
-            // Populate L1 cache
             localCache.put(roleId, role);
             return role;
         }
 
-        // Cache miss - return null
+        String legacyKey = cacheKeyBuilder.buildRoleKey(roleId);
+        role = roleL2Cache.get(legacyKey);
+        if (role != null) {
+            log.debug("Legacy L2 cache hit for {} role: {}", partyRole ? "party" : "position", roleId);
+            localCache.put(roleId, role);
+            roleL2Cache.set(typedKey, role, properties.getTtl().getRole());
+            return role;
+        }
+
         log.debug("Cache miss for {} role: {}", partyRole ? "party" : "position", roleId);
         return null;
     }
 
     @Override
     public PrivilegeDef getPrivilege(String privilegeIdentifier) {
+        if (managedSnapshotProtocol) {
+            return snapshotCoordinator == null
+                ? null
+                : snapshotCoordinator.privilege(privilegeIdentifier);
+        }
+        if (denyReadWhileWaiting("getPrivilege")) {
+            return null;
+        }
         if (privilegeIdentifier == null || privilegeIdentifier.trim().isEmpty()) {
             return null;
         }
@@ -273,6 +408,7 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
 
     @Override
     public void updatePerson(Long personId, PersonDef person) {
+        requireReadyForMutation("updatePerson");
         if (personId == null || person == null) {
             return;
         }
@@ -291,6 +427,7 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
 
     @Override
     public void updateOrganization(Long orgId, OrganizationDef organization) {
+        requireReadyForMutation("updateOrganization");
         if (orgId == null || organization == null) {
             return;
         }
@@ -309,63 +446,72 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
 
     @Override
     public void updateRole(Long roleId, RoleDef role) {
+        requireReadyForMutation("updateRole");
         if (roleId == null || role == null) {
             return;
         }
 
         log.warn(
-            "Updating legacy untyped role {} in both party and position namespaces; " +
+            "Updating legacy untyped role {} in party, position, and 1.0.4 namespaces; " +
                 "prefer updatePartyRole or updatePositionRole",
             roleId
         );
-        storeRole(roleId, role, roleL1Cache, cacheKeyBuilder.buildPartyRoleKey(roleId));
-        storeRole(roleId, role, positionRoleL1Cache, cacheKeyBuilder.buildPositionRoleKey(roleId));
+        roleL1Cache.put(roleId, role);
+        positionRoleL1Cache.put(roleId, role);
+        long ttl = properties.getTtl().getRole();
+        roleL2Cache.set(cacheKeyBuilder.buildPartyRoleKey(roleId), role, ttl);
+        roleL2Cache.set(cacheKeyBuilder.buildPositionRoleKey(roleId), role, ttl);
+        roleL2Cache.set(cacheKeyBuilder.buildRoleKey(roleId), role, ttl);
         invalidationPublisher.publishRoleChanged(roleId);
     }
 
     @Override
     public void updatePartyRole(Long roleId, RoleDef role) {
-        if (roleId == null || role == null) {
-            return;
-        }
-        log.debug("Updating party role: {}", roleId);
-        storeRole(roleId, role, roleL1Cache, cacheKeyBuilder.buildPartyRoleKey(roleId));
-        invalidationPublisher.publishRoleChanged(roleId);
+        requireReadyForMutation("updatePartyRole");
+        updateTypedRole(roleId, role, roleL1Cache, true);
     }
 
     @Override
     public void updatePositionRole(Long roleId, RoleDef role) {
-        if (roleId == null || role == null) {
-            return;
-        }
-        log.debug("Updating position role: {}", roleId);
-        storeRole(roleId, role, positionRoleL1Cache, cacheKeyBuilder.buildPositionRoleKey(roleId));
-        invalidationPublisher.publishRoleChanged(roleId);
+        requireReadyForMutation("updatePositionRole");
+        updateTypedRole(roleId, role, positionRoleL1Cache, false);
     }
 
-    private void storeRole(
+    private void updateTypedRole(
         Long roleId,
         RoleDef role,
         L1Cache<Long, RoleDef> localCache,
-        String key
+        boolean partyRole
     ) {
+        if (roleId == null || role == null) {
+            return;
+        }
+
+        log.debug("Updating {} role: {}", partyRole ? "party" : "position", roleId);
         localCache.put(roleId, role);
         long ttl = properties.getTtl().getRole();
-        roleL2Cache.set(key, role, ttl);
+        String typedKey = partyRole
+            ? cacheKeyBuilder.buildPartyRoleKey(roleId)
+            : cacheKeyBuilder.buildPositionRoleKey(roleId);
+        roleL2Cache.set(typedKey, role, ttl);
+        // Dual-write the 1.0.4 key while mixed-version application instances may coexist.
+        roleL2Cache.set(cacheKeyBuilder.buildRoleKey(roleId), role, ttl);
+        invalidationPublisher.publishRoleChanged(roleId);
     }
 
     @Override
     public void updatePrivilege(String privilegeIdentifier, PrivilegeDef privilege) {
+        requireReadyForMutation("updatePrivilege");
         if (privilegeIdentifier == null || privilegeIdentifier.isBlank() || privilege == null) {
             return;
         }
+
         log.debug("Updating privilege: {}", privilegeIdentifier);
         privilegeL1Cache.put(privilegeIdentifier, privilege);
         String key = cacheKeyBuilder.buildPrivilegeKey(privilegeIdentifier);
         long ttl = properties.getTtl().getPrivilege();
         privilegeL2Cache.set(key, privilege, ttl);
-        // The legacy invalidation event carries only a numeric entity ID while privilege IDs are
-        // strings. A global local-cache refresh is the only collision-free distributed signal.
+        // Privilege IDs are strings but the 1.x invalidation payload carries only Long IDs.
         invalidationPublisher.publishSecurityRefresh();
     }
 
@@ -382,6 +528,14 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
      * @return map of person ID to PersonDef (missing entries are not included)
      */
     public Map<Long, PersonDef> getPersons(Collection<Long> personIds) {
+        if (managedSnapshotProtocol) {
+            return snapshotCoordinator == null
+                ? Map.of()
+                : snapshotCoordinator.persons(personIds);
+        }
+        if (denyReadWhileWaiting("getPersons")) {
+            return Map.of();
+        }
         if (personIds == null || personIds.isEmpty()) {
             return Map.of();
         }
@@ -425,6 +579,7 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
      * @param persons map of person ID to PersonDef
      */
     public void updatePersons(Map<Long, PersonDef> persons) {
+        requireReadyForMutation("updatePersons");
         if (persons == null || persons.isEmpty()) {
             return;
         }
@@ -457,6 +612,14 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
      * @return map of org ID to OrganizationDef (missing entries are not included)
      */
     public Map<Long, OrganizationDef> getOrganizations(Collection<Long> orgIds) {
+        if (managedSnapshotProtocol) {
+            return snapshotCoordinator == null
+                ? Map.of()
+                : snapshotCoordinator.organizations(orgIds);
+        }
+        if (denyReadWhileWaiting("getOrganizations")) {
+            return Map.of();
+        }
         if (orgIds == null || orgIds.isEmpty()) {
             return Map.of();
         }
@@ -499,6 +662,7 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
      * @param organizations map of org ID to OrganizationDef
      */
     public void updateOrganizations(Map<Long, OrganizationDef> organizations) {
+        requireReadyForMutation("updateOrganizations");
         if (organizations == null || organizations.isEmpty()) {
             return;
         }
@@ -527,6 +691,9 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
      * @return map of role ID to RoleDef (missing entries are not included)
      */
     public Map<Long, RoleDef> getRoles(Collection<Long> roleIds) {
+        if (denyReadWhileWaiting("getRoles")) {
+            return Map.of();
+        }
         if (roleIds == null || roleIds.isEmpty()) {
             return Map.of();
         }
@@ -542,7 +709,7 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
             if (role != null) {
                 result.put(roleId, role);
             } else {
-                keysToFetch.put(roleId, cacheKeyBuilder.buildPartyRoleKey(roleId));
+                keysToFetch.put(roleId, cacheKeyBuilder.buildRoleKey(roleId));
             }
         }
 
@@ -564,35 +731,52 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
     }
 
     /**
-     * Stores an untyped role map in both role namespaces.
-     *
-     * <p>This preserves the historic batch API. It cannot represent distinct party and position
-     * roles sharing an ID; new callers should use the typed batch methods.</p>
+     * Stores multiple roles in cache in a single operation.
      *
      * @param roles map of role ID to RoleDef
-     * @deprecated use {@link #updatePartyRoles(Map)} and {@link #updatePositionRoles(Map)}
      */
-    @Deprecated(since = "2.0.0")
     public void updateRoles(Map<Long, RoleDef> roles) {
-        updatePartyRoles(roles);
-        updatePositionRoles(roles);
+        requireReadyForMutation("updateRoles");
+        if (roles == null || roles.isEmpty()) {
+            return;
+        }
+
+        Map<String, RoleDef> cacheEntries = new HashMap<>();
+        for (Map.Entry<Long, RoleDef> entry : roles.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                roleL1Cache.put(entry.getKey(), entry.getValue());
+                positionRoleL1Cache.put(entry.getKey(), entry.getValue());
+                cacheEntries.put(cacheKeyBuilder.buildPartyRoleKey(entry.getKey()), entry.getValue());
+                cacheEntries.put(cacheKeyBuilder.buildPositionRoleKey(entry.getKey()), entry.getValue());
+                cacheEntries.put(cacheKeyBuilder.buildRoleKey(entry.getKey()), entry.getValue());
+            }
+        }
+
+        if (!cacheEntries.isEmpty()) {
+            long ttl = properties.getTtl().getRole();
+            roleL2Cache.multiSet(cacheEntries, ttl);
+        }
+
+        log.debug("Batch update roles: {} entries stored", cacheEntries.size());
     }
 
     /**
-     * Stores multiple party roles in their dedicated L1 and Redis namespaces.
+     * Stores multiple party roles in the typed namespace and in the 1.0.4 compatibility namespace.
      *
      * @param roles map of party-role ID to RoleDef
      */
     public void updatePartyRoles(Map<Long, RoleDef> roles) {
+        requireReadyForMutation("updatePartyRoles");
         updateTypedRoles(roles, roleL1Cache, true);
     }
 
     /**
-     * Stores multiple position roles in their dedicated L1 and Redis namespaces.
+     * Stores multiple position roles in the typed namespace and in the 1.0.4 compatibility namespace.
      *
      * @param roles map of position-role ID to RoleDef
      */
     public void updatePositionRoles(Map<Long, RoleDef> roles) {
+        requireReadyForMutation("updatePositionRoles");
         updateTypedRoles(roles, positionRoleL1Cache, false);
     }
 
@@ -606,34 +790,45 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
         }
 
         Map<String, RoleDef> cacheEntries = new HashMap<>();
+        int storedRoles = 0;
         for (Map.Entry<Long, RoleDef> entry : roles.entrySet()) {
             if (entry.getKey() != null && entry.getValue() != null) {
                 localCache.put(entry.getKey(), entry.getValue());
-                String key = partyRole
+                String typedKey = partyRole
                     ? cacheKeyBuilder.buildPartyRoleKey(entry.getKey())
                     : cacheKeyBuilder.buildPositionRoleKey(entry.getKey());
-                cacheEntries.put(key, entry.getValue());
+                cacheEntries.put(typedKey, entry.getValue());
+                cacheEntries.put(cacheKeyBuilder.buildRoleKey(entry.getKey()), entry.getValue());
+                storedRoles++;
             }
         }
 
         if (!cacheEntries.isEmpty()) {
-            long ttl = properties.getTtl().getRole();
-            roleL2Cache.multiSet(cacheEntries, ttl);
+            roleL2Cache.multiSet(cacheEntries, properties.getTtl().getRole());
         }
 
         log.debug(
             "Batch update {} roles: {} entries stored",
             partyRole ? "party" : "position",
-            cacheEntries.size()
+            storedRoles
         );
     }
 
     // ========== LIFECYCLE OPERATIONS ==========
 
     @Override
-    @SuppressWarnings("deprecation")
     public void initialize() {
         log.info("Initializing RedisSecurityDataStorage...");
+
+        if (managedSnapshotProtocol) {
+            ready.set(false);
+            clearLocalCaches();
+            log.info(
+                "RedisSecurityDataStorage is WAITING_FOR_LOADER; "
+                    + "the snapshot coordinator must verify and publish a complete snapshot"
+            );
+            return;
+        }
 
         // Configure cache warmer with batch store callbacks
         cacheWarmer.setPersonBatchStore(this::updatePersons);
@@ -669,6 +864,15 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
 
     @Override
     public void refresh() {
+        if (managedSnapshotProtocol) {
+            if (snapshotCoordinator == null) {
+                throw new RedisStorageNotReadyException("refresh");
+            }
+            snapshotCoordinator.refresh();
+            ready.set(snapshotCoordinator.isReady());
+            return;
+        }
+        requireReadyForMutation("refresh");
         log.info("Refreshing RedisSecurityDataStorage...");
 
         clearLocalCaches();
@@ -692,11 +896,6 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
 
     /**
      * Clears every process-local (L1) OrgSec cache without touching Redis (L2).
-     *
-     * <p>This is a public cache-operation contract, not a readiness shortcut. Callers can use it
-     * after {@code update*} to prove that the next read is reconstructed from Redis, and
-     * invalidation adapters can clear local state without deleting the shared authoritative
-     * cache entries.
      */
     public void clearLocalCaches() {
         personL1Cache.clear();
@@ -708,6 +907,9 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
 
     @Override
     public boolean isReady() {
+        if (managedSnapshotProtocol && snapshotCoordinator != null) {
+            return snapshotCoordinator.isReady();
+        }
         return ready.get();
     }
 
@@ -723,12 +925,21 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
      */
     @Override
     public void notifyPartyRoleChanged(Long roleId) {
+        if (refreshManagedSnapshot("notifyPartyRoleChanged")) {
+            return;
+        }
+        requireReadyForMutation("notifyPartyRoleChanged");
         log.debug("Redis storage notified: party role {} changed - invalidating cache", roleId);
 
-        // Invalidate L1 cache
+        // Delete the shared value before dropping the local copy. Otherwise this process and
+        // peers that receive the Pub/Sub event immediately refill L1 from the revoked L2 value.
+        roleL2Cache.multiDelete(List.of(
+            cacheKeyBuilder.buildPartyRoleKey(roleId),
+            cacheKeyBuilder.buildRoleKey(roleId)
+        ));
         roleL1Cache.invalidate(roleId);
 
-        // Publish distributed invalidation event (will also invalidate L2)
+        // Tell peers to drop their process-local copy after the shared value is gone.
         invalidationPublisher.publishRoleChanged(roleId);
     }
 
@@ -737,9 +948,16 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
      */
     @Override
     public void notifyPositionRoleChanged(Long roleId) {
+        if (refreshManagedSnapshot("notifyPositionRoleChanged")) {
+            return;
+        }
+        requireReadyForMutation("notifyPositionRoleChanged");
         log.debug("Redis storage notified: position role {} changed - invalidating cache", roleId);
 
-        // Invalidate L1 cache
+        roleL2Cache.multiDelete(List.of(
+            cacheKeyBuilder.buildPositionRoleKey(roleId),
+            cacheKeyBuilder.buildRoleKey(roleId)
+        ));
         positionRoleL1Cache.invalidate(roleId);
 
         // Publish distributed invalidation event
@@ -751,9 +969,13 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
      */
     @Override
     public void notifyOrganizationChanged(Long orgId) {
+        if (refreshManagedSnapshot("notifyOrganizationChanged")) {
+            return;
+        }
+        requireReadyForMutation("notifyOrganizationChanged");
         log.debug("Redis storage notified: organization {} changed - invalidating cache", orgId);
 
-        // Invalidate L1 cache
+        organizationL2Cache.delete(cacheKeyBuilder.buildOrganizationKey(orgId));
         organizationL1Cache.invalidate(orgId);
 
         // Publish distributed invalidation event
@@ -765,9 +987,13 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
      */
     @Override
     public void notifyPersonChanged(Long personId) {
+        if (refreshManagedSnapshot("notifyPersonChanged")) {
+            return;
+        }
+        requireReadyForMutation("notifyPersonChanged");
         log.debug("Redis storage notified: person {} changed - invalidating cache", personId);
 
-        // Invalidate L1 cache
+        personL2Cache.delete(cacheKeyBuilder.buildPersonKey(personId));
         personL1Cache.invalidate(personId);
 
         // Publish distributed invalidation event
@@ -789,12 +1015,40 @@ public class RedisSecurityDataStorage implements SecurityDataStorage {
         return roleL1Cache.getStats();
     }
 
-    /** Returns process-local position-role cache statistics. */
     public L1Cache.CacheStats getPositionRoleL1Stats() {
         return positionRoleL1Cache.getStats();
     }
 
     public L1Cache.CacheStats getPrivilegeL1Stats() {
         return privilegeL1Cache.getStats();
+    }
+
+    private boolean denyReadWhileWaiting(String operation) {
+        if (managedSnapshotProtocol && !isReady()) {
+            log.debug("Denying Redis {} while the verified snapshot is not READY", operation);
+            return true;
+        }
+        return false;
+    }
+
+    private boolean refreshManagedSnapshot(String operation) {
+        if (!managedSnapshotProtocol) {
+            return false;
+        }
+        if (snapshotCoordinator == null) {
+            throw new RedisStorageNotReadyException(operation);
+        }
+        snapshotCoordinator.refresh();
+        ready.set(snapshotCoordinator.isReady());
+        if (!snapshotCoordinator.isReady()) {
+            throw new RedisStorageNotReadyException(operation);
+        }
+        return true;
+    }
+
+    private void requireReadyForMutation(String operation) {
+        if (managedSnapshotProtocol) {
+            throw new RedisStorageNotReadyException(operation);
+        }
     }
 }

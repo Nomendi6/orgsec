@@ -3,6 +3,12 @@ package com.nomendi6.orgsec.storage.redis.config;
 import com.nomendi6.orgsec.exceptions.OrgsecConfigurationException;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Lazy;
+
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Configuration properties for Redis storage.
@@ -19,13 +25,19 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * {@link OrgsecConfigurationException} carrying a stable diagnostic code.
  */
 @ConfigurationProperties(prefix = "orgsec.storage.redis")
+@Lazy(false)
 public class RedisStorageProperties implements InitializingBean {
 
     /** Prefix shared by every diagnostic code this class can raise. */
     public static final String INVALID_PROPERTY = "ORGSEC_STORAGE_REDIS_INVALID_PROPERTY";
 
+    private static final int MAX_SECURITY_DATASET_ID_UTF8_BYTES = 256;
+
     @Override
     public void afterPropertiesSet() {
+        if (enabled) {
+            requireSecurityDatasetId(securityDatasetId);
+        }
         requireText("host", host);
         requireRange("port", port, 1, 65535);
         requireAtLeast("timeout", timeout, 100);
@@ -59,6 +71,35 @@ public class RedisStorageProperties implements InitializingBean {
         requireAtLeast("pool.min-evictable-idle-time", pool.getMinEvictableIdleTime(), 1000);
     }
 
+    private static void requireSecurityDatasetId(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            throw invalidWithoutValue(
+                "security-dataset-id",
+                "must not be blank"
+            );
+        }
+
+        final int utf8Bytes;
+        try {
+            utf8Bytes = StandardCharsets.UTF_8.newEncoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .encode(CharBuffer.wrap(value))
+                .remaining();
+        } catch (CharacterCodingException failure) {
+            throw invalidWithoutValue(
+                "security-dataset-id",
+                "must be a well-formed Unicode string"
+            );
+        }
+        if (utf8Bytes > MAX_SECURITY_DATASET_ID_UTF8_BYTES) {
+            throw invalidWithoutValue(
+                "security-dataset-id",
+                "must be at most " + MAX_SECURITY_DATASET_ID_UTF8_BYTES + " UTF-8 bytes"
+            );
+        }
+    }
+
     private static void requireText(String name, String value) {
         if (value == null || value.trim().isEmpty()) {
             throw invalid(name, value, "must not be blank");
@@ -82,6 +123,29 @@ public class RedisStorageProperties implements InitializingBean {
             INVALID_PROPERTY + ": orgsec.storage.redis." + name + "=" + value + " " + requirement + "."
         );
     }
+
+    private static OrgsecConfigurationException invalidWithoutValue(
+        String name,
+        String requirement
+    ) {
+        return new OrgsecConfigurationException(
+            INVALID_PROPERTY + ": orgsec.storage.redis." + name + " " + requirement + "."
+        );
+    }
+
+    /**
+     * Stable, deployment-unique identifier of the security dataset stored in Redis.
+     *
+     * <p>The exact value is hashed into the protocol namespace. It must stay unchanged across
+     * normal restarts and rolling deployments of the same dataset. The value is required when
+     * Redis storage is enabled and may contain at most 256 UTF-8 bytes.</p>
+     */
+    private String securityDatasetId;
+
+    /**
+     * Whether the Redis storage adapter is enabled.
+     */
+    private boolean enabled;
 
     /**
      * Redis server hostname.
@@ -154,6 +218,22 @@ public class RedisStorageProperties implements InitializingBean {
     private AuditConfig audit = new AuditConfig();
 
     // Getters and Setters
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public String getSecurityDatasetId() {
+        return securityDatasetId;
+    }
+
+    public void setSecurityDatasetId(String securityDatasetId) {
+        this.securityDatasetId = securityDatasetId;
+    }
 
     public String getHost() {
         return host;

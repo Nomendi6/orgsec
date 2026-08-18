@@ -85,6 +85,8 @@ The hierarchical directions (`HIERARCHY_DOWN`, `HIERARCHY_UP`) compare *pipe-del
 
 Both encode the "ancestor / descendant" relationship the same way: `HIERARCHY_UP` means the *entity* sits on the caller's ancestor chain, so the caller's path must start with the entity's path. Company scope used to express this with `endsWith`, which both rejected genuine ancestors and accepted unrelated organizations whose path merely ended with the caller's; that was corrected in 1.0.4 / 2.0.0. Custom backends should mirror these predicates exactly - both scopes now use the same operand order.
 
+`orgsec.hierarchy-up.strategy` (default `PATH`) keeps the table above. `IDS` is a different source of truth on both GET and LIST: the principal's inclusive `orgLineageIds` / `companyLineageIds` (built from party `parentId` at load) must contain the record's owner id. `HIERARCHY_DOWN` stays path-only. A missing lineage denies. `IDS` is not the default on 2.x.
+
 ### `applies(isTarget, isDescendant, isAncestor)`
 
 The legacy boolean form on `PrivilegeDirection`:

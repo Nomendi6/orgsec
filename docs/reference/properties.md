@@ -63,6 +63,14 @@ The Person API is consumed by Keycloak's custom protocol mapper to assemble the 
 | `enabled`                             | `boolean` | `false`                | Expose `GET /api/orgsec/person/by-user/{userId}`.                                               | [Keycloak Person API](../spring/03-keycloak-person-api.md) |
 | `required-role`                       | `String`  | `"ORGSEC_API_CLIENT"`  | Role required to call the endpoint. Enforced via Spring Security `hasRole(requiredRole)`, which **prepends `ROLE_`** - the authenticated principal must carry authority `ROLE_<requiredRole>` (default: `ROLE_ORGSEC_API_CLIENT`). | [Spring Security](../spring/02-spring-security.md) |
 
+### Hierarchy-up - `orgsec.hierarchy-up.*`
+
+Bound on `BusinessRoleConfiguration` (`prefix = orgsec`). Controls GET and LIST together.
+
+| Property                              | Type                   | Default  | Description                                                                              | See                                                            |
+| ------------------------------------- | ---------------------- | -------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `strategy`                            | `HierarchyUpStrategy`  | `PATH`   | `PATH` compares denormalized paths (1.0 contract). `IDS` uses inclusive `orgLineageIds` / `companyLineageIds` and the record owner id. | [Privilege model](privilege-model.md) |
+
 ---
 
 ## `BusinessRoleConfiguration` - `orgsec.business-roles.*`
@@ -117,7 +125,8 @@ Bound only when `orgsec-storage-redis` is on the classpath. All defaults apply p
 
 | Property                              | Type      | Default      | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `enabled`                             | `boolean` | `false`      | Gates `RedisStorageAutoConfiguration` via `@ConditionalOnProperty`. Must be `true` for any Redis bean to be created. Not bound on `RedisStorageProperties` - consumed directly by Spring. | [Storage / Redis](../storage/03-redis.md#activation) |
+| `enabled`                             | `boolean` | `false`      | Gates `RedisStorageAutoConfiguration` via `@ConditionalOnProperty`. Must be `true` for any Redis bean to be created and for `security-dataset-id` to be required. | [Storage / Redis](../storage/03-redis.md#activation) |
+| `security-dataset-id`                 | `String`  | (none)       | **Required when Redis is enabled.** Stable deployment-unique ID shared by all instances serving the same security dataset; maximum 256 UTF-8 bytes. | [Storage / Redis](../storage/03-redis.md#activation) |
 
 ### Connection - `orgsec.storage.redis.*`
 

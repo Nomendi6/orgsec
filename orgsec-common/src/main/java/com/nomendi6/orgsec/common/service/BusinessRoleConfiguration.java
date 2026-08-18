@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
+import com.nomendi6.orgsec.constants.HierarchyUpStrategy;
 import com.nomendi6.orgsec.constants.SecurityFieldType;
 import com.nomendi6.orgsec.exceptions.OrgsecConfigurationException;
 import com.nomendi6.orgsec.model.BusinessRoleDefinition;
@@ -24,6 +25,7 @@ public class BusinessRoleConfiguration {
     private static final String RSQL_SELECTOR_PATTERN = "[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*";
 
     private Map<String, BusinessRoleConfig> businessRoles = new LinkedHashMap<>();
+    private HierarchyUp hierarchyUp = new HierarchyUp();
 
     private final Map<String, BusinessRoleDefinition> businessRoleDefinitions = new LinkedHashMap<>();
     private final List<BusinessRoleProvider> providers;
@@ -249,6 +251,38 @@ public class BusinessRoleConfiguration {
 
     public Map<String, BusinessRoleConfig> getBusinessRoles() {
         return businessRoles;
+    }
+
+    public HierarchyUp getHierarchyUp() {
+        return hierarchyUp;
+    }
+
+    public void setHierarchyUp(HierarchyUp hierarchyUp) {
+        this.hierarchyUp = hierarchyUp != null ? hierarchyUp : new HierarchyUp();
+    }
+
+    /** True when {@code HIERARCHY_UP} uses inclusive lineage ids on GET and LIST. */
+    public boolean hierarchyUpUsesIds() {
+        return hierarchyUp != null && hierarchyUp.getStrategy() == HierarchyUpStrategy.IDS;
+    }
+
+    /**
+     * Nested {@code orgsec.hierarchy-up.*} binding.
+     */
+    public static class HierarchyUp {
+
+        private HierarchyUpStrategy strategy = HierarchyUpStrategy.PATH;
+
+        public HierarchyUpStrategy getStrategy() {
+            return strategy;
+        }
+
+        public void setStrategy(HierarchyUpStrategy strategy) {
+            if (strategy == null) {
+                throw new OrgsecConfigurationException("orgsec.hierarchy-up.strategy must not be null");
+            }
+            this.strategy = strategy;
+        }
     }
 
     /**

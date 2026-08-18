@@ -25,6 +25,23 @@ class RedisStorageHealthIndicatorTest {
         assertThat(health.getStatus()).isEqualTo(Status.UP);
         assertThat(health.getDetails()).containsEntry("connection", "active");
         assertThat(health.getDetails()).containsEntry("response", "PONG");
+        assertThat(health.getDetails()).containsEntry("authorization", "ready");
+        verify(connection).close();
+    }
+
+    @Test
+    void shouldReturnOutOfServiceWhileAuthorizationSnapshotIsNotReady() {
+        RedisConnection connection = mock(RedisConnection.class);
+        when(connection.ping()).thenReturn("PONG");
+        RedisStorageHealthIndicator indicator = indicatorWith(connection, false);
+
+        Health health = indicator.health();
+
+        assertThat(health.getStatus()).isEqualTo(Status.OUT_OF_SERVICE);
+        assertThat(health.getDetails())
+            .containsEntry("connection", "active")
+            .containsEntry("authorization", "not-ready")
+            .containsEntry("diagnostic", "ORGSEC_STORAGE_REDIS_NOT_READY");
         verify(connection).close();
     }
 
@@ -58,10 +75,16 @@ class RedisStorageHealthIndicatorTest {
     }
 
     private RedisStorageHealthIndicator indicatorWith(RedisConnection connection) {
+        return indicatorWith(connection, true);
+    }
+
+    private RedisStorageHealthIndicator indicatorWith(
+            RedisConnection connection,
+            boolean authorizationReady) {
         RedisConnectionFactory connectionFactory = mock(RedisConnectionFactory.class);
         when(connectionFactory.getConnection()).thenReturn(connection);
         RedisTemplate<String, String> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
-        return new RedisStorageHealthIndicator(template);
+        return new RedisStorageHealthIndicator(template, () -> authorizationReady);
     }
 }

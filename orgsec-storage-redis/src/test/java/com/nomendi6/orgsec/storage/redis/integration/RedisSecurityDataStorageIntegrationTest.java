@@ -5,20 +5,25 @@ import com.nomendi6.orgsec.model.PersonDef;
 import com.nomendi6.orgsec.model.PrivilegeDef;
 import com.nomendi6.orgsec.model.RoleDef;
 import com.nomendi6.orgsec.storage.redis.RedisSecurityDataStorage;
+import com.nomendi6.orgsec.storage.redis.RedisTestStorageFactory;
 import com.nomendi6.orgsec.storage.redis.cache.CacheKeyBuilder;
 import com.nomendi6.orgsec.storage.redis.cache.L1Cache;
 import com.nomendi6.orgsec.storage.redis.cache.L2RedisCache;
 import com.nomendi6.orgsec.storage.redis.config.RedisStorageProperties;
+import com.nomendi6.orgsec.storage.redis.invalidation.InvalidationEventListener;
 import com.nomendi6.orgsec.storage.redis.invalidation.InvalidationEventPublisher;
 import com.nomendi6.orgsec.storage.redis.preload.CacheWarmer;
 import com.nomendi6.orgsec.storage.redis.serialization.JsonSerializer;
 import com.nomendi6.orgsec.storage.redis.testutil.TestDataBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.listener.ChannelTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
-import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertAll;
 
 /**
  * End-to-end integration tests for RedisSecurityDataStorage.
@@ -29,10 +34,9 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
     private CacheKeyBuilder keyBuilder;
     private L1Cache<Long, PersonDef> personL1Cache;
     private L2RedisCache<PersonDef> personL2Cache;
-    private L1Cache<Long, RoleDef> partyRoleL1Cache;
+    private L1Cache<Long, RoleDef> roleL1Cache;
     private L1Cache<Long, RoleDef> positionRoleL1Cache;
     private L2RedisCache<RoleDef> roleL2Cache;
-    private L2RedisCache<PrivilegeDef> privilegeL2Cache;
 
     @BeforeEach
     void setUp() {
@@ -52,7 +56,7 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
         // L1 caches
         personL1Cache = new L1Cache<>(100);
         L1Cache<Long, OrganizationDef> organizationL1Cache = new L1Cache<>(100);
-        partyRoleL1Cache = new L1Cache<>(100);
+        roleL1Cache = new L1Cache<>(100);
         positionRoleL1Cache = new L1Cache<>(100);
         L1Cache<String, PrivilegeDef> privilegeL1Cache = new L1Cache<>(100);
 
@@ -60,7 +64,7 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
         personL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(PersonDef.class), keyBuilder);
         L2RedisCache<OrganizationDef> organizationL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(OrganizationDef.class), keyBuilder);
         roleL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(RoleDef.class), keyBuilder);
-        privilegeL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(PrivilegeDef.class), keyBuilder);
+        L2RedisCache<PrivilegeDef> privilegeL2Cache = new L2RedisCache<>(redisTemplate, new JsonSerializer<>(PrivilegeDef.class), keyBuilder);
 
         // Invalidation publisher
         InvalidationEventPublisher publisher = new InvalidationEventPublisher(redisTemplate, "test:invalidation", true, "test-instance");
@@ -69,11 +73,11 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
         CacheWarmer warmer = new CacheWarmer(properties.getPreload());
 
         // Create storage
-        storage = new RedisSecurityDataStorage(
+        storage = RedisTestStorageFactory.createLegacyUnfenced(
             properties,
             personL1Cache,
             organizationL1Cache,
-            partyRoleL1Cache,
+            roleL1Cache,
             positionRoleL1Cache,
             privilegeL1Cache,
             personL2Cache,
@@ -86,6 +90,31 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
         );
 
         storage.initialize();
+    }
+
+    @Test
+    void typedRoleWritesSurviveL1ClearWithSameIdAndRemainReadableBy104Nodes() {
+        RoleDef partyRole = new RoleDef(7L, "Party role");
+        RoleDef positionRole = new RoleDef(7L, "Position role");
+
+        storage.updatePartyRole(7L, partyRole);
+        storage.updatePositionRole(7L, positionRole);
+        storage.clearLocalCaches();
+
+        assertThat(storage.getPartyRole(7L).name).isEqualTo("Party role");
+        assertThat(storage.getPositionRole(7L).name).isEqualTo("Position role");
+        assertThat(roleL2Cache.get(keyBuilder.buildRoleKey(7L)).name)
+            .as("the rolling-upgrade key remains available to a 1.0.4 node")
+            .isEqualTo("Position role");
+    }
+
+    @Test
+    void typedReadFallsBackToAndMigratesA104RoleKey() {
+        RoleDef legacyRole = new RoleDef(8L, "Legacy role");
+        roleL2Cache.set(keyBuilder.buildRoleKey(8L), legacyRole, 60);
+
+        assertThat(storage.getPartyRole(8L).name).isEqualTo("Legacy role");
+        assertThat(roleL2Cache.get(keyBuilder.buildPartyRoleKey(8L)).name).isEqualTo("Legacy role");
     }
 
     @Test
@@ -137,6 +166,90 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
     }
 
     @Test
+    void revokedPersonCannotBeRegrantedFromStaleL2OnSourceOrPeer() throws Exception {
+        long personId = 41L;
+        String personKey = keyBuilder.buildPersonKey(personId);
+        PersonDef grantedPerson = TestDataBuilder.buildPersonWithOrganizations(personId);
+        RoleDef grantedRole = new RoleDef(91L, "Order reader")
+            .addSecurityPrivilege("orders:read");
+        grantedPerson.organizationsMap.get(1L).addPositionRole(grantedRole);
+
+        L1Cache<Long, PersonDef> peerPersonL1Cache = new L1Cache<>(100);
+        L1Cache<Long, OrganizationDef> peerOrganizationL1Cache = new L1Cache<>(100);
+        L1Cache<Long, RoleDef> peerRoleL1Cache = new L1Cache<>(100);
+        L1Cache<String, PrivilegeDef> peerPrivilegeL1Cache = new L1Cache<>(100);
+
+        RedisStorageProperties peerProperties = new RedisStorageProperties();
+        peerProperties.getPreload().setEnabled(false);
+        RedisSecurityDataStorage peerStorage = RedisTestStorageFactory.createLegacyUnfenced(
+            peerProperties,
+            peerPersonL1Cache,
+            peerOrganizationL1Cache,
+            peerRoleL1Cache,
+            peerPrivilegeL1Cache,
+            personL2Cache,
+            new L2RedisCache<>(redisTemplate, new JsonSerializer<>(OrganizationDef.class), keyBuilder),
+            roleL2Cache,
+            new L2RedisCache<>(redisTemplate, new JsonSerializer<>(PrivilegeDef.class), keyBuilder),
+            keyBuilder,
+            new InvalidationEventPublisher(redisTemplate, "test:invalidation", false, "peer-instance"),
+            new CacheWarmer(peerProperties.getPreload())
+        );
+        peerStorage.initialize();
+
+        InvalidationEventListener peerListener = new InvalidationEventListener(
+            peerPersonL1Cache,
+            peerOrganizationL1Cache,
+            peerRoleL1Cache,
+            "peer-instance"
+        );
+        RedisMessageListenerContainer peerListenerContainer = new RedisMessageListenerContainer();
+        peerListenerContainer.setConnectionFactory(redisConnectionFactory);
+        peerListenerContainer.addMessageListener(peerListener, new ChannelTopic("test:invalidation"));
+        peerListenerContainer.afterPropertiesSet();
+        peerListenerContainer.start();
+
+        try {
+            // Both instances have already authorized from the same shared L2 record.
+            personL2Cache.set(personKey, grantedPerson, 60);
+            assertThat(storage.getPerson(personId).organizationsMap.get(1L).positionRolesSet)
+                .anySatisfy(role -> assertThat(role.securityPrivilegeSet).contains("orders:read"));
+            assertThat(peerStorage.getPerson(personId).organizationsMap.get(1L).positionRolesSet)
+                .anySatisfy(role -> assertThat(role.securityPrivilegeSet).contains("orders:read"));
+
+            // The authoritative source deleted/revoked this person and emits the supported notification.
+            storage.notifyPersonChanged(personId);
+
+            assertThat(personL1Cache.get(personId))
+                .as("the source instance L1 entry is invalidated synchronously")
+                .isNull();
+
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (peerPersonL1Cache.get(personId) != null && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(peerPersonL1Cache.get(personId))
+                .as("the peer instance receives Pub/Sub and invalidates its L1 entry")
+                .isNull();
+
+            PersonDef sourceReadAfterRevoke = storage.getPerson(personId);
+            PersonDef peerReadAfterRevoke = peerStorage.getPerson(personId);
+
+            assertAll(
+                () -> assertThat(sourceReadAfterRevoke)
+                    .as("the source must not regrant a deleted person from stale L2")
+                    .isNull(),
+                () -> assertThat(peerReadAfterRevoke)
+                    .as("the peer must not regrant a deleted person from stale L2")
+                    .isNull()
+            );
+        } finally {
+            peerListenerContainer.stop();
+            peerListenerContainer.destroy();
+        }
+    }
+
+    @Test
     void getPerson_cacheMiss_returnsNull() {
         // When
         PersonDef retrieved = storage.getPerson(999L);
@@ -171,63 +284,6 @@ class RedisSecurityDataStorageIntegrationTest extends AbstractRedisIntegrationTe
         PersonDef fromL2 = personL2Cache.get(key);
         assertThat(fromL2).isNotNull();
         assertThat(fromL2.personName).isEqualTo("Updated Person");
-    }
-
-    @Test
-    void publicLocalClearForcesTheNextReadThroughRedisL2() {
-        PersonDef person = TestDataBuilder.buildPerson(1L, "Redis round trip");
-        storage.updatePerson(1L, person);
-
-        storage.clearLocalCaches();
-        assertThat(personL1Cache.get(1L)).isNull();
-
-        PersonDef fromL2 = storage.getPerson(1L);
-        assertThat(fromL2).isNotNull();
-        assertThat(fromL2.personName).isEqualTo("Redis round trip");
-        assertThat(personL1Cache.get(1L)).isNotNull();
-    }
-
-    @Test
-    void publicTypedRoleAndPrivilegeUpdatesRoundTripThroughDistinctL2Keys() {
-        RoleDef partyRole = new RoleDef(7L, "Party role");
-        RoleDef positionRole = new RoleDef(7L, "Position role");
-        PrivilegeDef privilege = new PrivilegeDef("DOCUMENT_ORG_R", "DOCUMENT");
-
-        storage.updatePartyRole(7L, partyRole);
-        storage.updatePositionRole(7L, positionRole);
-        storage.updatePrivilege("DOCUMENT_ORG_R", privilege);
-
-        assertThat(roleL2Cache.get(keyBuilder.buildPartyRoleKey(7L)).name).isEqualTo("Party role");
-        assertThat(roleL2Cache.get(keyBuilder.buildPositionRoleKey(7L)).name).isEqualTo("Position role");
-        assertThat(privilegeL2Cache.get(keyBuilder.buildPrivilegeKey("DOCUMENT_ORG_R"))).isEqualTo(privilege);
-
-        storage.clearLocalCaches();
-
-        assertThat(storage.getPartyRole(7L).name).isEqualTo("Party role");
-        assertThat(storage.getPositionRole(7L).name).isEqualTo("Position role");
-        assertThat(storage.getPrivilege("DOCUMENT_ORG_R")).isEqualTo(privilege);
-    }
-
-    @Test
-    void typedRolePreloadPreservesSameIdRolesAfterL1ClearAndL2Read() {
-        RoleDef partyRole = new RoleDef(11L, "Preloaded party role");
-        RoleDef positionRole = new RoleDef(11L, "Preloaded position role");
-        CacheWarmer warmer = storage.getCacheWarmer();
-        warmer.setPartyRoleLoader(() -> Map.of(11L, partyRole));
-        warmer.setPositionRoleLoader(() -> Map.of(11L, positionRole));
-
-        assertThat(warmer.warmupRoles()).isEqualTo(2);
-        assertThat(roleL2Cache.get(keyBuilder.buildPartyRoleKey(11L)).name)
-            .isEqualTo("Preloaded party role");
-        assertThat(roleL2Cache.get(keyBuilder.buildPositionRoleKey(11L)).name)
-            .isEqualTo("Preloaded position role");
-
-        storage.clearLocalCaches();
-        assertThat(partyRoleL1Cache.size()).isZero();
-        assertThat(positionRoleL1Cache.size()).isZero();
-
-        assertThat(storage.getPartyRole(11L).name).isEqualTo("Preloaded party role");
-        assertThat(storage.getPositionRole(11L).name).isEqualTo("Preloaded position role");
     }
 
     @Test

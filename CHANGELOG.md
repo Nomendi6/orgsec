@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.0.0] - Unreleased
 
+### Added
+
+- **Managed Redis snapshot protocol.** One standalone Redis primary, one lease-elected writer, a full copy-on-write snapshot, and a local view that GET/LIST re-check against the current READY generation. Pub/Sub remains a hint only. Cluster, Sentinel, replicas, WAIT and capacity ledgers are out of scope.
+- **`SecurityEventPublisher` after-commit notify.** Producer methods apply storage notify (and the Kafka publish attempt) once after the surrounding transaction commits. Rollback applies nothing. `apply*` stays the consumer/internal path and is never deferred. A failure after commit is `SecurityNotifyAfterCommitException`.
+- **Optional ID-based `HIERARCHY_UP`.** `orgsec.hierarchy-up.strategy` is `PATH` (default, unchanged) or `IDS`. `IDS` uses inclusive `orgLineageIds` / `companyLineageIds` built from party `parentId` at load, on both GET and LIST. Missing lineage denies.
+
 ### Changed
 
 - Person API successful responses now include payload `"version": "1.0"`. `404` returns `{"code":"PERSON_NOT_FOUND"}`; `401`/`403` on the Person chain return `CALLBACK_UNAUTHENTICATED` / `CALLBACK_FORBIDDEN`. A status without the matching code is a mapper contract break.
@@ -19,7 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Migration Notes
 
 - Applications must run on Java 21 or newer. Java 17 remains supported only on the OrgSec 1.0.x line.
-- Applications must use Spring Boot 4.x / Spring Security 7.x with OrgSec 2.0.x. Spring Boot 3.5.x applications should remain on OrgSec 1.0.x.
+- Applications must use Spring Boot 4.x / Spring Security 7.x with OrgSec 2.0.x. Spring Boot 3.5.x applications should remain on OrgSec 1.1.x.
+- Redis: set `orgsec.storage.redis.enabled=true` and a stable `orgsec.storage.redis.security-dataset-id`. Provide `SecurityDatasetFenceStore` and `RedisSnapshotLoader`. `update*` on a managed Redis storage is rejected.
+- Call `SecurityEventPublisher` producer methods from the service that mutates security data; do not call `storage.notify*` from inside an open transaction if a rollback is still possible.
 - If an application uses OrgSec Redis or JWT internals directly, update imports from Jackson 2 `com.fasterxml.jackson.databind.*` to Jackson 3 `tools.jackson.databind.*`. Jackson *annotations* stay in the `com.fasterxml.jackson.annotation.*` namespace — Jackson 3 has no annotation package of its own and reads those directly.
 - `RedisStorageHealthIndicator` now implements `org.springframework.boot.health.contributor.HealthIndicator` instead of `org.springframework.boot.actuate.health.HealthIndicator`, following the Spring Boot 4 actuator split. Applications that reference the type directly must update the import; applications that only rely on the `/actuator/health` endpoint are unaffected.
 - The Keycloak custom mapper contract is unchanged: the JWT claim root is `orgsec`, with `version`, `person`, and `memberships`. Rebuild and smoke-test the mapper before releasing an application that depends on JWT storage.

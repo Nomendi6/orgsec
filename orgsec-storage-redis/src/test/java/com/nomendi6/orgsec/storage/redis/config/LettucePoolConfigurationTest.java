@@ -2,15 +2,56 @@ package com.nomendi6.orgsec.storage.redis.config;
 
 import io.lettuce.core.resource.ClientResources;
 import io.lettuce.core.api.StatefulConnection;
+import com.nomendi6.orgsec.fence.SecurityDatasetFenceStore;
+import com.nomendi6.orgsec.storage.redis.bootstrap.RedisSnapshotLoader;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class LettucePoolConfigurationTest {
 
     private final LettucePoolConfiguration configuration = new LettucePoolConfiguration();
+
+    @Test
+    void autoConfigurationUsesFrozenOrgsecHostAndNonDefaultPort() {
+        new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(
+                DataRedisAutoConfiguration.class,
+                RedisStorageAutoConfiguration.class,
+                LettucePoolConfiguration.class
+            ))
+            .withPropertyValues(
+                "orgsec.storage.redis.enabled=true",
+                "orgsec.storage.redis.security-dataset-id=orgsec-test",
+                "orgsec.storage.redis.host=orgsec-redis.internal",
+                "orgsec.storage.redis.port=16379",
+                "orgsec.storage.redis.preload.enabled=false",
+                "spring.data.redis.host=boot-redis-should-not-win.internal",
+                "spring.data.redis.port=26379"
+            )
+            .withBean(
+                SecurityDatasetFenceStore.class,
+                () -> mock(SecurityDatasetFenceStore.class)
+            )
+            .withBean(
+                RedisSnapshotLoader.class,
+                () -> mock(RedisSnapshotLoader.class)
+            )
+            .run(context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context).hasSingleBean(RedisConnectionFactory.class);
+                LettuceConnectionFactory factory = context.getBean(LettuceConnectionFactory.class);
+                assertThat(factory.getHostName()).isEqualTo("orgsec-redis.internal");
+                assertThat(factory.getPort()).isEqualTo(16379);
+            });
+    }
 
     @Test
     void shouldCreateClientResources() {

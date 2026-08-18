@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import tools.jackson.databind.ObjectMapper;
+import com.nomendi6.orgsec.fence.SecurityDatasetFenceStore;
 import com.nomendi6.orgsec.provider.SecurityQueryProvider;
-import com.nomendi6.orgsec.storage.SecurityDataStorage;
 import com.nomendi6.orgsec.storage.inmemory.InMemorySecurityDataStorage;
 import com.nomendi6.orgsec.storage.inmemory.StorageConfiguration;
 import com.nomendi6.orgsec.storage.inmemory.loader.OrganizationLoader;
@@ -18,6 +18,7 @@ import com.nomendi6.orgsec.storage.inmemory.store.AllPrivilegesStore;
 import com.nomendi6.orgsec.storage.inmemory.store.AllRolesStore;
 import com.nomendi6.orgsec.storage.jwt.config.JwtStorageAutoConfiguration;
 import com.nomendi6.orgsec.storage.redis.RedisSecurityDataStorage;
+import com.nomendi6.orgsec.storage.redis.bootstrap.RedisSnapshotLoader;
 import com.nomendi6.orgsec.storage.redis.config.RedisStorageAutoConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -37,10 +38,8 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
  * must hand back the very same instance, or invalidation callbacks and the health indicator would
  * hold a different object than the one serving lookups.
  *
- * <p>The load-bearing case is JWT together with Redis. Redis being active must not make it the JWT
- * delegate: the Redis backend returns {@code null} on a miss, and the JWT storage reads a missing
- * organization as an unproven membership and drops it - so a cold cache would deny every request
- * rather than merely slow it down. Choosing Redis there has to be an explicit act.
+ * <p>JWT+Redis is deliberately absent: the environment post-processor rejects that hybrid before
+ * this bean graph is created, and its stable diagnostic is covered separately.
  */
 class StorageBeanGraphTest {
 
@@ -83,6 +82,7 @@ class StorageBeanGraphTest {
         contextRunner
             .withPropertyValues(
                 "orgsec.storage.redis.enabled=true",
+                "orgsec.storage.redis.security-dataset-id=orgsec-test",
                 "orgsec.storage.features.redis-enabled=true"
             )
             .run(context -> {
@@ -91,48 +91,12 @@ class StorageBeanGraphTest {
                 assertThat(context.getBean("orgsecPrimaryStorage"))
                     .as("an alias, never a decorator")
                     .isSameAs(context.getBean("redisSecurityDataStorage"));
+                assertThat(context.getBean(RedisSecurityDataStorage.class).isReady())
+                    .as("fenced Redis storage stays unavailable until a verified snapshot exists")
+                    .isFalse();
 
                 assertThat(context).doesNotHaveBean("primaryInMemoryStorage");
                 assertThat(context).hasBean("delegateSecurityDataStorage");
-            });
-    }
-
-    @Test
-    void jwtWithRedisActiveStillDelegatesToMemory() {
-        contextRunner
-            .withPropertyValues(
-                "orgsec.storage.features.jwt-enabled=true",
-                "orgsec.storage.redis.enabled=true",
-                "orgsec.storage.features.redis-enabled=true"
-            )
-            .run(context -> {
-                assertThat(context).hasNotFailed();
-                assertThat(context).hasBean("jwtSecurityDataStorage");
-                assertThat(context).hasBean("redisSecurityDataStorage");
-                assertThat(context)
-                    .as("the Redis alias stands down so JWT can be primary")
-                    .doesNotHaveBean("orgsecPrimaryStorage");
-
-                assertThat(context.getBean("jwtDelegateStorage"))
-                    .as("Redis being active must not silently become the JWT delegate")
-                    .isSameAs(context.getBean("inMemorySecurityDataStorage"))
-                    .isNotSameAs(context.getBean("redisSecurityDataStorage"));
-            });
-    }
-
-    @Test
-    void redisBecomesTheJwtDelegateOnlyWhenDeclaredExplicitly() {
-        contextRunner
-            .withPropertyValues(
-                "orgsec.storage.features.jwt-enabled=true",
-                "orgsec.storage.redis.enabled=true",
-                "orgsec.storage.features.redis-enabled=true"
-            )
-            .withUserConfiguration(ExplicitRedisDelegate.class)
-            .run(context -> {
-                assertThat(context).hasNotFailed();
-                assertThat(context.getBean("jwtDelegateStorage"))
-                    .isSameAs(context.getBean("redisSecurityDataStorage"));
             });
     }
 
@@ -167,6 +131,16 @@ class StorageBeanGraphTest {
         }
 
         @Bean
+        SecurityDatasetFenceStore securityDatasetFenceStore() {
+            return mock(SecurityDatasetFenceStore.class);
+        }
+
+        @Bean
+        RedisSnapshotLoader redisSnapshotLoader() {
+            return mock(RedisSnapshotLoader.class);
+        }
+
+        @Bean
         JwtDecoder jwtDecoder() {
             return mock(JwtDecoder.class);
         }
@@ -174,15 +148,6 @@ class StorageBeanGraphTest {
         @Bean
         ObjectMapper objectMapper() {
             return new ObjectMapper();
-        }
-    }
-
-    @Configuration(proxyBeanMethods = false)
-    static class ExplicitRedisDelegate {
-
-        @Bean("jwtDelegateStorage")
-        SecurityDataStorage jwtDelegateStorage(RedisSecurityDataStorage redisSecurityDataStorage) {
-            return redisSecurityDataStorage;
         }
     }
 }

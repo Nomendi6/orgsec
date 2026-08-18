@@ -5,7 +5,9 @@ import jakarta.validation.constraints.Size;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -31,6 +33,22 @@ public class OrganizationDef {
 
     @Size(max = 1000, message = "Company parent path must not exceed 1000 characters")
     public String companyParentPath; // company parentPath
+
+    /**
+     * Immediate parent party id. {@code null} means this node is a root, or the loader did not
+     * supply a parent. Evaluators do not read this field; {@code LineageBuilder} does.
+     */
+    public Long parentId;
+
+    /**
+     * Inclusive org lineage from the root to this node, or {@code null} when it could not be built.
+     */
+    public List<Long> orgLineageIds;
+
+    /**
+     * Inclusive lineage of {@link #companyId}, or {@code null} when the company is unknown.
+     */
+    public List<Long> companyLineageIds;
 
     public Set<RoleDef> positionRolesSet; // roles assigned to a person position (if this is assigned organization)
     public Set<RoleDef> organizationRolesSet; // roles assigned to an organization
@@ -112,6 +130,9 @@ public class OrganizationDef {
         newOrganization.parentPath = other.parentPath;
         newOrganization.companyId = other.companyId;
         newOrganization.companyParentPath = other.companyParentPath;
+        newOrganization.parentId = other.parentId;
+        newOrganization.orgLineageIds = copyLineage(other.orgLineageIds);
+        newOrganization.companyLineageIds = copyLineage(other.companyLineageIds);
         newOrganization.positionRolesSet.addAll(other.positionRolesSet);
         newOrganization.organizationRolesSet.addAll(other.organizationRolesSet);
         newOrganization.businessRolesMap.putAll(other.businessRolesMap);
@@ -133,6 +154,9 @@ public class OrganizationDef {
         if (parentPath != null ? !parentPath.equals(that.parentPath) : that.parentPath != null) return false;
         if (companyId != null ? !companyId.equals(that.companyId) : that.companyId != null) return false;
         if (companyParentPath != null ? !companyParentPath.equals(that.companyParentPath) : that.companyParentPath != null) return false;
+        if (!Objects.equals(parentId, that.parentId)) return false;
+        if (!Objects.equals(orgLineageIds, that.orgLineageIds)) return false;
+        if (!Objects.equals(companyLineageIds, that.companyLineageIds)) return false;
         if (positionRolesSet != null ? !positionRolesSet.equals(that.positionRolesSet) : that.positionRolesSet != null) return false;
         if (
             organizationRolesSet != null ? !organizationRolesSet.equals(that.organizationRolesSet) : that.organizationRolesSet != null
@@ -149,6 +173,9 @@ public class OrganizationDef {
         result = 31 * result + (parentPath != null ? parentPath.hashCode() : 0);
         result = 31 * result + (companyId != null ? companyId.hashCode() : 0);
         result = 31 * result + (companyParentPath != null ? companyParentPath.hashCode() : 0);
+        result = 31 * result + (parentId != null ? parentId.hashCode() : 0);
+        result = 31 * result + (orgLineageIds != null ? orgLineageIds.hashCode() : 0);
+        result = 31 * result + (companyLineageIds != null ? companyLineageIds.hashCode() : 0);
         result = 31 * result + (positionRolesSet != null ? positionRolesSet.hashCode() : 0);
         result = 31 * result + (organizationRolesSet != null ? organizationRolesSet.hashCode() : 0);
         result = 31 * result + (this.businessRolesMap != null ? businessRolesMap.hashCode() : 0);
@@ -177,6 +204,12 @@ public class OrganizationDef {
             ", companyParentPath='" +
             companyParentPath +
             '\'' +
+            ", parentId=" +
+            parentId +
+            ", orgLineageIds=" +
+            orgLineageIds +
+            ", companyLineageIds=" +
+            companyLineageIds +
             ", positionRolesSet=" +
             positionRolesSet +
             ", organizationRolesSet=" +
@@ -185,5 +218,9 @@ public class OrganizationDef {
             businessRolesMap +
             '}'
         );
+    }
+
+    private static List<Long> copyLineage(List<Long> lineage) {
+        return lineage == null ? null : List.copyOf(lineage);
     }
 }

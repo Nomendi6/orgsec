@@ -20,12 +20,68 @@ class RedisStoragePropertiesValidationTest {
 
     @Test
     void defaultsAreValid() {
-        assertThatCode(() -> new RedisStorageProperties().afterPropertiesSet()).doesNotThrowAnyException();
+        assertThatCode(() -> new RedisStorageProperties().afterPropertiesSet())
+            .doesNotThrowAnyException();
+    }
+
+    @Test
+    void requiresAnExplicitSecurityDatasetId() {
+        RedisStorageProperties missing = new RedisStorageProperties();
+        missing.setEnabled(true);
+
+        assertThatThrownBy(missing::afterPropertiesSet)
+            .isInstanceOf(OrgsecConfigurationException.class)
+            .hasMessageStartingWith(RedisStorageProperties.INVALID_PROPERTY + ":")
+            .hasMessageContaining("orgsec.storage.redis.security-dataset-id")
+            .hasMessageContaining("must not be blank");
+
+        RedisStorageProperties properties = validProperties();
+        properties.setSecurityDatasetId("  ");
+
+        assertThatThrownBy(properties::afterPropertiesSet)
+            .isInstanceOf(OrgsecConfigurationException.class)
+            .hasMessageContaining("orgsec.storage.redis.security-dataset-id")
+            .hasMessageNotContaining("=  ");
+    }
+
+    @Test
+    void doesNotRequireSecurityDatasetIdWhenRedisIsDisabled() {
+        RedisStorageProperties properties = new RedisStorageProperties();
+        properties.setEnabled(false);
+
+        assertThatCode(properties::afterPropertiesSet).doesNotThrowAnyException();
+    }
+
+    @Test
+    void enforcesTheProtocolUtf8BoundaryForSecurityDatasetId() {
+        RedisStorageProperties maximum = validProperties();
+        maximum.setSecurityDatasetId("a".repeat(254) + "ž");
+        assertThatCode(maximum::afterPropertiesSet).doesNotThrowAnyException();
+
+        RedisStorageProperties oversized = validProperties();
+        oversized.setSecurityDatasetId("a".repeat(255) + "ž");
+        assertThatThrownBy(oversized::afterPropertiesSet)
+            .isInstanceOf(OrgsecConfigurationException.class)
+            .hasMessageContaining("orgsec.storage.redis.security-dataset-id")
+            .hasMessageContaining("at most 256 UTF-8 bytes")
+            .hasMessageNotContaining("a".repeat(32));
+    }
+
+    @Test
+    void rejectsMalformedUnicodeInSecurityDatasetIdWithoutEchoingIt() {
+        RedisStorageProperties properties = validProperties();
+        properties.setSecurityDatasetId("raw-secret\uD800");
+
+        assertThatThrownBy(properties::afterPropertiesSet)
+            .isInstanceOf(OrgsecConfigurationException.class)
+            .hasMessageContaining("orgsec.storage.redis.security-dataset-id")
+            .hasMessageContaining("well-formed Unicode")
+            .hasMessageNotContaining("raw-secret");
     }
 
     @Test
     void rejectsABlankHost() {
-        RedisStorageProperties properties = new RedisStorageProperties();
+        RedisStorageProperties properties = validProperties();
         properties.setHost("  ");
 
         assertThatThrownBy(properties::afterPropertiesSet)
@@ -47,7 +103,7 @@ class RedisStoragePropertiesValidationTest {
 
     @Test
     void rejectsATimeoutBelowTheFloor() {
-        RedisStorageProperties properties = new RedisStorageProperties();
+        RedisStorageProperties properties = validProperties();
         properties.setTimeout(99);
 
         assertThatThrownBy(properties::afterPropertiesSet)
@@ -58,7 +114,7 @@ class RedisStoragePropertiesValidationTest {
 
     @Test
     void rejectsANonPositiveTtl() {
-        RedisStorageProperties properties = new RedisStorageProperties();
+        RedisStorageProperties properties = validProperties();
         properties.getTtl().setPerson(0);
 
         assertThatThrownBy(properties::afterPropertiesSet)
@@ -68,7 +124,7 @@ class RedisStoragePropertiesValidationTest {
 
     @Test
     void rejectsAnL1CacheSizeOutsideTheRange() {
-        RedisStorageProperties properties = new RedisStorageProperties();
+        RedisStorageProperties properties = validProperties();
         properties.getCache().setL1MaxSize(0);
 
         assertThatThrownBy(properties::afterPropertiesSet)
@@ -78,7 +134,7 @@ class RedisStoragePropertiesValidationTest {
 
     @Test
     void rejectsABlankInvalidationChannel() {
-        RedisStorageProperties properties = new RedisStorageProperties();
+        RedisStorageProperties properties = validProperties();
         properties.getInvalidation().setChannel("");
 
         assertThatThrownBy(properties::afterPropertiesSet)
@@ -88,7 +144,7 @@ class RedisStoragePropertiesValidationTest {
 
     @Test
     void rejectsAFailureThresholdAbove100Percent() {
-        RedisStorageProperties properties = new RedisStorageProperties();
+        RedisStorageProperties properties = validProperties();
         properties.getCircuitBreaker().setFailureThreshold(101);
 
         assertThatThrownBy(properties::afterPropertiesSet)
@@ -98,7 +154,7 @@ class RedisStoragePropertiesValidationTest {
 
     @Test
     void rejectsAnEmptyPool() {
-        RedisStorageProperties properties = new RedisStorageProperties();
+        RedisStorageProperties properties = validProperties();
         properties.getPool().setMaxActive(0);
 
         assertThatThrownBy(properties::afterPropertiesSet)
@@ -108,15 +164,22 @@ class RedisStoragePropertiesValidationTest {
 
     @Test
     void acceptsABatchDelayOfZeroBecauseZeroMeansNoDelay() {
-        RedisStorageProperties properties = new RedisStorageProperties();
+        RedisStorageProperties properties = validProperties();
         properties.getPreload().setBatchDelayMs(0);
 
         assertThatCode(properties::afterPropertiesSet).doesNotThrowAnyException();
     }
 
     private static RedisStorageProperties withPort(int port) {
-        RedisStorageProperties properties = new RedisStorageProperties();
+        RedisStorageProperties properties = validProperties();
         properties.setPort(port);
+        return properties;
+    }
+
+    private static RedisStorageProperties validProperties() {
+        RedisStorageProperties properties = new RedisStorageProperties();
+        properties.setEnabled(true);
+        properties.setSecurityDatasetId("orgsec-test");
         return properties;
     }
 }
