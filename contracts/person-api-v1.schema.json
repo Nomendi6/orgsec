@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orgsec.nomendi6.com/contracts/person-api-v1.schema.json",
+  "title": "OrgSec Person API success body",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "id"],
+  "properties": {
+    "version": { "const": "1.0" },
+    "id": { "type": "integer" },
+    "name": { "type": ["string", "null"] },
+    "relatedUserId": { "type": ["string", "null"] },
+    "relatedUserLogin": { "type": ["string", "null"] },
+    "defaultCompanyId": { "type": ["integer", "null"] },
+    "defaultOrgunitId": { "type": ["integer", "null"] },
+    "memberships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["organizationId"],
+        "properties": {
+          "organizationId": { "type": "integer" },
+          "companyId": { "type": ["integer", "null"] },
+          "pathId": { "type": ["string", "null"] },
+          "positionRoleIds": {
+            "type": "array",
+            "items": { "type": "integer" }
+          }
+        }
+      }
+    }
+  }
+}

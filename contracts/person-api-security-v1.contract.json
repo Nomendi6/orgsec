@@ -1,0 +1,57 @@
+{
+  "contractId": "person-api-security-v1",
+  "owner": "OrgSec",
+  "appliesTo": ["orgsec-1.x", "orgsec-2.x"],
+  "mapperCallbackPath": "/api/orgsec/person/by-user/{keycloakUserId}",
+  "securityMatcher": "/api/orgsec/person/**",
+  "method": "GET",
+  "enabledProperty": "orgsec.api.person.enabled",
+  "authentication": {
+    "scheme": "Bearer",
+    "decoder": "application-JwtDecoder",
+    "decoderMustValidate": ["signature", "issuer", "audience", "expiry"],
+    "missingDecoder": "fail-startup"
+  },
+  "authorization": {
+    "check": "hasRole",
+    "requiredRoleProperty": "orgsec.api.person.required-role",
+    "requiredRoleDefault": "ORGSEC_API_CLIENT",
+    "springAuthority": "ROLE_ORGSEC_API_CLIENT",
+    "roleClaim": "realm_access.roles"
+  },
+  "success": {
+    "status": 200,
+    "contentType": "application/json",
+    "bodySchema": "person-api-v1.schema.json",
+    "requiredVersion": "1.0",
+    "maxBodyBytes": 262144
+  },
+  "errors": {
+    "bodySchema": "person-api-error-v1.schema.json",
+    "contentType": "application/json",
+    "statusWithoutMatchingCode": "contract-break-not-user-deny",
+    "map": [
+      {
+        "when": ["missing-bearer", "malformed-token", "decoder-reject"],
+        "status": 401,
+        "code": "CALLBACK_UNAUTHENTICATED"
+      },
+      {
+        "when": ["authenticated-without-required-role"],
+        "status": 403,
+        "code": "CALLBACK_FORBIDDEN"
+      },
+      {
+        "when": ["no-person-for-keycloak-user"],
+        "status": 404,
+        "code": "PERSON_NOT_FOUND"
+      }
+    ]
+  },
+  "notes": [
+    "Audience is enforced by the application's JwtDecoder, not by a second OrgSec decoder.",
+    "Wrong audience is decoder-reject and therefore 401 CALLBACK_UNAUTHENTICATED, not 403.",
+    "A 404 without code PERSON_NOT_FOUND is a contract break.",
+    "GET /api/orgsec/person/{personId} shares the same matcher and codes but is not the mapper callback path."
+  ]
+}
