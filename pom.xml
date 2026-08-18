@@ -7,7 +7,7 @@
 
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-parent</artifactId>
-    <version>1.1.0-SNAPSHOT</version>
+    <version>1.1.0</version>
     <packaging>pom</packaging>
 
     <name>OrgSec Parent</name>
@@ -78,8 +78,6 @@
         <maven-javadoc-plugin.version>3.7.0</maven-javadoc-plugin.version>
         <maven-gpg-plugin.version>3.2.4</maven-gpg-plugin.version>
         <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
-        <!-- Publishing is opt-in. Candidate/release verification must never contact Central. -->
-        <skipPublishing>true</skipPublishing>
         <jacoco-maven-plugin.version>0.8.12</jacoco-maven-plugin.version>
         <japicmp-maven-plugin.version>0.25.6</japicmp-maven-plugin.version>
 
@@ -171,9 +169,8 @@
                     <extensions>true</extensions>
                     <configuration>
                         <publishingServerId>central</publishingServerId>
-                        <autoPublish>false</autoPublish>
-                        <waitUntil>validated</waitUntil>
-                        <skipPublishing>${skipPublishing}</skipPublishing>
+                        <autoPublish>true</autoPublish>
+                        <waitUntil>published</waitUntil>
                     </configuration>
                 </plugin>
                 <plugin>

@@ -12,7 +12,7 @@ The full documentation lives in [`docs/`](./docs/index.md).
 
 - **Hierarchical, multi-tenant authorization model.** Privileges scope to *exactly* one organization, *down* through descendants, or *up* through ancestors. Cascade evaluation runs across company -> org -> person and is fail-closed.
 - **String-based privilege identifiers, registered at runtime.** Your application defines its own vocabulary - `DOCUMENT_READ`, `INVOICE_APPROVE`, `CONTRACT_SIGN_HD` - through `PrivilegeDefinitionProvider` beans. OrgSec ships no closed enum.
-- **Three pluggable storage backends.** Choose in-memory (default), Redis (L1+L2 with Pub/Sub invalidation), or JWT (stateless Person from a token claim, other types served by a delegate backend). Backend changes are configuration-only.
+- **Three pluggable storage backends.** In-memory (default), Redis (lease-fenced READY snapshot), or JWT (Person from a token claim, other types from the in-memory delegate). There is no per-type router.
 - **Spring Boot auto-configuration.** Add the starter, declare your business roles, register your privileges, and the privilege evaluator, security data store, audit logger, and Spring Security adapter are wired automatically.
 
 ## Modules
@@ -22,7 +22,7 @@ The full documentation lives in [`docs/`](./docs/index.md).
 | `orgsec-core`                   | Public API: SPIs, domain models, exceptions.                                                           |
 | `orgsec-common`                 | Privilege evaluator, business-role configuration, RSQL filter builder.                                 |
 | `orgsec-storage-inmemory`       | Default backend; thread-safe, process-local. Bundled with the starter.                                 |
-| `orgsec-storage-redis`          | L1 + L2 + Pub/Sub invalidation, circuit breaker, preload strategies. Opt-in.                           |
+| `orgsec-storage-redis`          | Lease-fenced READY snapshot on one standalone primary. Opt-in.                                         |
 | `orgsec-storage-jwt`            | Reads `PersonDef` from a JWT claim; delegates other types to another backend. Opt-in.                  |
 | `orgsec-spring-boot-starter`    | Auto-configuration, configuration properties, Spring Security adapter, Person API.                     |
 
@@ -32,7 +32,7 @@ The full documentation lives in [`docs/`](./docs/index.md).
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-spring-boot-starter</artifactId>
-    <version>1.0.5</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
@@ -61,10 +61,11 @@ Then implement `SecurityEnabledEntity` on your domain class, register your privi
 
 ## Compatibility
 
-| OrgSec version | Spring Boot   | Spring Security | Java | Status                                       |
-| -------------- | ------------- | --------------- | ---- | -------------------------------------------- |
-| **1.0.x**      | 3.5.x         | 6.x             | 17   | Current GA; receives security and bug fixes  |
-| 2.0.x          | 4.x (planned) | 7.x (planned)   | 21   | In development; not yet released             |
+| OrgSec version | Spring Boot   | Spring Security | Java | Status                                                          |
+| -------------- | ------------- | --------------- | ---- | --------------------------------------------------------------- |
+| **1.1.x**      | 3.5.x         | 6.x             | 17   | Current GA for Spring Boot 3                                    |
+| 1.0.x          | 3.5.x         | 6.x             | 17   | Superseded. Redis deployments on `<= 1.0.5` must upgrade        |
+| 2.0.x          | 4.0.x         | 7.x             | 21   | Current GA for Spring Boot 4                                    |
 
 ## Building
 
@@ -74,6 +75,9 @@ mvn clean install
 
 # Build without tests
 mvn clean install -DskipTests
+
+# Publish this release to Maven Central (signs, uploads, auto-releases)
+mvn clean deploy -P release
 
 # Build a single module with its dependencies
 mvn clean install -pl orgsec-storage-redis -am

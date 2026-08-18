@@ -63,9 +63,9 @@ The important split is simple: storage gives OrgSec the user's grants; the prote
 
 | OrgSec version | Spring Boot | Spring Security | Java | Status |
 | --- | --- | --- | --- | --- |
-| **1.0.x** | 3.5.x | 6.x | 17 | Current published GA; Redis users should plan 1.1.0 |
-| 1.1.x | 3.5.x | 6.x | 17 | Unreleased; snapshot Redis + after-commit notify + `=^*` |
-| 2.0.x | 4.x | 7.x | 21 | In development; not yet released |
+| **1.1.x** | 3.5.x | 6.x | 17 | Current GA for Spring Boot 3 |
+| 1.0.x | 3.5.x | 6.x | 17 | Superseded; Redis deployments on `<= 1.0.5` must upgrade |
+| 2.0.x | 4.0.x | 7.x | 21 | Current GA for Spring Boot 4 |
 
 ## License And Links
 

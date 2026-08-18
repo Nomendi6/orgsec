@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - Unreleased
+## [1.1.0] - 2026-08-18
 
 This is a minor release on the Spring Boot 3.5 / Java 17 line. It is source- and binary-compatible
 with 1.0.5 for the japicmp-guarded public types. It is **not** drop-in for Redis deployments or

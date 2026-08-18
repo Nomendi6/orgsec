@@ -8,12 +8,12 @@ The table below shows which OrgSec versions currently receive security fixes. Ol
 
 | Version | Supported          | Notes                                                                                                   |
 | ------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
-| 1.1.x   | :hourglass:        | Next 1.x line (unreleased). Targets Spring Boot 3.5.x and Java 17. Redis deployments must upgrade here: `<= 1.0.5` can serve a stale authorization view. Mixed 1.0.x / 1.1.x Redis processes are unsupported. |
-| 1.0.x   | :white_check_mark: | Current published GA. Targets Spring Boot 3.5.x and Java 17. **Upgrade to 1.0.5** for the authorization defects listed under `### Security` in the [CHANGELOG](./CHANGELOG.md). Once 1.1.0 is published this line is superseded; Redis users should not stay on it. 1.0.5 is not drop-in - read its migration notes first. |
-| 2.0.x   | :hourglass:        | In development. Targets Spring Boot 4.x and Java 21. Will become the supported line at GA.              |
+| 2.0.x   | :white_check_mark: | Current GA for Spring Boot 4.x and Java 21.                                                             |
+| 1.1.x   | :white_check_mark: | Current GA for Spring Boot 3.5.x and Java 17. Redis deployments on `<= 1.0.5` must upgrade here. Mixed 1.0.x / 1.1.x Redis processes are unsupported. |
+| 1.0.x   | :x:                | Superseded. **Upgrade to 1.1.0** (or at least 1.0.5 for non-Redis). 1.0.5 is not drop-in - read its migration notes first. |
 | < 1.0.0 | :x:                | Pre-release / never published. No support.                                                              |
 
-When 2.0.x reaches GA, the current 1.x line will continue to receive security fixes for at least six months to give downstream applications time to migrate.
+The 1.1.x line continues to receive security fixes for at least six months after 2.0.0 to give Spring Boot 3 applications time to migrate.
 
 ## Reporting a Vulnerability
 
@@ -90,4 +90,4 @@ If GitHub or the maintainer's email becomes unavailable for an extended period a
 
 ---
 
-*This policy is reviewed at every minor release. Last reviewed for OrgSec 1.1.0-SNAPSHOT.*
+*This policy is reviewed at every minor release. Last reviewed for OrgSec 1.1.0.*

@@ -6,7 +6,7 @@
 <dependency>
     <groupId>com.nomendi6.orgsec</groupId>
     <artifactId>orgsec-spring-boot-starter</artifactId>
-    <version>1.0.4</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
