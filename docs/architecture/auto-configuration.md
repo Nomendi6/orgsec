@@ -8,7 +8,7 @@ OrgSec ships **five** classes registered through `META-INF/spring/org.springfram
 | ------------------------------------ | ---------------------------- | ---------------------------------------- | ------------------------------------------------------------ |
 | `OrgsecAutoConfiguration`            | `orgsec-spring-boot-starter` | Yes                                      | Top-level wiring + the `api`-package component scan          |
 | `PersonApiServiceConfiguration`      | `orgsec-spring-boot-starter` | Yes                                      | Person API controller, service, and `orgsecApiSecurityFilterChain` |
-| `StorageConfiguration`               | `orgsec-storage-inmemory`    | Yes                                      | `primaryInMemoryStorage`, `delegateSecurityDataStorage`, placeholder JWT/Redis beans |
+| `StorageConfiguration`               | `orgsec-storage-inmemory`    | Yes                                      | `primaryInMemoryStorage`, `delegateSecurityDataStorage`, `jwtDelegateStorage` |
 | `RedisStorageAutoConfiguration`      | `orgsec-storage-redis`       | Yes (opt-in via `orgsec-storage-redis` JAR) | Redis backend + cache infrastructure                       |
 | `JwtStorageAutoConfiguration`        | `orgsec-storage-jwt`         | Yes (opt-in via `orgsec-storage-jwt` JAR)   | JWT backend + Spring Security JWT integration              |
 
@@ -51,7 +51,7 @@ The class declares one bean directly:
 The remaining beans the starter contributes are wired through two mechanisms:
 
 1. **Auto-configurations registered through `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.** Five classes total - the three headline ones above plus:
-    - `com.nomendi6.orgsec.storage.inmemory.StorageConfiguration` - declares `primaryInMemoryStorage`, `delegateSecurityDataStorage`, and placeholder JWT / Redis beans. It does **not** declare the `AllPersonsStore`, `AllOrganizationsStore`, `PersonLoader`, etc., and it does not carry a `@ComponentScan`.
+    - `com.nomendi6.orgsec.storage.inmemory.StorageConfiguration` - declares `primaryInMemoryStorage`, `delegateSecurityDataStorage`, and `jwtDelegateStorage`. It does **not** declare the `AllPersonsStore`, `AllOrganizationsStore`, `PersonLoader`, etc., and it does not carry a `@ComponentScan`.
     - `com.nomendi6.orgsec.autoconfigure.PersonApiServiceConfiguration` - declares the Person API controller, service, and `orgsecApiSecurityFilterChain`.
     - The three headline classes (`OrgsecAutoConfiguration`, `RedisStorageAutoConfiguration`, `JwtStorageAutoConfiguration`) are themselves part of this list; they are documented in their own sections above.
 2. **Application-side component scan.** The OrgSec storage and common beans (`AllPersonsStore`, `AllOrganizationsStore`, `AllRolesStore`, `AllPrivilegesStore`, the loaders, `InMemorySecurityDataStorage`, `PrivilegeChecker`, `RsqlFilterBuilder`, `BusinessRoleConfiguration`) are annotated with `@Component` / `@Configuration`. **They are not registered by any of the auto-configurations above.** They reach the application context only when the application's component scan covers their packages.

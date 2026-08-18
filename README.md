@@ -12,7 +12,7 @@ The full documentation lives in [`docs/`](./docs/index.md).
 
 - **Hierarchical, multi-tenant authorization model.** Privileges scope to *exactly* one organization, *down* through descendants, or *up* through ancestors. Cascade evaluation runs across company -> org -> person and is fail-closed.
 - **String-based privilege identifiers, registered at runtime.** Your application defines its own vocabulary - `DOCUMENT_READ`, `INVOICE_APPROVE`, `CONTRACT_SIGN_HD` - through `PrivilegeDefinitionProvider` beans. OrgSec ships no closed enum.
-- **Three pluggable storage backends.** Choose in-memory (default), Redis (L1+L2 with Pub/Sub invalidation), or JWT (stateless Person from a token claim) per data type. Backend changes are configuration-only.
+- **Three pluggable storage backends.** In-memory (default), Redis (lease-fenced READY snapshot), or JWT (Person from a token claim, other types from the in-memory delegate). There is no per-type router.
 - **Spring Boot auto-configuration.** Add the starter, declare your business roles, register your privileges, and the privilege evaluator, security data store, audit logger, and Spring Security adapter are wired automatically.
 
 ## Modules
@@ -22,7 +22,7 @@ The full documentation lives in [`docs/`](./docs/index.md).
 | `orgsec-core`                   | Public API: SPIs, domain models, exceptions.                                                           |
 | `orgsec-common`                 | Privilege evaluator, business-role configuration, RSQL filter builder.                                 |
 | `orgsec-storage-inmemory`       | Default backend; thread-safe, process-local. Bundled with the starter.                                 |
-| `orgsec-storage-redis`          | L1 + L2 + Pub/Sub invalidation, circuit breaker, preload strategies. Opt-in.                           |
+| `orgsec-storage-redis`          | Lease-fenced READY snapshot on one standalone primary. Opt-in.                                         |
 | `orgsec-storage-jwt`            | Reads `PersonDef` from a JWT claim; delegates other types to another backend. Opt-in.                  |
 | `orgsec-spring-boot-starter`    | Auto-configuration, configuration properties, Spring Security adapter, Person API.                     |
 
@@ -61,10 +61,11 @@ Then implement `SecurityEnabledEntity` on your domain class, register your privi
 
 ## Compatibility
 
-| OrgSec version | Spring Boot   | Spring Security | Java | Status                                       |
-| -------------- | ------------- | --------------- | ---- | -------------------------------------------- |
-| **2.0.x**      | 4.0.x         | 7.x             | 21   | Current development line; GA target          |
-| 1.0.x          | 3.5.x         | 6.x             | 17   | Maintenance line for Spring Boot 3 apps      |
+| OrgSec version | Spring Boot   | Spring Security | Java | Status                                                          |
+| -------------- | ------------- | --------------- | ---- | --------------------------------------------------------------- |
+| **2.0.x**      | 4.0.x         | 7.x             | 21   | Current development line; GA target                             |
+| 1.1.x          | 3.5.x         | 6.x             | 17   | Upcoming Spring Boot 3 line (`release/1.1.0`; not yet on Central) |
+| 1.0.x          | 3.5.x         | 6.x             | 17   | Current published GA until 1.1.0 is released                    |
 
 ## Building
 

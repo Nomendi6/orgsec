@@ -487,7 +487,7 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
         // so its two queries were paid for and thrown away. The reload is what makes the change
         // visible: a targeted sync updates AllOrganizationsStore, while authorization reads the
         // OrganizationDef copies each person carries in personDef.organizationsMap, and those are
-        // rebuilt only by a full load. See ai/22.notify-puni-reload/01.nalaz.md.
+        // rebuilt only by a full load.
         refresh();
     }
 
@@ -501,7 +501,7 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
         // so its two queries were paid for and thrown away. The reload is what makes the change
         // visible: a targeted sync updates AllOrganizationsStore, while authorization reads the
         // OrganizationDef copies each person carries in personDef.organizationsMap, and those are
-        // rebuilt only by a full load. See ai/22.notify-puni-reload/01.nalaz.md.
+        // rebuilt only by a full load.
         refresh();
     }
 
@@ -515,7 +515,7 @@ public class InMemorySecurityDataStorage implements SecurityDataStorage {
         // so its two queries were paid for and thrown away. The reload is what makes the change
         // visible: a targeted sync updates AllOrganizationsStore, while authorization reads the
         // OrganizationDef copies each person carries in personDef.organizationsMap, and those are
-        // rebuilt only by a full load. See ai/22.notify-puni-reload/01.nalaz.md.
+        // rebuilt only by a full load.
         refresh();
     }
 

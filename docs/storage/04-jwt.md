@@ -4,7 +4,7 @@ The JWT backend reads the current user's `PersonDef` from a JWT claim instead of
 
 See [Glossary](../reference/glossary.md) for JWT, IdP, and related authorization terms.
 
-The JWT backend is **hybrid by design**: it never serves organizations, roles, or privileges itself. Those are delegated to another backend (memory or Redis) configured per data type. This keeps the token small and the cache logic for stable data unchanged.
+The JWT backend is hybrid in one fixed way: it never serves organizations, roles, or privileges itself. Those come from the named `jwtDelegateStorage` bean, which defaults to in-memory. JWT+Redis is refused at startup. `data-sources.*` is inert.
 
 > **Critical:** the JWT backend requires a Spring Security `JwtDecoder` bean. Without one, OrgSec **fails fast** at startup with `IllegalStateException`. This is intentional - an OrgSec deployment that accepts unverified tokens is a critical security regression. The fail-fast was added in the 1.0.1 security review.
 
@@ -82,16 +82,8 @@ For tests, supply a `JwtDecoder` bean manually - the simplest implementation is 
 ```yaml
 orgsec:
   storage:
-    primary: jwt
     features:
       jwt-enabled: true
-      memory-enabled: true                  # or redis-enabled: true
-      hybrid-mode-enabled: true             # required for delegation
-    data-sources:
-      person: jwt
-      organization: primary                 # = memory or redis
-      role: primary
-      privilege: memory
     jwt:
       claim-name: orgsec
       claim-version: "1.0"
@@ -173,30 +165,7 @@ You should still:
 
 ## Combining JWT with Redis delegate
 
-When you have many instances and need cached organization data, route the org / role types to Redis:
-
-```yaml
-orgsec:
-  storage:
-    primary: jwt
-    features:
-      jwt-enabled: true
-      redis-enabled: true
-      memory-enabled: true
-      hybrid-mode-enabled: true
-    data-sources:
-      person: jwt
-      organization: redis
-      role: redis
-      privilege: memory
-    redis:
-      enabled: true                         # gates the Redis auto-configuration
-      host: ${REDIS_HOST}
-      ssl: true
-      # ... rest of Redis config
-```
-
-The Person path is stateless; the Organization / Role path is shared across instances through Redis. This is the canonical setup for a horizontally-scaled microservice fronted by Keycloak. Remember the Redis caveat from [Storage / Redis](./03-redis.md): Redis serves what has been put into the caches via preload or `notifyXxxChanged` - it does not load from your database on miss.
+JWT+Redis is not a supported topology: the activation validator refuses it before the context is created. Scale org/role data with managed Redis in a Redis-only deployment, or keep JWT with the in-memory delegate on one instance.
 
 ## Limitations
 

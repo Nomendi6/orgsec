@@ -232,17 +232,12 @@ The mapper supports three auth schemes for the call back into your service. The 
 
 | Auth type | What goes in `Auth Token`                              | Strengths                                            | Limitations                                                                       |
 | --------- | ------------------------------------------------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `bearer`  | A pre-issued OAuth2 access token for the mapper's service account | Standard OAuth2; the application validates the token through its existing `JwtDecoder` | **The token expires.** The mapper does not refresh it; once it expires, every login fails until you paste a new one. Suitable only for environments where you accept manual token rotation. |
+| `client_credentials` | Client id/secret; the mapper fetches a token and caches it until `exp - skew` | Production path: one 401 refresh/retry, no retry on 403 | Requires a dedicated service-account client with `ORGSEC_API_CLIENT` |
+| `bearer`  | A pre-issued OAuth2 access token | Legacy/test only | Expires; the mapper does not refresh this static token |
 | `api-key` | A long-lived shared secret your application validates  | Simple to rotate through your secret-management system; the application controls the validation policy | Requires the application to implement an API-key check on the Person API filter chain (in addition to or instead of the default `hasRole(...)`). |
 | `basic`   | `username:password` of a service account               | Easy to set up                                       | Same lifetime issue as `bearer` if the password expires; weaker than mTLS         |
 
-**Production guidance.** None of the three is "the secure default" out of the box. For a production deployment, treat the choice as part of the security review:
-
-- If you keep `bearer`, document the rotation procedure and treat the configured token as a high-value secret (Keycloak's mapper config is encrypted at rest by Keycloak; `setSecret(true)` is set on the field). Plan for token expiry - a 24-hour token requires daily rotation.
-- If you choose `api-key`, route the credential through your existing secret-management infrastructure and add a custom `SecurityFilterChain` (or replace `orgsecApiSecurityFilterChain`) that validates the header.
-- If your environment supports it, **prefer mTLS at the network layer** in addition to one of the auth schemes above. The mapper does not enforce mTLS; your reverse proxy or service mesh does.
-
-The mapper does not currently re-issue OAuth2 tokens through `client_credentials` on its own. If your operating model requires self-rotating credentials inside Keycloak, that capability is on the mapper roadmap; until then, treat the auth-type choice as the trade-off described above.
+**Production guidance.** Prefer `client_credentials` with a dedicated service-account client. Static `bearer` is legacy/test. Add mTLS at the network layer if you can; the mapper does not enforce it.
 
 ## Verifying the integration
 
@@ -289,16 +284,8 @@ spring:
 
 orgsec:
   storage:
-    primary: jwt
     features:
       jwt-enabled: true
-      memory-enabled: true
-      hybrid-mode-enabled: true
-    data-sources:
-      person: jwt
-      organization: primary
-      role: primary
-      privilege: memory
     jwt:
       claim-name: orgsec                      # match the mapper's "Claim Name"
 ```

@@ -217,18 +217,4 @@ public class JwtClaimsParser {
             return PathSanitizer.lastSegment(raw);
         }
     }
-
-    /**
-     * Get position role IDs from membership.
-     * Used by JwtSecurityDataStorage to resolve roles from delegate storage.
-     */
-    public List<Long> getPositionRoleIds(String jwtToken, Long organizationId) {
-        if (jwtToken == null || organizationId == null) {
-            return List.of();
-        }
-        ParsedPrincipal principal = parsePrincipalFromToken(jwtToken);
-        return principal != null
-            ? principal.positionRoleIdsByOrganization().getOrDefault(organizationId, List.of())
-            : List.of();
-    }
 }

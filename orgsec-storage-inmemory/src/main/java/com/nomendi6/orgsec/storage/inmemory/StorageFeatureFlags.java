@@ -8,8 +8,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * Feature flags for controlling storage strategies at runtime.
- * Allows dynamic switching between different storage providers without application restart.
+ * Binds {@code orgsec.storage.*} at context startup.
+ *
+ * <p>{@code features.jwt-enabled} and {@code features.redis-enabled} participate in
+ * {@code @ConditionalOnProperty} selection and the activation validator. {@code primary},
+ * {@code fallback}, {@code features.hybrid-mode-enabled}, {@code features.memory-enabled}
+ * and {@code data-sources.*} bind onto this class but are <strong>inert</strong>: nothing
+ * routes per data type, and the setter-style methods ({@code enableJwtStorage},
+ * {@code setPersonDataSource}, …) do not re-wire beans after startup.
  */
 @Component
 @ConfigurationProperties(prefix = "orgsec.storage")

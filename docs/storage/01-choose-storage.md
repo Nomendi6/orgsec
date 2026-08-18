@@ -53,21 +53,13 @@ orgsec:
       enabled: true
 ```
 
-For JWT/hybrid:
+For JWT (Person from the token; other types from the in-memory delegate). JWT+Redis is refused at startup.
 
 ```yaml
 orgsec:
   storage:
-    primary: jwt
     features:
       jwt-enabled: true
-      redis-enabled: true
-      hybrid-mode-enabled: true
-    data-sources:
-      person: jwt
-      organization: redis
-      role: redis
-      privilege: memory
 ```
 
 ## Migration Notes

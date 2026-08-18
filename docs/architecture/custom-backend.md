@@ -191,14 +191,14 @@ com.example.orgsec.mongo.MongoStorageAutoConfiguration
 ```yaml
 orgsec:
   storage:
-    primary: mongo                          # or "memory", with hybrid mode and data-sources routing
+    # Register your backend as @Primary. orgsec.storage.primary is inert.
     mongo:
       enabled: true
       connection-string: ${MONGO_URI}
       database: orgsec
 ```
 
-`StorageFeatureFlags` does not have a `features.mongo-enabled` flag. The application can still pick your backend by setting `primary: mongo` (which the starter does not validate against an enum) or by registering it via `data-sources`. If you want to integrate cleanly with the existing routing flags, add a custom configuration that inspects `StorageFeatureFlags` and decorates accordingly.
+`StorageFeatureFlags` has no `features.mongo-enabled` flag and no per-type router. Register your `SecurityDataStorage` as `@Primary`. `primary` / `data-sources.*` bind but are inert.
 
 ## Testing
 
@@ -231,12 +231,7 @@ For a cache-style backend, a useful smoke test is to load the same dataset into 
 
 ## Hybrid mode
 
-If you want your backend to participate in hybrid mode with `data-sources.person`, `.organization`, `.role`, `.privilege` routing, you need to integrate with the storage facade more deeply than the simple `@Primary` registration above. The 1.0.x facade hard-codes the backend names (`primary`, `memory`, `redis`, `jwt`) in `StorageFeatureFlags.getDataSource(...)` consumers. To plug a fourth backend cleanly, you have two options:
-
-1. **Run as primary only.** Make your backend the `@Primary` `SecurityDataStorage` and ignore the routing flags. The simplest approach.
-2. **Wrap the existing backends.** Implement `SecurityDataStorage` as a *delegating facade* that reads from your backend or one of the existing ones based on per-data-type configuration. More flexible but requires more code.
-
-For OrgSec 2.0.x the routing layer is expected to become extensible; until then, treat hybrid-mode integration as opt-in additional work.
+There is no hybrid router. `data-sources.*` and `hybrid-mode-enabled` are inert. Register one `@Primary` `SecurityDataStorage`. JWT, if enabled, uses the named `jwtDelegateStorage` bean.
 
 ## Operating contract
 

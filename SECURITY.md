@@ -8,11 +8,12 @@ The table below shows which OrgSec versions currently receive security fixes. Ol
 
 | Version | Supported          | Notes                                                                                                   |
 | ------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
-| 1.0.x   | :white_check_mark: | Current GA line. Targets Spring Boot 3.5.x and Java 17. Receives security and bug fixes.                |
 | 2.0.x   | :hourglass:        | In development. Targets Spring Boot 4.x and Java 21. Will become the supported line at GA.              |
+| 1.1.x   | :hourglass:        | Upcoming Spring Boot 3.5 / Java 17 line (`release/1.1.0`). Not yet published to Central.                |
+| 1.0.x   | :white_check_mark: | Current published GA. Receives security and bug fixes until 1.1.0 is released and supersedes it.        |
 | < 1.0.0 | :x:                | Pre-release / never published. No support.                                                              |
 
-When 2.0.x reaches GA, 1.0.x will continue to receive security fixes for at least six months to give downstream applications time to migrate.
+When 1.1.0 is released, it becomes the supported Spring Boot 3 line and 1.0.x is superseded (Redis deployments on `<= 1.0.5` must upgrade). When 2.0.x reaches GA, the current 1.x line will continue to receive security fixes for at least six months to give downstream applications time to migrate.
 
 ## Reporting a Vulnerability
 

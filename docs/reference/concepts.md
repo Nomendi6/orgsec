@@ -272,13 +272,13 @@ flowchart LR
     Jwt -.->|delegates org/role| Redis
 ```
 
-The `SecurityDataStore` facade keeps `PrivilegeChecker` agnostic to the active backend. A request always asks `Store.getPerson(personId)`; behind that call the inmemory backend reads from a `ConcurrentHashMap` snapshot, the Redis backend reads from L1-then-L2, and the JWT backend reads from a parsed token claim. Per-data-type routing (`orgsec.storage.data-sources.person=jwt`, etc.) is honored at this layer.
+The `SecurityDataStore` facade keeps `PrivilegeChecker` agnostic to the active backend. A request always asks `Store.getPerson(personId)`; behind that call the in-memory backend reads a `ConcurrentHashMap` snapshot, managed Redis reads the READY snapshot view, and JWT reads Person from the token and the rest from its delegate. There is no per-type router: `data-sources.*` is inert.
 
 For backend-specific behavior - how data is loaded, when caches are invalidated, what happens on cache miss - see the [Choose storage](../storage/01-choose-storage.md) and the per-backend pages.
 
 ## Cache layers in one paragraph
 
-The Redis backend keeps a local L1 LRU cache for hot reads and a Redis L2 cache for cross-instance coherence. The caches are populated by a startup preload step and by `notifyXxxChanged()` calls from your domain code; on L1+L2 miss the backend returns `null` rather than reading from your database. Mutations go through the same `notifyXxxChanged()` hooks, which publish on `orgsec:invalidation` so other instances drop their L1 entries. The L1 cap is configurable; the L2 entries are TTL-bounded per entity type. A circuit breaker protects against Redis outages by failing fast on Redis calls. The full picture is in [Cache Architecture](../architecture/cache-architecture.md).
+Managed Redis GET/LIST do not consult L1 or L2. They re-check the current READY generation and read a local view of that snapshot. Pub/Sub, if enabled, is a hint only. See [Storage / Redis](../storage/03-redis.md).
 
 ## Where to go next
 

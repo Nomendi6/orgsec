@@ -58,13 +58,13 @@ This loss is why the aggregate no longer authorizes anything. Since 1.0.4 / 2.0.
 
 `PrivilegeDirection` (in `com.nomendi6.orgsec.constants`):
 
-| Value              | Code             | Description                                        | `allowsAccess` | `isHierarchical` | `includesDown` | `includesUp` |
-| ------------------ | ---------------- | -------------------------------------------------- | -------------- | ---------------- | -------------- | ------------ |
-| `NONE`             | `NONE`           | No access at this scope                            | `false`        | `false`          | `false`        | `false`      |
-| `EXACT`            | `EXACT`          | Exact match only                                   | `true`         | `false`          | `false`        | `false`      |
-| `HIERARCHY_DOWN`   | `HIERARCHY_DOWN` | This node and all descendants                      | `true`         | `true`           | `true`         | `false`      |
-| `HIERARCHY_UP`     | `HIERARCHY_UP`   | This node and all ancestors                        | `true`         | `true`           | `false`        | `true`       |
-| `ALL`              | `ALL`            | Every node                                         | `true`         | `true`           | `true`         | `true`       |
+| Value              | Code             | Description                                        | `allowsAccess` | `isHierarchical` |
+| ------------------ | ---------------- | -------------------------------------------------- | -------------- | ---------------- |
+| `NONE`             | `NONE`           | No access at this scope                            | `false`        | `false`          |
+| `EXACT`            | `EXACT`          | Exact match only                                   | `true`         | `false`          |
+| `HIERARCHY_DOWN`   | `HIERARCHY_DOWN` | This node and all descendants                      | `true`         | `true`           |
+| `HIERARCHY_UP`     | `HIERARCHY_UP`   | This node and all ancestors                        | `true`         | `true`           |
+| `ALL`              | `ALL`            | Abstract lattice top — not an evaluator grant      | `true`         | `true`           |
 
 ### Direction match table
 

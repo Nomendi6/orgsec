@@ -86,27 +86,27 @@ Each entry under `business-roles` is a *named* business role with a list of supp
 
 ## `StorageFeatureFlags` - `orgsec.storage.*`
 
-`StorageFeatureFlags` (in `orgsec-storage-inmemory`) is the canonical place to configure the active backend, the fallback, the per-feature flags, and per-data-type routing.
+`StorageFeatureFlags` (in `orgsec-storage-inmemory`) binds these keys. **`features.jwt-enabled` and `features.redis-enabled` are live** (activation validator + `@ConditionalOnProperty`). `primary`, `fallback`, `memory-enabled`, `hybrid-mode-enabled` and `data-sources.*` are **inert** — they bind and are documented here so generated YAML does not look undocumented, but no router reads them.
 
 ### Active backend - `orgsec.storage.*`
 
 | Property                              | Type      | Default       | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `primary`                             | `String`  | `"memory"`    | Active backend: `memory` / `redis` / `jwt`.                                              | [Choose storage](../storage/01-choose-storage.md) |
-| `fallback`                            | `String`  | `"memory"`    | Reserved/informational in 1.0.x. Exposed by `StorageFeatureFlags` for higher-level routing and future fallback behavior; the Redis backend itself does not fall back to this storage on miss or outage.                                 | [Choose storage](../storage/01-choose-storage.md)      |
+| `primary`                             | `String`  | `"memory"`    | **Inert.** Binds only. Backend selection is the Redis/JWT feature flags.                 | [Choose storage](../storage/01-choose-storage.md) |
+| `fallback`                            | `String`  | `"memory"`    | **Inert.** Binds only.                                                                   | [Choose storage](../storage/01-choose-storage.md)      |
 
 ### Feature flags - `orgsec.storage.features.*`
 
 | Property                              | Type      | Default | Description                                                                              | See                                                            |
 | ------------------------------------- | --------- | ------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `memory-enabled`                      | `boolean` | `true`  | Activate the in-memory backend (also used as a delegate).                                | [Storage / In-memory](../storage/02-in-memory.md)              |
-| `redis-enabled`                       | `boolean` | `false` | Activate the Redis backend (must be `true` alongside `primary=redis`).                   | [Storage / Redis](../storage/03-redis.md)                      |
-| `jwt-enabled`                         | `boolean` | `false` | Activate the JWT backend (must be `true` alongside `primary=jwt`).                       | [Storage / JWT](../storage/04-jwt.md)                          |
-| `hybrid-mode-enabled`                 | `boolean` | `false` | When `true`, honor `data-sources` per data type. When `false`, route everything to `primary`. | [Hybrid storage](../storage/05-hybrid.md) |
+| `memory-enabled`                      | `boolean` | `true`  | **Inert.** The in-memory module is always on the starter classpath.                      | [Storage / In-memory](../storage/02-in-memory.md)              |
+| `redis-enabled`                       | `boolean` | `false` | Must be `true` together with `orgsec.storage.redis.enabled`.                             | [Storage / Redis](../storage/03-redis.md)                      |
+| `jwt-enabled`                         | `boolean` | `false` | Activate the JWT backend. JWT+Redis is a startup refuse.                                 | [Storage / JWT](../storage/04-jwt.md)                          |
+| `hybrid-mode-enabled`                 | `boolean` | `false` | **Inert.** Not a per-type router.                                                        | [Hybrid storage](../storage/05-hybrid.md) |
 
-### Hybrid-mode routing - `orgsec.storage.data-sources.*`
+### `orgsec.storage.data-sources.*` (inert)
 
-Each entry routes one entity type to a specific source. Honored only when `hybrid-mode-enabled: true`.
+These keys bind onto `StorageFeatureFlags`. They do **not** route Person/Organization/Role/Privilege to different backends.
 
 | Property                              | Type     | Default     | Description                                                                              | See                                                            |
 | ------------------------------------- | -------- | ----------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |

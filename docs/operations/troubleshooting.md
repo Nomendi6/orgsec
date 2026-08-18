@@ -166,7 +166,7 @@ If the circuit stays open forever, your Redis password / TLS / network is miscon
 
 **Cause.** No valid JWT on the request.
 
-**Fix.** Verify the mapper's static bearer token is still valid (the mapper does not refresh it). If it has expired, paste a fresh token into the mapper config. For long-running deployments consider switching to `api-key` auth with infrastructure-managed rotation - see [Keycloak Person API - Choosing the auth type](../spring/03-keycloak-person-api.md#choosing-the-auth-type).
+**Fix.** The mapper's primary path is `client_credentials`. Confirm the service-account token is issued, accepted by the application's `JwtDecoder` (issuer and audience), and that a 401 is retried once after refresh. A leftover static token in mapper config is a legacy/test setting, not the production path. See [Keycloak Person API](../spring/03-keycloak-person-api.md).
 
 ## JWT-specific issues
 
